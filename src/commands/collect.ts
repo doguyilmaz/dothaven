@@ -18,6 +18,7 @@ import { collectPackages } from "../collectors/packages";
 import { collectRuntimes } from "../collectors/runtimes";
 import { collectEditorsExt } from "../collectors/editors-ext";
 import { collectFonts } from "../collectors/fonts";
+import { collectDotfilesSweep } from "../collectors/dotfiles-sweep";
 
 const collectors = [
   collectMeta,
@@ -30,6 +31,7 @@ const collectors = [
   collectRuntimes,
   collectEditorsExt,
   collectFonts,
+  collectDotfilesSweep,
 ];
 
 function parseArgs(args: string[]) {
