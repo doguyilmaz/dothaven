@@ -14,6 +14,7 @@ import { collectSsh } from "../collectors/ssh";
 import { collectOllama } from "../collectors/ollama";
 import { collectApps } from "../collectors/apps";
 import { collectHomebrew } from "../collectors/homebrew";
+import { collectPackages } from "../collectors/packages";
 
 const collectors = [
   collectMeta,
@@ -22,6 +23,7 @@ const collectors = [
   collectOllama,
   collectApps,
   collectHomebrew,
+  collectPackages,
 ];
 
 function parseArgs(args: string[]) {
