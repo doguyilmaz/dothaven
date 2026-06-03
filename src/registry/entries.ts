@@ -110,6 +110,42 @@ export const registryEntries: ConfigEntry[] = [
     backupDest: "shell/.zshrc",
     sensitivity: "low",
   },
+  {
+    id: "shell.zprofile",
+    name: ".zprofile",
+    paths: { darwin: "~/.zprofile", linux: "~/.zprofile" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.zprofile",
+    sensitivity: "low",
+  },
+  {
+    id: "shell.zshenv",
+    name: ".zshenv",
+    paths: { darwin: "~/.zshenv", linux: "~/.zshenv" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.zshenv",
+    sensitivity: "low",
+  },
+  {
+    id: "shell.bash_profile",
+    name: ".bash_profile",
+    paths: { darwin: "~/.bash_profile", linux: "~/.bash_profile" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.bash_profile",
+    sensitivity: "low",
+  },
+  {
+    id: "shell.bashrc",
+    name: ".bashrc",
+    paths: { darwin: "~/.bashrc", linux: "~/.bashrc" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.bashrc",
+    sensitivity: "low",
+  },
 
   // === Git ===
   {
