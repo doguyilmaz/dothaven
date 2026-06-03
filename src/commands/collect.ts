@@ -17,6 +17,7 @@ import { collectHomebrew } from "../collectors/homebrew";
 import { collectPackages } from "../collectors/packages";
 import { collectRuntimes } from "../collectors/runtimes";
 import { collectEditorsExt } from "../collectors/editors-ext";
+import { collectFonts } from "../collectors/fonts";
 
 const collectors = [
   collectMeta,
@@ -28,6 +29,7 @@ const collectors = [
   collectPackages,
   collectRuntimes,
   collectEditorsExt,
+  collectFonts,
 ];
 
 function parseArgs(args: string[]) {

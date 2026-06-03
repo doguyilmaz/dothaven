@@ -12,6 +12,18 @@ export function parseBrewList(text: string): string[] {
     .sort();
 }
 
+// Valid Brewfile directives + comments + blank separators (drops progress noise).
+const BREWFILE_LINE = /^(#|tap |brew |cask |mas |vscode |whisky |$)/;
+
+/** Clean `brew bundle dump` stdout into a restorable Brewfile. */
+export function parseBrewfile(text: string): string {
+  return text
+    .split("\n")
+    .filter((l) => BREWFILE_LINE.test(l))
+    .join("\n")
+    .trim();
+}
+
 const items = (names: string[]) => names.map((n) => ({ raw: n, columns: [n] }));
 
 export function makeHomebrewCollector(env: CommandEnv = defaultEnv): Collector {
@@ -26,6 +38,12 @@ export function makeHomebrewCollector(env: CommandEnv = defaultEnv): Collector {
     try {
       const casks = parseBrewList(await env.run(["brew", "list", "--cask"]));
       if (casks.length) result["apps.brew.casks"] = makeSection("apps.brew.casks", { items: items(casks) });
+    } catch {}
+
+    // A restorable Brewfile (taps + brews + casks + mas) — superset used by `brew bundle`.
+    try {
+      const brewfile = parseBrewfile(await env.run(["brew", "bundle", "dump", "--file=-"]));
+      if (brewfile) result["apps.brew.bundle"] = makeSection("apps.brew.bundle", { content: brewfile });
     } catch {}
 
     return result;
