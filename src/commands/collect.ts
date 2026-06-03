@@ -15,6 +15,8 @@ import { collectOllama } from "../collectors/ollama";
 import { collectApps } from "../collectors/apps";
 import { collectHomebrew } from "../collectors/homebrew";
 import { collectPackages } from "../collectors/packages";
+import { collectRuntimes } from "../collectors/runtimes";
+import { collectEditorsExt } from "../collectors/editors-ext";
 
 const collectors = [
   collectMeta,
@@ -24,6 +26,8 @@ const collectors = [
   collectApps,
   collectHomebrew,
   collectPackages,
+  collectRuntimes,
+  collectEditorsExt,
 ];
 
 function parseArgs(args: string[]) {
