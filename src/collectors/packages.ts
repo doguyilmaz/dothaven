@@ -1,5 +1,6 @@
 import type { Collector, CollectorResult } from "./types";
 import { makeSection } from "./types";
+import { type CommandEnv, defaultEnv } from "./env";
 
 export interface PkgItem {
   name: string;
@@ -79,26 +80,7 @@ const pkgItems = (pkgs: PkgItem[]) =>
     columns: [p.name, p.version].filter(Boolean),
   }));
 
-/** Injectable side-effects so the collector is fully testable without real tools installed. */
-export interface PkgEnv {
-  /** Run a command, returning stdout. Must not throw on non-zero exit (npm ls exits 1 on warnings). */
-  run: (cmd: string[]) => Promise<string>;
-  /** List entries of a directory; returns [] if it does not exist. */
-  listDir: (path: string) => Promise<string[]>;
-}
-
-export const defaultPkgEnv: PkgEnv = {
-  run: async (cmd) => (await Bun.$`${cmd}`.nothrow().quiet()).stdout.toString(),
-  listDir: async (path) => {
-    const entries: string[] = [];
-    try {
-      for await (const name of new Bun.Glob("*").scan(path)) entries.push(name);
-    } catch {}
-    return entries;
-  },
-};
-
-export function makePackagesCollector(env: PkgEnv = defaultPkgEnv): Collector {
+export function makePackagesCollector(env: CommandEnv = defaultEnv): Collector {
   return async (ctx) => {
     const result: CollectorResult = {};
 

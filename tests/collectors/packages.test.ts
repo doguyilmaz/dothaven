@@ -5,9 +5,9 @@ import {
   parsePnpmGlobal,
   parseFnmList,
   makePackagesCollector,
-  type PkgEnv,
 } from "../../src/collectors/packages";
 import type { CollectorContext } from "../../src/collectors/types";
+import { fakeEnv } from "../helpers/fake-env";
 
 // ─── Pure parsers ──────────────────────────────────────────────────────────
 
@@ -31,8 +31,9 @@ describe("parseNpmGlobal", () => {
   });
 
   test("missing version field → empty version string", () => {
-    const json = JSON.stringify({ dependencies: { foo: {} } });
-    expect(parseNpmGlobal(json)).toEqual([{ name: "foo", version: "" }]);
+    expect(parseNpmGlobal(JSON.stringify({ dependencies: { foo: {} } }))).toEqual([
+      { name: "foo", version: "" },
+    ]);
   });
 
   test("null / absent dependencies → []", () => {
@@ -90,8 +91,9 @@ describe("parsePnpmGlobal", () => {
   });
 
   test("object form", () => {
-    const json = JSON.stringify({ dependencies: { tldr: { version: "3.3.0" } } });
-    expect(parsePnpmGlobal(json)).toEqual([{ name: "tldr", version: "3.3.0" }]);
+    expect(parsePnpmGlobal(JSON.stringify({ dependencies: { tldr: { version: "3.3.0" } } }))).toEqual([
+      { name: "tldr", version: "3.3.0" },
+    ]);
   });
 
   test("invalid / empty → []", () => {
@@ -127,30 +129,22 @@ describe("parseFnmList", () => {
   });
 });
 
-// ─── Collector logic (fully mocked env, deterministic) ───────────────────────
+// ─── Collector logic (mocked env, deterministic) ─────────────────────────────
 
 const ctx: CollectorContext = { redact: true, home: "/fake/home" };
-
-/** Build a fake PkgEnv from a map of tool → stdout and an optional deno bin list. */
-function fakeEnv(outputs: Record<string, string>, denoBins: string[] = []): PkgEnv {
-  return {
-    run: async (cmd) => outputs[cmd[0]] ?? "",
-    listDir: async (path) => (path.endsWith("/.deno/bin") ? denoBins : []),
-  };
-}
 
 describe("makePackagesCollector", () => {
   test("assembles every section with correct ids and item shapes", async () => {
     const collect = makePackagesCollector(
-      fakeEnv(
-        {
+      fakeEnv({
+        outputs: {
           npm: JSON.stringify({ dependencies: { typescript: { version: "5.4.0" } } }),
           bun: "header\n└── eas-cli@16.19.2",
           pnpm: JSON.stringify({ dependencies: { tldr: { version: "3.3.0" } } }),
           fnm: "* v20.0.0\n* v22.0.0 default",
         },
-        ["deno-deploy"],
-      ),
+        dirs: { "/fake/home/.deno/bin": ["deno-deploy"] },
+      }),
     );
     const r = await collect(ctx);
 
@@ -173,36 +167,32 @@ describe("makePackagesCollector", () => {
   });
 
   test("omits sections whose tool produced no output", async () => {
-    const collect = makePackagesCollector(fakeEnv({ bun: "header\n└── only@1.0.0" }));
+    const collect = makePackagesCollector(fakeEnv({ outputs: { bun: "header\n└── only@1.0.0" } }));
     const r = await collect(ctx);
     expect(Object.keys(r)).toEqual(["packages.bun.global"]);
-    expect(r["packages.npm.global"]).toBeUndefined();
-    expect(r["packages.deno.bin"]).toBeUndefined();
   });
 
   test("no tools present → empty result", async () => {
-    const collect = makePackagesCollector(fakeEnv({}));
-    expect(await collect(ctx)).toEqual({});
+    expect(await makePackagesCollector(fakeEnv())(ctx)).toEqual({});
   });
 
   test("a throwing tool does not break the others (isolation)", async () => {
-    const env: PkgEnv = {
-      run: async (cmd) => {
-        if (cmd[0] === "npm") throw new Error("npm exploded");
-        if (cmd[0] === "bun") return "header\n└── ok@1.0.0";
-        return "";
-      },
-      listDir: async () => [],
-    };
-    const r = await makePackagesCollector(env)(ctx);
+    const collect = makePackagesCollector(
+      fakeEnv({
+        run: (cmd) => {
+          if (cmd[0] === "npm") throw new Error("npm exploded");
+          if (cmd[0] === "bun") return "header\n└── ok@1.0.0";
+          return "";
+        },
+      }),
+    );
+    const r = await collect(ctx);
     expect(r["packages.npm.global"]).toBeUndefined();
-    expect(r["packages.bun.global"]?.items).toEqual([
-      { raw: "ok@1.0.0", columns: ["ok", "1.0.0"] },
-    ]);
+    expect(r["packages.bun.global"]?.items).toEqual([{ raw: "ok@1.0.0", columns: ["ok", "1.0.0"] }]);
   });
 
   test("deno bin entries are sorted", async () => {
-    const collect = makePackagesCollector(fakeEnv({}, ["zed", "abc", "mid"]));
+    const collect = makePackagesCollector(fakeEnv({ dirs: { "/fake/home/.deno/bin": ["zed", "abc", "mid"] } }));
     const r = await collect(ctx);
     expect(r["packages.deno.bin"]?.items.map((i) => i.raw)).toEqual(["abc", "mid", "zed"]);
   });

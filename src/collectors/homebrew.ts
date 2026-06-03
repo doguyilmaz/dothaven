@@ -1,42 +1,35 @@
-import type { Collector } from "./types";
+import type { Collector, CollectorResult } from "./types";
 import { makeSection } from "./types";
+import { type CommandEnv, defaultEnv } from "./env";
 
-export const collectHomebrew: Collector = async () => {
-  if (process.platform !== "darwin") return {};
+/** Parse `brew list --formula` / `--cask` (one name per line). */
+export function parseBrewList(text: string): string[] {
+  return text
+    .trim()
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .sort();
+}
 
-  const result: Record<string, ReturnType<typeof makeSection>> = {};
+const items = (names: string[]) => names.map((n) => ({ raw: n, columns: [n] }));
 
-  try {
-    const formulaeOutput = await Bun.$`brew list --formula`.text();
-    const formulae = formulaeOutput
-      .trim()
-      .split("\n")
-      .map((f) => f.trim())
-      .filter(Boolean)
-      .sort();
+export function makeHomebrewCollector(env: CommandEnv = defaultEnv): Collector {
+  return async () => {
+    const result: CollectorResult = {};
 
-    if (formulae.length) {
-      result["apps.brew.formulae"] = makeSection("apps.brew.formulae", {
-        items: formulae.map((f) => ({ raw: f, columns: [f] })),
-      });
-    }
-  } catch {}
+    try {
+      const formulae = parseBrewList(await env.run(["brew", "list", "--formula"]));
+      if (formulae.length) result["apps.brew.formulae"] = makeSection("apps.brew.formulae", { items: items(formulae) });
+    } catch {}
 
-  try {
-    const casksOutput = await Bun.$`brew list --cask`.text();
-    const casks = casksOutput
-      .trim()
-      .split("\n")
-      .map((c) => c.trim())
-      .filter(Boolean)
-      .sort();
+    try {
+      const casks = parseBrewList(await env.run(["brew", "list", "--cask"]));
+      if (casks.length) result["apps.brew.casks"] = makeSection("apps.brew.casks", { items: items(casks) });
+    } catch {}
 
-    if (casks.length) {
-      result["apps.brew.casks"] = makeSection("apps.brew.casks", {
-        items: casks.map((c) => ({ raw: c, columns: [c] })),
-      });
-    }
-  } catch {}
+    return result;
+  };
+}
 
-  return result;
-};
+export const collectHomebrew = makeHomebrewCollector();
