@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { join } from "path";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, mkdir, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { defaultEnv } from "../../src/collectors/env";
 
@@ -14,6 +14,7 @@ describe("defaultEnv (real IO)", () => {
     dir = await mkdtemp(join(tmpdir(), "dotfiles-env-test-"));
     await Bun.write(join(dir, "alpha"), "a");
     await Bun.write(join(dir, "beta"), "b");
+    await mkdir(join(dir, "subdir"));
   });
 
   afterAll(async () => {
@@ -28,16 +29,17 @@ describe("defaultEnv (real IO)", () => {
     expect((await defaultEnv.run(["sh", "-c", "echo out; exit 3"])).trim()).toBe("out");
   });
 
-  test("listDir lists files in a directory", async () => {
-    expect((await defaultEnv.listDir(dir)).sort()).toEqual(["alpha", "beta"]);
+  test("listDir lists files and directories", async () => {
+    expect((await defaultEnv.listDir(dir)).sort()).toEqual(["alpha", "beta", "subdir"]);
   });
 
   test("listDir on a missing directory → []", async () => {
     expect(await defaultEnv.listDir(join(dir, "nope"))).toEqual([]);
   });
 
-  test("fileExists reflects presence", async () => {
+  test("fileExists reflects presence for files AND directories", async () => {
     expect(await defaultEnv.fileExists(join(dir, "alpha"))).toBe(true);
+    expect(await defaultEnv.fileExists(join(dir, "subdir"))).toBe(true);
     expect(await defaultEnv.fileExists(join(dir, "missing"))).toBe(false);
   });
 });

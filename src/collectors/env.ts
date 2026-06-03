@@ -1,3 +1,5 @@
+import { stat } from "fs/promises";
+
 /**
  * Injectable side-effects shared by command-based collectors.
  *
@@ -8,9 +10,9 @@
 export interface CommandEnv {
   /** Run a command, returning stdout. Never throws on non-zero exit (e.g. `npm ls` exits 1 on peer warnings). */
   run: (cmd: string[]) => Promise<string>;
-  /** List entries of a directory (files only); returns [] if it does not exist. */
+  /** List entries of a directory (files and directories, non-recursive); returns [] if it does not exist. */
   listDir: (path: string) => Promise<string[]>;
-  /** Whether a path exists. */
+  /** Whether a path exists (file or directory). */
   fileExists: (path: string) => Promise<boolean>;
 }
 
@@ -19,9 +21,16 @@ export const defaultEnv: CommandEnv = {
   listDir: async (path) => {
     const entries: string[] = [];
     try {
-      for await (const name of new Bun.Glob("*").scan(path)) entries.push(name);
+      for await (const name of new Bun.Glob("*").scan({ cwd: path, onlyFiles: false })) entries.push(name);
     } catch {}
     return entries;
   },
-  fileExists: (path) => Bun.file(path).exists(),
+  fileExists: async (path) => {
+    try {
+      await stat(path);
+      return true;
+    } catch {
+      return false;
+    }
+  },
 };
