@@ -7,18 +7,25 @@ Collect, backup, restore, and diff machine configs across machines. Built on [Bu
 | **Runtime** | [Bun](https://bun.sh) >= 1.0 (required) |
 | **Package** | [`@dotformat/cli`](https://www.npmjs.com/package/@dotformat/cli) |
 | **Format** | [`@dotformat/core`](https://www.npmjs.com/package/@dotformat/core) `.dotf` parser/stringify/compare |
-| **Tests** | 102 tests, 307 assertions |
+| **Tests** | 230+ tests |
 | **Platforms** | macOS, Linux, Windows |
+| **Backbone** | [chezmoi](https://chezmoi.io) — optional, for `chezmoi-export` (storage + age encryption + apply) |
 
 ---
 
 ## What It Does
 
-**Snapshot** your machine config into a single parseable `.dotf` file covering AI tools, shell, git, editors, SSH, brew, and apps. **Back up** real config files into a structured directory. **Restore** them on a new machine with conflict resolution and rollback. **Diff** your backup against live state. **Scan** for secrets and sensitive data automatically.
+**Discover** what's on your machine — AI tools, shell, git, editors, SSH, cloud CLIs, global packages (npm/bun/pnpm/deno), language toolchains (go/rust/swift/xcode/android), fonts, and every `~/.*` dotfile. **Snapshot** it into a single parseable `.dotf` file. **Back up** real config files into a structured directory. **Restore** them on a new machine with conflict resolution and rollback. **Scan** for secrets and write a standalone security report. **Export to [chezmoi](https://chezmoi.io)** — encrypting secrets with age — and **doctor** a fresh machine for parity.
+
+### Hybrid model
+
+This tool is the **discovery + audit** layer; [chezmoi](https://chezmoi.io) is the **storage + encryption + apply** backbone. The tool knows *where* your configs live, classifies what's a secret, and feeds `chezmoi add`/`chezmoi add --encrypt`. chezmoi owns the private repo, age encryption, per-machine templating, and `apply`. You don't reimplement any of that.
 
 ---
 
 ## Install
+
+> **Prerequisites:** [Bun](https://bun.sh) ≥ 1.0. For the `chezmoi-export` workflow also install [chezmoi](https://chezmoi.io) (`brew install chezmoi`) and configure an age key — see [docs/encryption](./docs/encryption.md).
 
 ```bash
 # Run directly (no install)
@@ -123,6 +130,30 @@ dotfiles list <section>
 
 Print a section from the latest report. Fuzzy matching: `brew`, `ai`, `cursor` all work.
 
+### `security` — Standalone security report
+
+```bash
+dotfiles security [path] [-o SECURITY.md]
+```
+
+Scans a file or directory and writes a Markdown report grouping findings by severity with the action taken (redact / skip / keep) and line number — so you can see what's risky **before** syncing.
+
+### `chezmoi-export` — Feed chezmoi (with encryption)
+
+```bash
+dotfiles chezmoi-export [--apply]
+```
+
+Plans `chezmoi add` for every managed config present on the machine, choosing **`--encrypt`** when an entry is high-sensitivity *or* the scanner detects secrets in its content — so a secret is never added in plaintext (the **secret gate**). Dry-run by default; `--apply` runs it (requires chezmoi + a configured age key).
+
+### `doctor` — New-machine parity check
+
+```bash
+dotfiles doctor <snapshot.dotf>
+```
+
+Re-collects the current machine and lists what the snapshot has that's missing here (packages, toolchains, brew, fonts, editor extensions). Non-zero exit if anything is missing — confidence that a fresh machine got everything.
+
 ---
 
 ## Config Registry
@@ -141,15 +172,19 @@ All config sources are defined in a single registry (`src/registry/entries.ts`).
 | Category | Configs |
 |----------|---------|
 | **ai** | Claude (settings, skills, CLAUDE.md), Cursor (MCP, skills), Gemini (settings, skills, GEMINI.md), Windsurf (MCP, skills) |
-| **shell** | `.zshrc` |
+| **shell** | `.zshrc`, `.zprofile`, `.zshenv`, `.bash_profile`, `.bashrc` |
 | **git** | `.gitconfig`, `.gitignore_global`, GitHub CLI config |
 | **editor** | Zed, Cursor, Neovim, Vim |
 | **terminal** | `.p10k.zsh` (metadata), `.tmux.conf` |
 | **ssh** | SSH config (auto-redacted) |
 | **npm** | `.npmrc` (auto-redacted) |
 | **bun** | `.bunfig.toml` |
+| **cloud** | AWS (`config`, `credentials` 🔒), kubeconfig 🔒, Docker config 🔒, gcloud configurations |
+| **secrets** | GnuPG home `~/.gnupg` 🔒 — carried encrypted, listed by name only |
 
-Plus runtime collectors (not registry-driven): **meta** (hostname, OS, date), **SSH hosts** (structured parsed table), **Ollama models**, **Homebrew** (formulae + casks), **apps** (macOS `/Applications`, Raycast, AltTab).
+🔒 = high-sensitivity (encrypted on `chezmoi-export`).
+
+Plus runtime collectors (not registry-driven): **meta** (hostname, OS, date), **SSH hosts** (parsed table), **Ollama models**, **Homebrew** (formulae + casks + a restorable `Brewfile`), **packages** (npm/bun/pnpm globals, fnm node versions, deno bins), **runtimes** (go, rust, swift, zig, xcode, android SDK), **fonts** (user + system), **editor extensions** (VS Code, Cursor), **apps** (macOS `/Applications`, Raycast, AltTab), and a **home dotfile sweep** (classifies every `~/.*` as managed vs review).
 
 ---
 

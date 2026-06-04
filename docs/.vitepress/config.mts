@@ -34,6 +34,9 @@ export default withMermaid(
             { text: 'Commands', link: '/commands' },
             { text: 'Backup and Restore', link: '/backup-restore' },
             { text: 'Sensitivity and Redaction', link: '/sensitivity' },
+            { text: 'Encryption & Secret Gate', link: '/encryption' },
+            { text: 'chezmoi (Hybrid Model)', link: '/chezmoi' },
+            { text: 'Migration Runbook', link: '/migration' },
           ],
         },
         {
