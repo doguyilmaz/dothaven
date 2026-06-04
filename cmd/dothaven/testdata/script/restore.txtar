@@ -1,0 +1,14 @@
+# restore dry-run shows the plan without writing
+exec dothaven restore Downloads/backup-box-20240101000000 --dry-run
+stdout 'Dry run'
+stdout 'shell/.zshrc'
+! exists .zshrc
+
+# default restore writes a NEW file (absent on the machine)
+exec dothaven restore Downloads/backup-box-20240101000000
+stdout 'Restored 1 file'
+exists .zshrc
+grep 'alias ll' .zshrc
+
+-- Downloads/backup-box-20240101000000/shell/.zshrc --
+alias ll='ls -la'

@@ -1,0 +1,14 @@
+# diff compares a backup against the live machine, grouped by category
+exec dothaven diff Downloads/backup-box-20240101000000
+stdout 'Comparing backup against live system'
+stdout 'shell/'
+stdout 'unchanged'
+
+# --section narrows to one category; an unknown one says so
+exec dothaven diff --section nope Downloads/backup-box-20240101000000
+stdout 'No entries found for section: nope'
+
+-- .zshrc --
+alias ll='ls -la'
+-- Downloads/backup-box-20240101000000/shell/.zshrc --
+alias ll='ls -la'

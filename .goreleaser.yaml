@@ -31,6 +31,10 @@ archives:
   - id: dothaven
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    # Ship only the binary + license/readme. Never bundle docs/, src/, configs.
+    files:
+      - LICENSE*
+      - README.md
 
 checksum:
   name_template: "checksums.txt"

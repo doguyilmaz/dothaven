@@ -1,0 +1,15 @@
+# backup copies registry-tracked files into a timestamped dir
+exec dothaven backup -o out --only shell,git
+stdout 'Backup saved to:'
+stdout 'files across:'
+exists out
+
+# an unknown category matches nothing
+exec dothaven backup -o out2 --only nonexistent
+stdout 'No files found to backup'
+
+-- .zshrc --
+alias ll='ls -la'
+-- .gitconfig --
+[user]
+	name = Test
