@@ -2,6 +2,7 @@ import { collect } from "./commands/collect";
 import { backup } from "./commands/backup";
 import { scan } from "./commands/scan";
 import { security } from "./commands/security";
+import { chezmoiExport } from "./commands/chezmoi";
 import { restore } from "./commands/restore";
 import { diff } from "./commands/diff";
 import { status } from "./commands/status";
@@ -22,6 +23,9 @@ switch (command) {
     break;
   case "security":
     await security(args);
+    break;
+  case "chezmoi-export":
+    await chezmoiExport(args);
     break;
   case "restore":
     await restore(args);
@@ -51,5 +55,6 @@ Commands:
   diff    [path] [--section <name>]                  Compare backup against live system
   status                                             Quick summary of backup state
   compare [file1] [file2]                            Diff two .dotf reports
-  list <section>                                     Print a section from most recent report`);
+  list <section>                                     Print a section from most recent report
+  chezmoi-export [--apply]                           Plan/run chezmoi add (--encrypt for secrets)`);
 }
