@@ -34,6 +34,10 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 			if ferr != nil || sub == nil {
 				return ferr
 			}
+			// Calling RunE directly bypasses cobra's lifecycle, including context
+			// propagation — without this the sub-command's cmd.Context() is nil and
+			// anything deriving a timeout from it panics. Pass our (signal-aware) ctx.
+			sub.SetContext(cmd.Context())
 			// restore needs a path argument — feed it the latest backup.
 			if action == "restore" {
 				latest := latestBackup(env.ResolveOutputDir(""))

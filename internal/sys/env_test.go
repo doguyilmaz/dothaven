@@ -52,6 +52,14 @@ func TestWriteFileAtomicOverwriteLeavesNoTemp(t *testing.T) {
 	}
 }
 
+func TestRunNilContextNoPanic(t *testing.T) {
+	// A nil context must be defaulted (not passed to WithTimeout, which panics).
+	// The command not existing is fine — we only assert this doesn't panic.
+	if _, err := Real().Run(nil, "dothaven-no-such-command-xyz"); err == nil {
+		t.Log("unexpected: bogus command did not error (harmless)")
+	}
+}
+
 func TestTimestampUTC(t *testing.T) {
 	got := Timestamp(time.Date(2026, 6, 4, 17, 47, 21, 0, time.UTC))
 	if got != "20260604174721" {

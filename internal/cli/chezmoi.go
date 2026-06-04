@@ -21,6 +21,9 @@ import (
 // which tolerates non-zero exit for collectors). Used only on the --apply path.
 // A per-command timeout keeps a hung/prompting chezmoi from blocking forever.
 func runShell(ctx context.Context, name string, args ...string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*sys.CommandTimeout)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()

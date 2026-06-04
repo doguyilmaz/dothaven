@@ -65,6 +65,9 @@ func (o *OS) Run(ctx context.Context, args ...string) (string, error) {
 	if len(args) == 0 {
 		return "", errors.New("empty command")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, cancel := context.WithTimeout(ctx, CommandTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
