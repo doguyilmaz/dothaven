@@ -36,6 +36,22 @@ archives:
       - LICENSE*
       - README.md
 
+# Sign + notarize the macOS binaries (Developer ID + App Store Connect API key).
+# Conditional: only runs when the signing secret is present, so releases still
+# work before the secrets are configured. Cross-platform notarize is OSS (Quill).
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - dothaven
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+
 checksum:
   name_template: "checksums.txt"
 
@@ -63,14 +79,8 @@ homebrew_casks:
       name: homebrew-tap
       # A PAT with contents:write on the tap repo (the default GITHUB_TOKEN can't push cross-repo).
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    # The released binary is unsigned — strip the Gatekeeper quarantine flag on
-    # install so macOS doesn't block it. (Signing/notarization would remove this.)
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/dothaven"]
-          end
+    # No quarantine workaround needed — the binary is signed + notarized above,
+    # so macOS Gatekeeper accepts it cleanly.
 
 release:
   draft: false
