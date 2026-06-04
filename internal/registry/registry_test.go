@@ -18,6 +18,44 @@ func TestResolvePath(t *testing.T) {
 	}
 }
 
+func TestEntriesInvariants(t *testing.T) {
+	idx := map[string]Entry{}
+	for _, e := range Entries {
+		if e.ID == "" || e.BackupDest == "" {
+			t.Errorf("entry missing ID/BackupDest: %+v", e)
+		}
+		if _, dup := idx[e.ID]; dup {
+			t.Errorf("duplicate entry ID: %s", e.ID)
+		}
+		if len(e.Paths) == 0 {
+			t.Errorf("%s: no platform paths", e.ID)
+		}
+		idx[e.ID] = e
+	}
+
+	// Credential-bearing sources MUST be High: opaque tokens won't match a scan
+	// pattern, so High is what forces encryption on export and exclusion from a
+	// plaintext backup. This invariant stops a future entry from leaking.
+	mustHigh := []string{
+		"cloud.azure", "cloud.oci", "cloud.digitalocean", "cloud.fly", "cloud.linode",
+		"cloud.hetzner", "cloud.vercel", "cloud.netlify", "cloud.supabase", "cloud.stripe",
+		"cloud.railway", "cloud.terraform", "cloud.pulumi", "cloud.cloudflared",
+		"cloud.aws.credentials", "cloud.kube.config", "cloud.docker.config",
+		"secrets.netrc", "secrets.vault", "secrets.gnupg", "db.pgpass", "db.mycnf",
+		"build.maven", "build.gradle", "npm.config",
+	}
+	for _, id := range mustHigh {
+		e, ok := idx[id]
+		if !ok {
+			t.Errorf("expected credential entry %q to exist", id)
+			continue
+		}
+		if e.Sensitivity != High {
+			t.Errorf("%q must be High sensitivity (got %q) — credential files must be encrypted", id, e.Sensitivity)
+		}
+	}
+}
+
 func TestCollect(t *testing.T) {
 	home := "/home/u"
 	env := &sys.Fake{
