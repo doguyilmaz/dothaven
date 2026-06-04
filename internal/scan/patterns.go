@@ -74,6 +74,15 @@ func build() {
 		mk("vercel-token", "Vercel token", High, Redact, `\b(vc_prod_|vc_test_)[A-Za-z0-9]{20,}\b`),
 		mk("jwt-token", "JWT token", High, Redact, `\beyJhbGciOi[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\b`),
 
+		// HIGH — infra/hosting provider tokens (distinctive prefixes)
+		mk("digitalocean-token", "DigitalOcean token", High, Redact, `\bdop_v1_[a-f0-9]{64}\b`),
+		mk("vault-token", "Vault token", High, Redact, `\bhv[sb]\.[A-Za-z0-9._-]{20,}\b`),
+		mk("pulumi-token", "Pulumi token", High, Redact, `\bpul-[a-f0-9]{40}\b`),
+		mk("flyio-token", "Fly.io token", High, Redact, `\bfm[12]_[A-Za-z0-9+/=_-]{20,}\b`),
+		mk("azure-sas", "Azure SAS token", High, Redact, `(?i)\bsig=[A-Za-z0-9%]{40,}`),
+		// .pgpass line: host:port:db:user:password (5 colon-separated fields)
+		mk("pgpass-line", "pgpass credentials", High, Redact, `^[^:#]*:[^:]*:[^:]*:[^:]*:.+$`),
+
 		// MEDIUM
 		mk("ip-address", "IP address", Medium, Redact, `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`),
 		mk("email-address", "email address", Medium, Include, `\b[\w.+-]+@[\w-]+\.[\w.]+\b`),
