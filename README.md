@@ -7,7 +7,7 @@ Collect, backup, restore, and diff machine configs across machines. Built on [Bu
 | **Runtime** | [Bun](https://bun.sh) >= 1.0 (required) |
 | **Package** | [`@dotformat/cli`](https://www.npmjs.com/package/@dotformat/cli) |
 | **Format** | Plain JSON (`.json`) — native serialization, zero runtime deps (in-tree `src/snapshot`) |
-| **Tests** | 230+ tests |
+| **Tests** | 290+ tests |
 | **Platforms** | macOS, Linux, Windows |
 | **Backbone** | [chezmoi](https://chezmoi.io) — optional, for `chezmoi-export` (storage + age encryption + apply) |
 
@@ -141,10 +141,10 @@ Scans a file or directory and writes a Markdown report grouping findings by seve
 ### `chezmoi-export` — Feed chezmoi (with encryption)
 
 ```bash
-dotfiles chezmoi-export [--apply]
+dotfiles chezmoi-export [--apply] [--pin] [--only a,b] [--skip c,d]
 ```
 
-Plans `chezmoi add` for every managed config present on the machine, choosing **`--encrypt`** when an entry is high-sensitivity *or* the scanner detects secrets in its content — so a secret is never added in plaintext (the **secret gate**). Dry-run by default; `--apply` runs it (requires chezmoi + a configured age key).
+Plans `chezmoi add` for every managed config present on the machine, choosing **`--encrypt`** when an entry is high-sensitivity, declares a redact rule, *or* the scanner detects a HIGH secret inside it (including inside a directory) — so a secret is never added in plaintext (the **secret gate**). Also sweeps SSH private keys (encrypted), writes a `.chezmoiignore` for GnuPG runtime cruft, and generates a `run_onchange_` install script (brew + node + bun/pnpm/npm/cargo globals). Dry-run by default; `--apply` runs it (requires chezmoi + a configured age key). `--pin` keeps captured package versions (default: latest); `--only`/`--skip` filter by category or install group (`brew`, `packages`). See [docs/commands](./docs/commands.md#chezmoi-export).
 
 ### `doctor` — New-machine parity check
 
@@ -329,7 +329,7 @@ dotfiles/
 │       ├── resolve-output.ts    # Output directory resolution
 │       ├── find-backup.ts       # Latest backup finder + age calc
 │       └── timestamp.ts         # YYYYMMDDHHMMSS generator
-├── tests/                       # 102 tests across 14 files
+├── tests/                       # 296 tests across 35 files
 ├── docs/                        # VitePress documentation site
 └── package.json
 ```
@@ -340,7 +340,7 @@ dotfiles/
 
 ```bash
 bun install
-bun test                    # 102 tests, 307 assertions
+bun test                    # 296 tests, 708 assertions
 bun bin/dotfiles.ts <cmd>   # Run locally
 ```
 

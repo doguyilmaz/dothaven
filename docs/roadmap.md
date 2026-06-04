@@ -23,7 +23,7 @@
 - **8 commands**: collect, backup, scan, restore, diff, status, compare, list
 - **23 registry entries**: across 8 categories
 - **27+ scan patterns**: HIGH, MEDIUM, LOW severity
-- **102 tests**: 307 assertions, 0 failures
+- **296 tests**: 708 assertions, 0 failures
 - **3 platforms**: macOS, Linux, Windows
 
 ## Next Up

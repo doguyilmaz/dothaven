@@ -15,6 +15,9 @@ bun bin/dotfiles.ts <command>
 | `collect` | Machine snapshot → `.json` report | `--no-redact`, `--slim`, `-o` |
 | `backup` | Copy config files → structured directory | `--archive`, `--only`, `--skip`, `--no-redact`, `-o` |
 | `scan` | Standalone sensitivity scan | path argument |
+| `security` | Markdown security report → file | path argument, `-o` |
+| `chezmoi-export` | Plan/run `chezmoi add` (encrypt secrets) + install script | `--apply`, `--pin`, `--only`, `--skip` |
+| `doctor` | New-machine parity check vs a snapshot | `<snapshot.json>` |
 | `restore` | Restore backup → live locations | `--pick`, `--dry-run` |
 | `diff` | Backup vs live system | `--section` |
 | `status` | Quick backup summary | — |
@@ -179,6 +182,38 @@ $ dotfiles scan ~/.ssh/config
   MEDIUM ~/.ssh/config                  IP address — redacted
 
   1 items redacted. Use --no-redact to include all.
+```
+
+---
+
+## `security`
+
+Scan a file or directory and write a **Markdown security report** grouping findings by severity. Same scanner engine as `scan`, but persisted to a file instead of console-only — handy as a reviewable artifact before sharing or committing.
+
+```bash
+dotfiles security [path] [-o file]
+```
+
+### Arguments & Flags
+
+| Argument / Flag | Required | Default | Description |
+|-----------------|----------|---------|-------------|
+| `path` | no | `.` (cwd) | File or directory to scan |
+| `-o <file>` | no | `SECURITY.md` | Output path for the report |
+
+### Behavior
+
+- Uses `stat()` to decide file vs directory (size-independent — a 0-byte file is scanned as a file, not mistaken for a directory).
+- A file → scanned directly; a directory → scanned recursively (skips `node_modules/`, `.git/`, and files > 1 MB).
+- A missing path prints a friendly error and exits `1`.
+- Findings are grouped by top severity (🔴 HIGH / 🟡 MEDIUM / 🟢 LOW) with the matched pattern, action (skip / redact / keep), and line.
+
+### Example
+
+```bash
+$ dotfiles security ~ -o ~/Desktop/home-audit.md
+Security report written to: /Users/me/Desktop/home-audit.md
+  412 scanned, 7 with findings.
 ```
 
 ---
@@ -408,6 +443,45 @@ $ dotfiles compare reports/MacBook-20260401.json reports/MacBook-20260407.json
 
 ---
 
+## `doctor`
+
+New-machine parity check: compare a JSON snapshot against **this** machine and list what's installable in the snapshot but missing here. The "did everything come over?" guarantee after a migration — and CI-friendly via its exit code.
+
+```bash
+dotfiles doctor <snapshot.json>
+```
+
+### Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `snapshot.json` | **yes** | A snapshot produced by `collect` (typically from the old machine) |
+
+### Behavior
+
+- Parses the snapshot via `parseSnapshot()` (rejects non-snapshot JSON with a friendly error).
+- Re-runs the collectors on the current machine and diffs against the snapshot.
+- Only **installable inventory** is checked: `packages.*`, `runtimes.*`, `apps.brew.*`, `apps.macos`, `fonts.*`, and any `*.extensions` section.
+- Items are keyed by **name** (`columns[0]`), so version drift is ignored — parity is "is it present", not "is it the same version".
+- Prints what's missing per section; **exits `1`** if anything is missing (so it can gate CI), or prints a parity ✅ and exits `0`.
+
+### Example
+
+```bash
+$ dotfiles doctor reports/old-machine-20260401.json
+Missing on this machine (present in the snapshot):
+
+  packages.bun.global (2)
+    - eas-cli@16.19.2
+    - vercel@39.0.0
+  fonts.user (1)
+    - JetBrainsMono-Regular.ttf
+
+3 item(s) missing across 2 section(s).
+```
+
+---
+
 ## `list`
 
 Print a section from the most recent `.json` report. Supports **fuzzy matching** on section names.
@@ -505,6 +579,65 @@ $ dotfiles list foo
 No sections matching "foo".
 Available sections: meta, ai.claude.settings, ai.claude.skills, ...
 ```
+
+---
+
+## `chezmoi-export`
+
+Bridge to [chezmoi](https://www.chezmoi.io): plan (and optionally run) `chezmoi add` for your managed configs, encrypting the sensitive ones, and generate a `run_onchange_` script that reinstalls packages on `chezmoi apply`. See [chezmoi integration](/chezmoi) for the bigger picture.
+
+```bash
+dotfiles chezmoi-export [--apply] [--pin] [--only a,b] [--skip c,d]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--apply` | off (dry-run) | Actually run the `chezmoi add` commands and write the install script. Without it, the plan is printed and nothing changes. |
+| `--pin` | off (latest) | Reinstall global packages at their **captured versions** (`name@version`). Default installs the **latest** of each. Node runtimes always keep their exact version. |
+| `--only a,b` | all | Restrict to these categories / install groups (comma-separated, whitespace-tolerant). |
+| `--skip c,d` | none | Exclude these categories / install groups. `--skip` wins over `--only`. |
+
+`--only`/`--skip` accept registry categories (`ssh`, `git`, `ai`, `editor`, `cloud`, `shell`, …) **and** two install-group selectors: `brew` (the Brewfile) and `packages` (node/bun/pnpm/npm/cargo/deno). The latter drive the install script independently of the config plan — so `--only brew` exports just the Brewfile install step.
+
+### Encryption (secret gate)
+
+A path is added with `chezmoi add --encrypt` when **any** of these hold:
+
+- its registry entry is `sensitivity: high`, or
+- it declares a redact rule (e.g. `ssh.config`), or
+- the scanner finds a **HIGH-severity secret** inside it — including inside a **directory** entry.
+
+Everything else is added plain. A benign MEDIUM hit (an IP or email) does **not** force encryption.
+
+### Extra behaviors
+
+- **SSH private keys** in `~/.ssh` are detected by content (not filename) and added encrypted — `id_ed25519`, `id_rsa`, custom `*.key`, etc. (`.pub` files skipped).
+- **GnuPG**: `~/.gnupg` is only carried if it holds real secret keys; before adding it, a `.chezmoiignore` is written so sockets (`S.*`), lock files, and `random_seed` are never committed — only key material.
+- **Install script** (`run_onchange_install-packages.sh`): one install per line, command-guarded and `|| true`, ending in `exit 0` so a single failing cask can't abort `chezmoi apply`. Covers brew, fnm node versions, bun/pnpm/npm/cargo globals; deno bins are recorded as a comment (their original module URL isn't recoverable). The embedded Brewfile is redacted first (a private tap's inline credentials never land in the unencrypted script).
+- **Cross-manager duplicates** (e.g. a package installed via both bun and npm) are kept in each but a warning is printed so you can resolve PATH shadowing.
+
+### Example
+
+```bash
+# Review the plan (nothing changes)
+$ dotfiles chezmoi-export
+chezmoi-export plan — 9 path(s), 5 encrypted:
+  🔒 add --encrypt  /Users/me/.ssh/config  (has redact rule)
+  🔒 add --encrypt  /Users/me/.aws/credentials  (sensitivity:high)
+     add            /Users/me/.gitconfig  (plain)
+  + run_onchange install script (brew, packages)
+
+Dry-run. Re-run with --apply to execute (requires chezmoi + a configured age key).
+
+# Execute, keeping exact package versions, skipping editor extensions
+$ dotfiles chezmoi-export --apply --pin --skip editor
+```
+
+::: warning
+`--apply` requires `chezmoi` installed and an `age` key configured. The age private key is **never** added to the source repo — keep it in a password manager; losing it means encrypted files can't be decrypted. See [encryption](/encryption).
+:::
 
 ---
 

@@ -76,7 +76,7 @@ dotfiles/
 │       ├── find-backup.ts           # findLatestBackup(), getBackupAge()
 │       └── timestamp.ts             # generateTimestamp() → YYYYMMDDHHMMSS
 │
-├── tests/                           # 102 tests across 14 files
+├── tests/                           # 296 tests across 35 files
 │   ├── collectors/                  # meta, ssh, npm, claude tests
 │   ├── commands/                    # list fuzzy match tests
 │   ├── registry/                    # entries validation, resolve, collector tests
