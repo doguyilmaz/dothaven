@@ -1,0 +1,235 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/doguyilmaz/dothaven/internal/chezmoi"
+	"github.com/doguyilmaz/dothaven/internal/collect"
+	"github.com/doguyilmaz/dothaven/internal/registry"
+	"github.com/doguyilmaz/dothaven/internal/scan"
+	"github.com/doguyilmaz/dothaven/internal/snapshot"
+	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/spf13/cobra"
+)
+
+// runShell executes a command surfacing its exit status (unlike sys.Env.Run,
+// which tolerates non-zero exit for collectors). Used only on the --apply path.
+func runShell(ctx context.Context, name string, args ...string) (string, error) {
+	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
+func planHasSrc(plan []chezmoi.PlanItem, src string) bool {
+	for _, p := range plan {
+		if p.Src == src {
+			return true
+		}
+	}
+	return false
+}
+
+func planHasID(plan []chezmoi.PlanItem, id string) bool {
+	for _, p := range plan {
+		if p.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func removeByID(plan []chezmoi.PlanItem, id string) []chezmoi.PlanItem {
+	out := plan[:0]
+	for _, p := range plan {
+		if p.ID != id {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func gatherInstallManifest(env *sys.OS, pin bool) chezmoi.Manifest {
+	ctx := collect.Ctx{Context: context.Background(), Env: env, Home: env.Home(), Redact: false}
+	brew := collect.HomebrewCollector(ctx)
+	pkgs := collect.PackagesCollector(ctx)
+	runtimes := collect.RuntimesCollector(ctx)
+
+	specs := func(snap snapshot.Snapshot, id string) []string {
+		var out []string
+		for _, it := range snap[id].Items {
+			if s := chezmoi.PickInstallSpec(it, pin); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+
+	// The Brewfile is embedded verbatim into an UNENCRYPTED script — redact any
+	// inline credentials (e.g. a private tap's https://user:pass@host) first.
+	var brewfile string
+	if c := brew["apps.brew.bundle"].Content; c != nil {
+		brewfile = scan.ApplyRedactions(*c, scan.ScanContent("Brewfile", *c))
+	}
+
+	var nodeVersions []string // node always keeps its exact version
+	for _, it := range pkgs["packages.node.fnm"].Items {
+		if len(it.Columns) > 0 {
+			nodeVersions = append(nodeVersions, it.Columns[0])
+		}
+	}
+
+	return chezmoi.Manifest{
+		Brewfile:     brewfile,
+		NodeVersions: nodeVersions,
+		BunGlobals:   specs(pkgs, "packages.bun.global"),
+		NpmGlobals:   specs(pkgs, "packages.npm.global"),
+		PnpmGlobals:  specs(pkgs, "packages.pnpm.global"),
+		CargoCrates:  specs(runtimes, "runtimes.rust.crates"),
+		DenoBins:     specs(pkgs, "packages.deno.bin"),
+	}
+}
+
+func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
+	var apply, pin bool
+	var only, skip []string
+	c := &cobra.Command{
+		Use:   "chezmoi-export",
+		Short: "Plan (or apply) adding configs to chezmoi, encrypting secrets",
+		Long:  "Builds a chezmoi-add plan — plain for configs, --encrypt for secrets — plus a\nrun_onchange install script. Dry-run by default; --apply executes (needs chezmoi + age).",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			home := env.Home()
+			ctx := context.Background()
+
+			wantBrew := chezmoi.IsSelected("brew", only, skip)
+			wantPackages := chezmoi.IsSelected("packages", only, skip)
+			wantInstallScript := wantBrew || wantPackages
+
+			var entries []registry.Entry
+			for _, e := range registry.Entries {
+				if chezmoi.IsSelected(e.Category, only, skip) {
+					entries = append(entries, e)
+				}
+			}
+			plan := chezmoi.PlanExport(entries, home, env.Exists, chezmoi.ContainsHighSecret)
+
+			if chezmoi.IsSelected("ssh", only, skip) {
+				for _, key := range chezmoi.FindSshPrivateKeys(home, env.ListDir, chezmoi.IsSSHPrivateKey) {
+					if !planHasSrc(plan, key) {
+						plan = append(plan, chezmoi.PlanItem{ID: "ssh.key", Src: key, Kind: "file", Encrypt: true, Reason: "ssh private key"})
+					}
+				}
+			}
+
+			if !chezmoi.GnupgHasSecretKeys(home, env.ListDir) {
+				plan = removeByID(plan, "secrets.gnupg")
+			}
+
+			if len(plan) == 0 && !wantInstallScript {
+				fmt.Println("Nothing to export — no managed configs found on this machine.")
+				return nil
+			}
+
+			if len(plan) > 0 {
+				encrypted := 0
+				for _, p := range plan {
+					if p.Encrypt {
+						encrypted++
+					}
+				}
+				fmt.Printf("chezmoi-export plan — %d path(s), %d encrypted:\n\n", len(plan), encrypted)
+				for _, p := range plan {
+					verb := "   add          "
+					if p.Encrypt {
+						verb = "🔒 add --encrypt"
+					}
+					fmt.Printf("  %s  %s  (%s)\n", verb, p.Src, p.Reason)
+				}
+			}
+			if wantInstallScript {
+				var groups []string
+				if wantBrew {
+					groups = append(groups, "brew")
+				}
+				if wantPackages {
+					groups = append(groups, "packages")
+				}
+				fmt.Printf("  + run_onchange install script (%s)\n", strings.Join(groups, ", "))
+			}
+
+			if !apply {
+				fmt.Println("\nDry-run. Re-run with --apply to execute (requires chezmoi + a configured age key).")
+				return nil
+			}
+
+			if v, err := runShell(ctx, "chezmoi", "--version"); err != nil || v == "" {
+				fmt.Fprintln(os.Stderr, "\nchezmoi not found. Install it (brew install chezmoi) and configure age encryption first.")
+				return ExitError{Code: 1}
+			}
+			sourcePath, _ := runShell(ctx, "chezmoi", "source-path")
+
+			if sourcePath != "" && planHasID(plan, "secrets.gnupg") {
+				ignorePath := sourcePath + "/.chezmoiignore"
+				existing := ""
+				if b, err := os.ReadFile(ignorePath); err == nil {
+					existing = string(b)
+				}
+				if err := os.WriteFile(ignorePath, []byte(chezmoi.MergeChezmoiignore(existing, chezmoi.GnupgIgnorePatterns())), 0o644); err != nil {
+					return err
+				}
+				fmt.Println("  ✔ .chezmoiignore (gnupg runtime cruft)")
+			}
+
+			fmt.Println("")
+			for _, p := range plan {
+				addArgs := []string{"add", p.Src}
+				if p.Encrypt {
+					addArgs = []string{"add", "--encrypt", p.Src}
+				}
+				if _, err := runShell(ctx, "chezmoi", addArgs...); err != nil {
+					fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", p.Src, err)
+					continue
+				}
+				prefix := ""
+				if p.Encrypt {
+					prefix = "encrypted "
+				}
+				fmt.Printf("  ✔ %s%s\n", prefix, p.Src)
+			}
+
+			if wantInstallScript {
+				manifest := gatherInstallManifest(env, pin)
+				if dupes := chezmoi.CrossManagerDuplicates(manifest); len(dupes) > 0 {
+					fmt.Fprintf(os.Stderr, "  ⚠ installed by multiple managers (review for PATH shadowing): %s\n", strings.Join(dupes, ", "))
+				}
+				if !wantBrew {
+					manifest.Brewfile = ""
+				} else if manifest.Brewfile != "" {
+					manifest.Brewfile = chezmoi.FilterBrewfile(manifest.Brewfile, skip)
+				}
+				if !wantPackages {
+					manifest.NodeVersions, manifest.BunGlobals, manifest.NpmGlobals = nil, nil, nil
+					manifest.PnpmGlobals, manifest.CargoCrates, manifest.DenoBins = nil, nil, nil
+				}
+				if script, ok := chezmoi.BuildPackageInstallScript(manifest); ok && sourcePath != "" {
+					if err := os.WriteFile(sourcePath+"/run_onchange_install-packages.sh", []byte(script), 0o755); err != nil {
+						fmt.Fprintf(os.Stderr, "  ✗ install script: %v\n", err)
+					} else {
+						fmt.Println("  ✔ run_onchange_install-packages.sh")
+					}
+				}
+			}
+
+			fmt.Println("\nDone. Review with `chezmoi diff`, then commit your private chezmoi source repo.")
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&apply, "apply", false, "execute the plan (default: dry-run)")
+	c.Flags().BoolVar(&pin, "pin", false, "pin global packages to their captured version")
+	c.Flags().StringSliceVar(&only, "only", nil, "only these categories/groups (comma-separated)")
+	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories/groups (comma-separated)")
+	return c
+}
