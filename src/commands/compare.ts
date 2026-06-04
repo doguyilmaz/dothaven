@@ -13,6 +13,13 @@ export async function compareCli(args: string[]) {
 
   if (args.length >= 2) {
     files = args.slice(0, 2);
+    for (const f of files) {
+      if (!(await Bun.file(f).exists())) {
+        console.error(`File not found: ${f}`);
+        process.exitCode = 1;
+        return;
+      }
+    }
   } else {
     const glob = new Bun.Glob("*.json");
     const entries: { path: string; mtime: number }[] = [];
