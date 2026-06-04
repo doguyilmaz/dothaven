@@ -21,7 +21,7 @@ describe("registry entries", () => {
   });
 
   test("all entries have valid category", () => {
-    const validCategories = ["ai", "shell", "git", "editor", "terminal", "ssh", "npm", "bun"];
+    const validCategories = ["ai", "shell", "git", "editor", "terminal", "ssh", "npm", "bun", "cloud", "secrets"];
     for (const entry of registryEntries) {
       expect(validCategories).toContain(entry.category);
     }

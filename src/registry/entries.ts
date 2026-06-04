@@ -300,4 +300,66 @@ export const registryEntries: ConfigEntry[] = [
     backupDest: "bun/.bunfig.toml",
     sensitivity: "low",
   },
+
+  // === Cloud CLIs ===
+  {
+    id: "cloud.aws.config",
+    name: "AWS CLI config",
+    paths: { darwin: "~/.aws/config", linux: "~/.aws/config", win32: "%USERPROFILE%/.aws/config" },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/aws/config",
+    sensitivity: "medium",
+  },
+  {
+    id: "cloud.aws.credentials",
+    name: "AWS CLI credentials",
+    paths: { darwin: "~/.aws/credentials", linux: "~/.aws/credentials", win32: "%USERPROFILE%/.aws/credentials" },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/aws/credentials",
+    sensitivity: "high",
+  },
+  {
+    id: "cloud.gcloud.configurations",
+    name: "gcloud configurations",
+    paths: { darwin: "~/.config/gcloud/configurations", linux: "~/.config/gcloud/configurations" },
+    category: "cloud",
+    kind: { type: "dir" },
+    backupDest: "cloud/gcloud/configurations",
+    sensitivity: "medium",
+  },
+  {
+    id: "cloud.kube.config",
+    name: "kubeconfig",
+    paths: { darwin: "~/.kube/config", linux: "~/.kube/config", win32: "%USERPROFILE%/.kube/config" },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/kube/config",
+    sensitivity: "high",
+  },
+  {
+    id: "cloud.docker.config",
+    name: "Docker config",
+    paths: {
+      darwin: "~/.docker/config.json",
+      linux: "~/.docker/config.json",
+      win32: "%USERPROFILE%/.docker/config.json",
+    },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/docker/config.json",
+    sensitivity: "high",
+  },
+
+  // === Secrets (carried encrypted, never plaintext) ===
+  {
+    id: "secrets.gnupg",
+    name: "GnuPG home",
+    paths: { darwin: "~/.gnupg", linux: "~/.gnupg" },
+    category: "secrets",
+    kind: { type: "dir" },
+    backupDest: "secrets/gnupg",
+    sensitivity: "high",
+  },
 ];
