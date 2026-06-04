@@ -255,7 +255,7 @@ To add support for a new tool:
 2. That's it. The new entry will automatically:
    - Be collected by `registryCollector` → appears as `editor.helix` section in JSON snapshots
    - Be backed up by `registryBackupSources` → copies to `editor/helix/config.toml` in backup dir
-   - Be restorable → `dotfiles restore` maps it back to `~/.config/helix/config.toml`
+   - Be restorable → `dothaven restore` maps it back to `~/.config/helix/config.toml`
    - Respect `--only editor` and `--skip editor` filtering
    - Be scanned for sensitivity
 

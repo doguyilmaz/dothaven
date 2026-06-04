@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 /**
- * Compare two snapshots. ORIENTATION (preserved from the original .dotf comparator): the FIRST
+ * Compare two snapshots. ORIENTATION (preserved from the original comparator): the FIRST
  * argument is "left", and what exists ONLY in left is labeled `added` (+), while what exists only in
  * right is `removed` (-). `compare` is the diff engine; the caller chooses which snapshot is left.
  */

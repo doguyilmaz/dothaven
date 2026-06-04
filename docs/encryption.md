@@ -53,8 +53,8 @@ The consequence: **a file containing a secret is never added in plaintext.** Eve
 shell rc gets encrypted the moment it holds a token. Review the plan with a dry run before `--apply`:
 
 ```bash
-dotfiles chezmoi-export          # dry run — shows 🔒 for each encrypted path + the reason
-dotfiles chezmoi-export --apply
+dothaven chezmoi-export          # dry run — shows 🔒 for each encrypted path + the reason
+dothaven chezmoi-export --apply
 ```
 
 ---
@@ -65,4 +65,4 @@ Env-style secrets (`GITHUB_TOKEN`, `*_KEY`, `*_TOKEN`, `SECRET`, `PASSWORD`), ve
 (GitHub `ghp_`, OpenAI `sk-`, AWS `AKIA…`, Stripe, Slack, …), private-key headers (PEM/PGP → whole
 file skipped), database URLs, and URLs carrying inline `user:password@` credentials. Redaction is
 global (every occurrence on a line), and matches are name-based so it won't false-positive on
-`primary_key` or `monkey`. Run `dotfiles security <path>` for a standalone report.
+`primary_key` or `monkey`. Run `dothaven security <path>` for a standalone report.

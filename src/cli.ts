@@ -51,7 +51,7 @@ switch (command) {
     await list(args);
     break;
   default:
-    console.log(`Usage: dotfiles <command>
+    console.log(`Usage: dothaven <command>
 
 Commands:
   collect [--no-redact] [--slim] [-o path]            Collect machine config → JSON snapshot

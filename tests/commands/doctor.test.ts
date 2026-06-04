@@ -42,23 +42,24 @@ describe("findMissing", () => {
     expect(findMissing(snap, snap)).toEqual({});
   });
 
-  test("matches by name across serialize/parse boundary, ignoring version drift", () => {
-    // Snapshot loaded from .dotf: raw is "name | version"; live items use "name@version".
+  test("matches by name (columns[0]), ignoring version drift", () => {
+    // JSON keeps raw verbatim; keyOf compares by name (columns[0]), so a version bump isn't
+    // "missing" but a different package is.
     const snapshot = {
       "packages.bun.global": makeSection("x", {
         items: [
-          { raw: "pkg | 1.0.0", columns: ["pkg", "1.0.0"] },
-          { raw: "gone | 1.0.0", columns: ["gone", "1.0.0"] },
+          { raw: "pkg@1.0.0", columns: ["pkg", "1.0.0"] },
+          { raw: "gone@1.0.0", columns: ["gone", "1.0.0"] },
         ],
       }),
     };
     const current = {
       "packages.bun.global": makeSection("x", { items: [{ raw: "pkg@2.0.0", columns: ["pkg", "2.0.0"] }] }),
     };
-    expect(findMissing(snapshot, current)).toEqual({ "packages.bun.global": ["gone | 1.0.0"] });
+    expect(findMissing(snapshot, current)).toEqual({ "packages.bun.global": ["gone@1.0.0"] });
   });
 
-  test("falls back to raw's first segment when parsed columns are absent", () => {
+  test("falls back to raw when parsed columns are absent", () => {
     const snapshot = {
       "fonts.user": makeSection("x", {
         items: [

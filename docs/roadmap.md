@@ -16,7 +16,7 @@
 | — | Parallel collectors | `Promise.allSettled` for independent collectors |
 | — | Archive export | `--archive` flag for `.tar.gz` backup output |
 | — | Timestamped reports | `<hostname>-YYYYMMDDHHMMSS.json` naming |
-| — | JSON migration | Retired the custom `.dotf` format and `@dotformat/core` dependency in favour of native JSON — the CLI now has zero runtime dependencies |
+| — | JSON migration | Retired the custom `.dotf` text format for native JSON — the CLI now has zero runtime dependencies |
 
 ## Current Stats
 
@@ -28,9 +28,9 @@
 
 ## Next Up
 
-### `dotfiles init` — guided bootstrap
+### `dothaven init` — guided bootstrap
 
-**Shipped:** `dotfiles init` detects the chezmoi + age setup state and walks you through the rest (✓ done / → next command), running the safe steps on confirmation; the age-key step is guided only. See [commands](/commands#init).
+**Shipped:** `dothaven init` detects the chezmoi + age setup state and walks you through the rest (✓ done / → next command), running the safe steps on confirmation; the age-key step is guided only. See [commands](/commands#init).
 
 **Future enhancements** (not yet shipped):
 
@@ -45,7 +45,7 @@
 ```bash
 git clone github.com/you/my-dotfiles
 cd my-dotfiles
-dotfiles restore --pick
+dothaven restore --pick
 ```
 
 **One-line remote install:**

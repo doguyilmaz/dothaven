@@ -78,7 +78,7 @@ describe("round-trip", () => {
       "a.b": sec("a.b", {
         pairs: { k1: "v1", k2: "v2" },
         items: [
-          { raw: "pkg@2.0.0", columns: ["pkg", "2.0.0"] }, // raw with '@' survives (was lost in .dotf)
+          { raw: "pkg@2.0.0", columns: ["pkg", "2.0.0"] }, // raw with '@' survives (was lost by the old text format)
           { raw: "file with spaces.txt", columns: ["file with spaces.txt"] },
         ],
         content: "line1\nline2\n",

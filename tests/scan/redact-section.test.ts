@@ -4,7 +4,7 @@ import type { ScanResult } from "../../src/scan";
 import { makeSection } from "../../src/collectors/types";
 
 describe("redactSection (pairs + items + content)", () => {
-  test("redacts secret values in json-extract pairs (was leaking to .dotf)", () => {
+  test("redacts secret values in json-extract pairs (was leaking to the snapshot)", () => {
     const section = makeSection("ai.gemini.settings", {
       pairs: { apiKey: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz", theme: "dark" },
     });

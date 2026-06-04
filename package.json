@@ -4,7 +4,7 @@
   "description": "Collect, backup, restore, scan, and diff machine configs across machines",
   "type": "module",
   "bin": {
-    "dotfiles": "./bin/dotfiles.ts"
+    "dothaven": "./bin/dothaven.ts"
   },
   "scripts": {
     "test": "bun test",
@@ -23,7 +23,7 @@
     "docs:preview": "vitepress preview docs"
   },
   "files": [
-    "bin/dotfiles.ts",
+    "bin/dothaven.ts",
     "src/"
   ],
   "keywords": [

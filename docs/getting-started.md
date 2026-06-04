@@ -15,7 +15,7 @@ bun --version
 ```
 
 ::: tip Why Bun?
-The CLI uses `Bun.file()`, `Bun.$`, `Bun.Glob`, `Bun.hash`, and `Bun.color` throughout. It won't run on Node.js. The entry point (`bin/dotfiles.ts`) checks for Bun at startup and exits with a clear error if it's missing.
+The CLI uses `Bun.file()`, `Bun.$`, `Bun.Glob`, `Bun.hash`, and `Bun.color` throughout. It won't run on Node.js. The entry point (`bin/dothaven.ts`) checks for Bun at startup and exits with a clear error if it's missing.
 :::
 
 ## Installation
@@ -41,16 +41,16 @@ bun install
 Then run commands via:
 
 ```bash
-bun bin/dotfiles.ts collect
-bun bin/dotfiles.ts backup
-# …every command runs the same way: bun bin/dotfiles.ts <command>
+bun bin/dothaven.ts collect
+bun bin/dothaven.ts backup
+# …every command runs the same way: bun bin/dothaven.ts <command>
 ```
 
 ### Option C: Global install
 
 ```bash
 bun install -g dothaven
-dotfiles collect
+dothaven collect
 ```
 
 ## Output Directory
@@ -66,8 +66,8 @@ Where reports and backups land depends on context:
 You can always override with the `-o` flag:
 
 ```bash
-dotfiles collect -o ~/my-reports
-dotfiles backup -o /tmp/backup-test
+dothaven collect -o ~/my-reports
+dothaven backup -o /tmp/backup-test
 ```
 
 ## Core Journeys
@@ -77,10 +77,10 @@ dotfiles backup -o /tmp/backup-test
 Generate a `.json` snapshot — a single parseable JSON file capturing your entire machine config.
 
 ```bash
-dotfiles collect                           # Full snapshot
-dotfiles collect --slim                    # AI-friendly (truncated content)
-dotfiles list brew                         # Query a section from latest report
-dotfiles compare home.json work.json       # Diff two snapshots
+dothaven collect                           # Full snapshot
+dothaven collect --slim                    # AI-friendly (truncated content)
+dothaven list brew                         # Query a section from latest report
+dothaven compare home.json work.json       # Diff two snapshots
 ```
 
 The `.json` snapshot is a flat map of section id → section, with each section carrying key-value `pairs`, structured `items`, and/or a `content` block. It's pretty-printed (2-space), human-readable, git-diffable, and parseable by any JSON tool. Serialization is native (`JSON.stringify` / `JSON.parse`) via the in-tree `src/snapshot` module — no runtime dependencies.
@@ -94,11 +94,11 @@ Copy real files into a structured directory. Two tracks:
 **CLI-only track** (quick & portable): use `--archive` for a `.tar.gz` you can email, AirDrop, or store anywhere.
 
 ```bash
-dotfiles backup                            # Full structured backup
-dotfiles backup --only ai,shell            # Just AI + shell configs
-dotfiles backup --skip editor,npm          # Everything except editors and npm
-dotfiles backup --archive                  # Export as .tar.gz
-dotfiles backup --archive -o ~/Desktop     # Archive to specific location
+dothaven backup                            # Full structured backup
+dothaven backup --only ai,shell            # Just AI + shell configs
+dothaven backup --skip editor,npm          # Everything except editors and npm
+dothaven backup --archive                  # Export as .tar.gz
+dothaven backup --archive -o ~/Desktop     # Archive to specific location
 ```
 
 ### Journey C: "Set up a new machine"
@@ -106,9 +106,9 @@ dotfiles backup --archive -o ~/Desktop     # Archive to specific location
 Restore from a backup with full safety features — interactive picker, dry run preview, conflict resolution, and automatic rollback snapshots.
 
 ```bash
-dotfiles restore ./backup --dry-run        # Preview what would change
-dotfiles restore ./backup --pick           # Select categories interactively
-dotfiles restore ./backup                  # Restore everything
+dothaven restore ./backup --dry-run        # Preview what would change
+dothaven restore ./backup --pick           # Select categories interactively
+dothaven restore ./backup                  # Restore everything
 ```
 
 ### Journey D: "What changed?"
@@ -116,9 +116,9 @@ dotfiles restore ./backup                  # Restore everything
 Compare your backup against the current machine state. Track drift.
 
 ```bash
-dotfiles diff                              # Full diff (auto-finds latest backup)
-dotfiles diff --section ai                 # Just AI configs
-dotfiles status                            # Quick summary: modified count, age
+dothaven diff                              # Full diff (auto-finds latest backup)
+dothaven diff --section ai                 # Just AI configs
+dothaven status                            # Quick summary: modified count, age
 ```
 
 ## Sensitivity — Safe by Default
@@ -143,8 +143,8 @@ After every run, you see a sensitivity report:
 To bypass redaction (e.g., for a private encrypted repo):
 
 ```bash
-dotfiles collect --no-redact
-dotfiles backup --no-redact
+dothaven collect --no-redact
+dothaven backup --no-redact
 ```
 
 See [Sensitivity and Redaction](/sensitivity) for the full pattern list and action rules.

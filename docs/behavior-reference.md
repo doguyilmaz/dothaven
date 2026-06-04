@@ -130,7 +130,7 @@ Timestamps use `YYYYMMDDHHMMSS` format (no separators) for filesystem-safe, sort
 | Condition | Behavior |
 |-----------|----------|
 | `$HOME` not set | `console.error` + `process.exit(1)` |
-| Bun runtime not available | Error message + `process.exit(1)` (checked in `bin/dotfiles.ts`) |
+| Bun runtime not available | Error message + `process.exit(1)` (checked in `bin/dothaven.ts`) |
 | No backup path for `restore` | Prints usage message, exits normally |
 
 ### Graceful Degradation
@@ -144,7 +144,7 @@ Timestamps use `YYYYMMDDHHMMSS` format (no separators) for filesystem-safe, sort
 | Non-macOS for apps/brew | Platform guard → returns `{}` |
 | JSON parse error | Registry collector catches → skips entry |
 | `stat()` fails in age calculation | Returns "unknown" |
-| No backup found for `diff`/`status` | "No backup found. Run 'dotfiles backup' first." |
+| No backup found for `diff`/`status` | "No backup found. Run 'dothaven backup' first." |
 | No reports for `compare`/`list` | Appropriate message with usage hint |
 
 ### Bun API Usage

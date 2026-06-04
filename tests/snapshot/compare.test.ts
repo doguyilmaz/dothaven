@@ -53,7 +53,7 @@ describe("compareSnapshots (orientation: first arg = left = added)", () => {
   });
 });
 
-describe("formatDiff (verified byte-identical to @dotformat/core)", () => {
+describe("formatDiff (verified byte-identical to the original comparator)", () => {
   test("color:false renders the fixed emission order with correct +/-/~/= and labels", () => {
     const left = {
       pkg: sec("pkg", { items: [item("hello"), item("world")], pairs: { a: "1", b: "L" }, content: "X" }),

@@ -1,7 +1,5 @@
 # dothaven
 
-> **Renamed from `@dotformat/cli`.** If you have the old package, switch with `npm i -g dothaven` and remove `@dotformat/cli`. The `.dotf` format was retired in favour of plain JSON; the CLI now has **zero runtime dependencies**.
-
 Discover, back up, and migrate your machine's dev config across machines — with built-in secret scanning and a [chezmoi](https://chezmoi.io) export (age-encrypted).
 
 ## Usage

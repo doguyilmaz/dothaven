@@ -5,7 +5,7 @@ All commands are available via:
 ```bash
 bunx dothaven <command>
 # or from a clone:
-bun bin/dotfiles.ts <command>
+bun bin/dothaven.ts <command>
 ```
 
 ## Quick Reference
@@ -32,7 +32,7 @@ bun bin/dotfiles.ts <command>
 Generate a structured `.json` machine snapshot. This is the primary "what's on my machine?" command.
 
 ```bash
-dotfiles collect [--no-redact] [--slim] [-o path]
+dothaven collect [--no-redact] [--slim] [-o path]
 ```
 
 ### Flags
@@ -73,7 +73,7 @@ The collect command runs these collectors in parallel:
 ### Example Output
 
 ```bash
-$ dotfiles collect
+$ dothaven collect
 Report saved to: reports/MacBook-Pro-20260407143022.json
 
 ⚠ Sensitivity report:
@@ -84,7 +84,7 @@ Report saved to: reports/MacBook-Pro-20260407143022.json
 ```
 
 ```bash
-$ dotfiles collect --slim -o /tmp
+$ dothaven collect --slim -o /tmp
 Report saved to: /tmp/MacBook-Pro-20260407143022.json
 ```
 
@@ -95,7 +95,7 @@ Report saved to: /tmp/MacBook-Pro-20260407143022.json
 Copy real config files into a structured directory tree. Unlike `collect` (which produces a single text file), backup creates actual file copies organized by category.
 
 ```bash
-dotfiles backup [--no-redact] [--archive] [--only <categories>] [--skip <categories>] [-o path]
+dothaven backup [--no-redact] [--archive] [--only <categories>] [--skip <categories>] [-o path]
 ```
 
 ### Flags
@@ -127,11 +127,11 @@ dotfiles backup [--no-redact] [--archive] [--only <categories>] [--skip <categor
 ### Example Output
 
 ```bash
-$ dotfiles backup --only ai,shell
+$ dothaven backup --only ai,shell
 Backup saved to: reports/backup-MacBook-Pro-20260407143200
   8 files across: ai (7), shell (1)
 
-$ dotfiles backup --archive
+$ dothaven backup --archive
 Archive saved to: reports/backup-MacBook-Pro-20260407143200.tar.gz
   15 files across: ai (7), shell (1), git (3), editor (2), terminal (1), bun (1)
 ```
@@ -152,7 +152,7 @@ Some entries have **custom redaction functions** in addition to pattern-based sc
 Standalone sensitivity scanner. Useful for checking any file or directory for secrets before sharing.
 
 ```bash
-dotfiles scan [path]
+dothaven scan [path]
 ```
 
 ### Arguments
@@ -173,7 +173,7 @@ dotfiles scan [path]
 ### Example Output
 
 ```bash
-$ dotfiles scan ~/.ssh/config
+$ dothaven scan ~/.ssh/config
 
 ~/.ssh/config
   L3 [MEDIUM] IP address: 192.168.1.***...
@@ -192,7 +192,7 @@ $ dotfiles scan ~/.ssh/config
 Scan a file or directory and write a **Markdown security report** grouping findings by severity. Same scanner engine as `scan`, but persisted to a file instead of console-only — handy as a reviewable artifact before sharing or committing.
 
 ```bash
-dotfiles security [path] [-o file]
+dothaven security [path] [-o file]
 ```
 
 ### Arguments & Flags
@@ -212,7 +212,7 @@ dotfiles security [path] [-o file]
 ### Example
 
 ```bash
-$ dotfiles security ~ -o ~/Desktop/home-audit.md
+$ dothaven security ~ -o ~/Desktop/home-audit.md
 Security report written to: /Users/me/Desktop/home-audit.md
   412 scanned, 7 with findings.
 ```
@@ -224,7 +224,7 @@ Security report written to: /Users/me/Desktop/home-audit.md
 Restore backed-up files to their original locations on the machine. Full safety features: dry run, interactive picker, pre-restore snapshots, conflict prompts.
 
 ```bash
-dotfiles restore <backup-path> [--pick] [--dry-run]
+dothaven restore <backup-path> [--pick] [--dry-run]
 ```
 
 ### Arguments & Flags
@@ -260,7 +260,7 @@ When a file exists on both sides with different content:
 
 ### Pre-Restore Snapshot
 
-Before overwriting any conflicting files, the CLI automatically saves the **current versions** of those files to a `pre-restore-YYYYMMDDHHMMSS/` directory. This snapshot uses the same backup format — you can restore from it with `dotfiles restore`.
+Before overwriting any conflicting files, the CLI automatically saves the **current versions** of those files to a `pre-restore-YYYYMMDDHHMMSS/` directory. This snapshot uses the same backup format — you can restore from it with `dothaven restore`.
 
 ### `.local` Override Pattern
 
@@ -271,7 +271,7 @@ If a backup contains `shell/.zshrc.local`, it restores to `~/.zshrc.local` — t
 Shows a checkbox list of available categories with file counts. Select which categories to restore:
 
 ```bash
-$ dotfiles restore ./backup --pick
+$ dothaven restore ./backup --pick
 ? Select categories to restore:
   [x] ai (7 files)
   [ ] shell (1 file)
@@ -282,7 +282,7 @@ $ dotfiles restore ./backup --pick
 ### Example Output
 
 ```bash
-$ dotfiles restore ./backup --dry-run
+$ dothaven restore ./backup --dry-run
 
 Dry run — no files will be changed:
 
@@ -301,7 +301,7 @@ Dry run — no files will be changed:
 Compare the backup state against the current live system. Answers: "what changed since last backup?"
 
 ```bash
-dotfiles diff [path] [--section <name>]
+dothaven diff [path] [--section <name>]
 ```
 
 ### Arguments & Flags
@@ -329,7 +329,7 @@ If no path is given, `diff` searches the resolved output directory for directori
 ### Example Output
 
 ```bash
-$ dotfiles diff
+$ dothaven diff
 
 Comparing backup against live system:
 
@@ -346,7 +346,7 @@ Comparing backup against live system:
 ```
 
 ```bash
-$ dotfiles diff --section ai
+$ dothaven diff --section ai
 
 Comparing backup against live system:
 
@@ -368,7 +368,7 @@ Comparing backup against live system:
 Quick summary of backup state — like `git status` for your configs.
 
 ```bash
-dotfiles status
+dothaven status
 ```
 
 ### Behavior
@@ -389,7 +389,7 @@ dotfiles status
 ### Example Output
 
 ```bash
-$ dotfiles status
+$ dothaven status
 Last backup: 2h ago (backup-MacBook-Pro-20260407120000)
   15 files tracked: 2 modified, 13 unchanged
 
@@ -399,7 +399,7 @@ Modified since backup:
 ```
 
 ```bash
-$ dotfiles status
+$ dothaven status
 Last backup: 5m ago (backup-MacBook-Pro-20260407143200)
   15 files tracked: 0 modified, 15 unchanged
 
@@ -413,7 +413,7 @@ Everything up to date.
 Structured diff between two `.json` report files. Uses the in-tree `src/snapshot` module's `compareSnapshots()` and `formatDiff()`.
 
 ```bash
-dotfiles compare [file1] [file2]
+dothaven compare [file1] [file2]
 ```
 
 ### Arguments
@@ -435,7 +435,7 @@ If both are omitted, `compare` finds the **two newest** `.json` files in `<cwd>/
 ### Example
 
 ```bash
-$ dotfiles compare reports/MacBook-20260401.json reports/MacBook-20260407.json
+$ dothaven compare reports/MacBook-20260401.json reports/MacBook-20260407.json
 ```
 
 ::: warning
@@ -449,7 +449,7 @@ $ dotfiles compare reports/MacBook-20260401.json reports/MacBook-20260407.json
 New-machine parity check: compare a JSON snapshot against **this** machine and list what's installable in the snapshot but missing here. The "did everything come over?" guarantee after a migration — and CI-friendly via its exit code.
 
 ```bash
-dotfiles doctor <snapshot.json>
+dothaven doctor <snapshot.json>
 ```
 
 ### Arguments
@@ -469,7 +469,7 @@ dotfiles doctor <snapshot.json>
 ### Example
 
 ```bash
-$ dotfiles doctor reports/old-machine-20260401.json
+$ dothaven doctor reports/old-machine-20260401.json
 Missing on this machine (present in the snapshot):
 
   packages.bun.global (2)
@@ -488,7 +488,7 @@ Missing on this machine (present in the snapshot):
 Print a section from the most recent `.json` report. Supports **fuzzy matching** on section names.
 
 ```bash
-dotfiles list <section>
+dothaven list <section>
 ```
 
 ### Arguments
@@ -547,7 +547,7 @@ These are the section IDs used in `.json` reports:
 ### Example
 
 ```bash
-$ dotfiles list brew
+$ dothaven list brew
 [apps.brew.formulae]
 bat
 eza
@@ -563,7 +563,7 @@ raycast
 ```
 
 ```bash
-$ dotfiles list claude
+$ dothaven list claude
 [ai.claude.settings]
 enabledPlugins = ...
 permissions = ...
@@ -576,7 +576,7 @@ web-dev.md
 If no sections match:
 
 ```bash
-$ dotfiles list foo
+$ dothaven list foo
 No sections matching "foo".
 Available sections: meta, ai.claude.settings, ai.claude.skills, ...
 ```
@@ -588,7 +588,7 @@ Available sections: meta, ai.claude.settings, ai.claude.skills, ...
 Bridge to [chezmoi](https://www.chezmoi.io): plan (and optionally run) `chezmoi add` for your managed configs, encrypting the sensitive ones, and generate a `run_onchange_` script that reinstalls packages on `chezmoi apply`. See [chezmoi integration](/chezmoi) for the bigger picture.
 
 ```bash
-dotfiles chezmoi-export [--apply] [--pin] [--only a,b] [--skip c,d]
+dothaven chezmoi-export [--apply] [--pin] [--only a,b] [--skip c,d]
 ```
 
 ### Flags
@@ -623,7 +623,7 @@ Everything else is added plain. A benign MEDIUM hit (an IP or email) does **not*
 
 ```bash
 # Review the plan (nothing changes)
-$ dotfiles chezmoi-export
+$ dothaven chezmoi-export
 chezmoi-export plan — 9 path(s), 5 encrypted:
   🔒 add --encrypt  /Users/me/.ssh/config  (has redact rule)
   🔒 add --encrypt  /Users/me/.aws/credentials  (sensitivity:high)
@@ -633,7 +633,7 @@ chezmoi-export plan — 9 path(s), 5 encrypted:
 Dry-run. Re-run with --apply to execute (requires chezmoi + a configured age key).
 
 # Execute, keeping exact package versions, skipping editor extensions
-$ dotfiles chezmoi-export --apply --pin --skip editor
+$ dothaven chezmoi-export --apply --pin --skip editor
 ```
 
 ::: warning
@@ -647,7 +647,7 @@ $ dotfiles chezmoi-export --apply --pin --skip editor
 Guided first-time bootstrap of the chezmoi + age setup. Detects what's already in place and walks you through the rest — the easiest way to get from a fresh machine to a working `chezmoi-export`.
 
 ```bash
-dotfiles init
+dothaven init
 ```
 
 ### Behavior
@@ -658,12 +658,12 @@ Probes three prerequisites and prints a tailored checklist (✓ done / → todo 
 2. **age key configured** — detected from `~/.config/chezmoi/chezmoi.toml` (`encryption = "age"`)
 3. **chezmoi source initialized** — your private `dotfiles` repo (`chezmoi init git@github.com:<you>/dotfiles.git`; the URL defaults to your `gh` username)
 
-On a TTY it offers to run the **safe** steps on confirmation (install chezmoi; `chezmoi init <url>`). The **age-key step is guided only** — never auto-run — because generating key material and writing encryption config is too sensitive to automate; it prints the command and the "back it up or lose decryption" warning. When every step is ✓, it points you to `dotfiles chezmoi-export`. Non-interactive runs (piped/CI) just print the guidance.
+On a TTY it offers to run the **safe** steps on confirmation (install chezmoi; `chezmoi init <url>`). The **age-key step is guided only** — never auto-run — because generating key material and writing encryption config is too sensitive to automate; it prints the command and the "back it up or lose decryption" warning. When every step is ✓, it points you to `dothaven chezmoi-export`. Non-interactive runs (piped/CI) just print the guidance.
 
 ### Example
 
 ```bash
-$ dotfiles init
+$ dothaven init
 dothaven init — chezmoi + age bootstrap
 
   ✓ chezmoi installed

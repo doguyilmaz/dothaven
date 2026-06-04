@@ -160,10 +160,10 @@ Diff colours:
 
 | Command | Behavior |
 |---------|----------|
-| `dotfiles collect` | Writes a `.json` snapshot to `reports/`. |
-| `dotfiles compare` | Diffs two `.json` files (globs `*.json` in `reports/`). |
-| `dotfiles doctor <snapshot.json>` | Reads a `.json` snapshot and reports on it. |
-| `dotfiles list` | Prints a section from the newest `.json`. |
+| `dothaven collect` | Writes a `.json` snapshot to `reports/`. |
+| `dothaven compare` | Diffs two `.json` files (globs `*.json` in `reports/`). |
+| `dothaven doctor <snapshot.json>` | Reads a `.json` snapshot and reports on it. |
+| `dothaven list` | Prints a section from the newest `.json`. |
 
 ## Section Types in Practice
 
@@ -182,7 +182,7 @@ Diff colours:
 
 ## Slim Mode
 
-With `dotfiles collect --slim`, content sections are truncated to 10 lines:
+With `dothaven collect --slim`, content sections are truncated to 10 lines:
 
 ```json
 {

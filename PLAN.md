@@ -14,9 +14,9 @@
 Single-file `.json` snapshot — parseable, diffable, queryable.
 
 ```bash
-dotfiles collect                    # → reports/<hostname>.json
-dotfiles list models                # → fuzzy query a section
-dotfiles compare home.json work.json # → structured diff
+dothaven collect                    # → reports/<hostname>.json
+dothaven list models                # → fuzzy query a section
+dothaven compare home.json work.json # → structured diff
 ```
 
 **Status: Done**
@@ -51,7 +51,7 @@ Real file copies in structured directories. Two tracks:
 Restore from backup. Interactive picker. Conflict resolution.
 
 ```bash
-dotfiles restore ./backup --pick --dry-run
+dothaven restore ./backup --pick --dry-run
 ```
 
 **Status: Done**
@@ -77,7 +77,7 @@ Runs automatically during `backup` and `collect`. Summary at the end:
   2 items redacted, 1 skipped. Use --no-redact to include all.
 ```
 
-Also available standalone: `dotfiles scan [path]`
+Also available standalone: `dothaven scan [path]`
 
 ---
 
@@ -96,9 +96,9 @@ Rewrote bash script → Bun/TypeScript CLI outputting `.json` files.
 ### Commands
 
 ```bash
-dotfiles collect [--no-redact] [-o path]
-dotfiles compare [file1] [file2]
-dotfiles list <section>
+dothaven collect [--no-redact] [-o path]
+dothaven compare [file1] [file2]
+dothaven list <section>
 ```
 
 ### Collector Pattern
@@ -198,7 +198,7 @@ dotfiles/
 
 ## 2. Backup (Done)
 
-`dotfiles backup [-o path] [--only ai,shell] [--skip editors]`
+`dothaven backup [-o path] [--only ai,shell] [--skip editors]`
 
 Real files in real directory structure. Only creates what exists (no empty folders).
 
@@ -246,7 +246,7 @@ backup/
 
 ## 3. Sensitivity Scan (Done)
 
-`dotfiles scan [path]` — also runs automatically during backup/collect.
+`dothaven scan [path]` — also runs automatically during backup/collect.
 
 ### Detection patterns
 
@@ -274,30 +274,30 @@ backup/
 
 ## 4. Restore (Done)
 
-`dotfiles restore <path> [--pick] [--dry-run]`
+`dothaven restore <path> [--pick] [--dry-run]`
 
 ```bash
-dotfiles restore ./backup              # restore everything
-dotfiles restore ./backup --pick       # interactive section picker
-dotfiles restore ./backup --dry-run    # preview only, no changes
+dothaven restore ./backup              # restore everything
+dothaven restore ./backup --pick       # interactive section picker
+dothaven restore ./backup --dry-run    # preview only, no changes
 ```
 
 - `--pick` → checkbox UI: select which configs to restore
 - `--dry-run` → shows what would change, doesn't touch anything
 - Conflict handling: if target file differs, prompt overwrite / skip / show diff
-- Pre-restore snapshot: before any overwrite, saves old files to `pre-restore-<timestamp>/` — same backup format, reversible with `dotfiles restore`
+- Pre-restore snapshot: before any overwrite, saves old files to `pre-restore-<timestamp>/` — same backup format, reversible with `dothaven restore`
 - Supports `.local` override pattern: if `backup/shell/.zshrc.local` exists, restore it alongside `.zshrc`
 
 ---
 
 ## 5. Diff Against Live (Done)
 
-`dotfiles diff [--section ai]`
+`dothaven diff [--section ai]`
 
 Compares repo backup against current machine state. Answers: "what changed since last backup?"
 
 ```bash
-dotfiles diff
+dothaven diff
 # shell/.zshrc — modified (3 lines added)
 # ai/claude/settings.json — modified (2 plugins added)
 # editor/cursor/settings.json — unchanged
@@ -350,7 +350,7 @@ const registry: ConfigEntry[] = [
 
 ## 8. Init (GitHub template flow)
 
-`dotfiles init` → guided onboarding for new users.
+`dothaven init` → guided onboarding for new users.
 
 ### New user (no repo)
 
@@ -359,7 +359,7 @@ bunx dothaven init
   → "Create a private GitHub repo? (y/n)"
   → gh repo create my-dotfiles --private --template dotformat/template
   → cd my-dotfiles
-  → dotfiles backup
+  → dothaven backup
   → git add . && git commit -m "initial backup"
   → git push
   → "Done. Your configs are backed up to github.com/you/my-dotfiles"
@@ -370,7 +370,7 @@ bunx dothaven init
 ```bash
 git clone github.com/you/my-dotfiles
 cd my-dotfiles
-dotfiles restore --pick
+dothaven restore --pick
   → [ ] shell/.zshrc
   → [x] ai/claude/settings.json
   → [x] ai/claude/CLAUDE.md
@@ -396,10 +396,10 @@ curl -fsSL https://raw.githubusercontent.com/you/my-dotfiles/main/install.sh | b
 
 Low-effort, high-impact improvements to daily usage.
 
-### 8a. `dotfiles status`
+### 8a. `dothaven status`
 Quick summary: what's changed, what's backed up, what's new.
 ```bash
-dotfiles status
+dothaven status
 # Last backup: 2h ago (backup-doguyilmaz.local-20260407...)
 # 3 modified since backup, 143 unchanged
 # Modified: shell/.zshrc, ai/claude/settings.json, git/.gitconfig
@@ -408,7 +408,7 @@ dotfiles status
 ### 8b. `--slim` flag for collect
 AI token-efficient snapshots — strips verbose content, keeps structure + metadata only.
 ```bash
-dotfiles collect --slim    # smaller .json, good for feeding to AI
+dothaven collect --slim    # smaller .json, good for feeding to AI
 ```
 
 ### 8c. Parallel collectors
@@ -449,7 +449,7 @@ Bun requirement, full CLI usage docs, all commands documented.
 | 5 | Diff against live system | Done |
 | 6 | Config registry | Done |
 | 7 | Multi-OS | Done |
-| 8a | `dotfiles status` | Next |
+| 8a | `dothaven status` | Next |
 | 8b | `--slim` flag | Next |
 | 8c | Parallel collectors | Next |
 | 8d | README update | Next |

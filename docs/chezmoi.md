@@ -56,5 +56,5 @@ EOF
 {{ end -}}
 ```
 
-Generate the `Brewfile` from a snapshot's `apps.brew.bundle` section (`dotfiles list brew`), and the
+Generate the `Brewfile` from a snapshot's `apps.brew.bundle` section (`dothaven list brew`), and the
 same pattern works for `fnm install` of the captured node versions and global package lists.
