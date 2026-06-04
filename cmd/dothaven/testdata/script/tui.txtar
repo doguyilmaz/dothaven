@@ -1,0 +1,8 @@
+# tui requires an interactive terminal; under testscript stdin/stdout are pipes,
+# so it must refuse cleanly (non-zero) rather than hang or panic.
+! exec dothaven tui
+stderr 'needs an interactive terminal'
+
+# it's listed in help
+exec dothaven --help
+stdout 'tui'

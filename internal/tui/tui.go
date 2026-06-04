@@ -59,6 +59,28 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 	return selected, nil
 }
 
+// MainMenu shows the top-level action picker and returns the chosen command
+// name ("" = quit).
+func MainMenu() (string, error) {
+	var choice string
+	sel := huh.NewSelect[string]().
+		Title("dothaven").
+		Description("pick an action").
+		Options(
+			huh.NewOption("Back up configs", "backup"),
+			huh.NewOption("Export to chezmoi (age-encrypted)", "chezmoi-export"),
+			huh.NewOption("Restore from the latest backup", "restore"),
+			huh.NewOption("Check setup (chezmoi + age)", "init"),
+			huh.NewOption("Status of the latest backup", "status"),
+			huh.NewOption("Quit", ""),
+		).
+		Value(&choice)
+	if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+		return "", err
+	}
+	return choice, nil
+}
+
 // Confirm asks a yes/no question.
 func Confirm(prompt string) (bool, error) {
 	var v bool

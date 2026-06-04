@@ -25,6 +25,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		SilenceErrors: false,
 	}
 	root.AddCommand(
+		newTUICmd(env),
 		newCollectCmd(env),
 		newDoctorCmd(env),
 		newBackupCmd(env),
