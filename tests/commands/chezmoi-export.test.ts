@@ -7,6 +7,8 @@ import {
   pickInstallSpec,
   parseExportArgs,
   gnupgHasSecretKeys,
+  gnupgIgnorePatterns,
+  mergeChezmoiignore,
   isSelected,
   filterBrewfile,
 } from "../../src/commands/chezmoi";
@@ -210,6 +212,43 @@ describe("gnupgHasSecretKeys", () => {
   test("false when empty or only non-key files (just cruft)", async () => {
     expect(await gnupgHasSecretKeys("/h", async () => [])).toBe(false);
     expect(await gnupgHasSecretKeys("/h", async () => ["README", "pubring.db"])).toBe(false);
+  });
+});
+
+describe("gnupg .chezmoiignore", () => {
+  test("ignores sockets/locks/random_seed, never key material", () => {
+    const p = gnupgIgnorePatterns();
+    expect(p).toContain(".gnupg/S.*");
+    expect(p).toContain(".gnupg/random_seed");
+    expect(p.some((x) => x.includes("private-keys-v1.d"))).toBe(false); // keys are kept
+    expect(p.some((x) => x.includes("pubring"))).toBe(false);
+  });
+
+  test("merge appends under a header when file is empty", () => {
+    const out = mergeChezmoiignore("", gnupgIgnorePatterns());
+    expect(out).toContain("# gnupg runtime cruft");
+    expect(out).toContain(".gnupg/S.*");
+    expect(out.endsWith("\n")).toBe(true);
+  });
+
+  test("merge preserves existing content and separates with a blank line", () => {
+    const out = mergeChezmoiignore(".cache\n.DS_Store\n", [".gnupg/S.*"]);
+    expect(out.startsWith(".cache\n.DS_Store\n")).toBe(true);
+    expect(out).toContain("# gnupg runtime cruft");
+    expect(out).toContain(".gnupg/S.*");
+  });
+
+  test("merge is idempotent — re-running adds nothing", () => {
+    const once = mergeChezmoiignore("", gnupgIgnorePatterns());
+    expect(mergeChezmoiignore(once, gnupgIgnorePatterns())).toBe(once);
+  });
+
+  test("merge adds only the missing patterns, no duplicate header", () => {
+    const seeded = mergeChezmoiignore("", [".gnupg/S.*"]);
+    const out = mergeChezmoiignore(seeded, gnupgIgnorePatterns());
+    expect(out.match(/# gnupg runtime cruft/g)?.length).toBe(1);
+    expect(out.match(/\.gnupg\/S\.\*/g)?.length).toBe(1); // not re-added
+    expect(out).toContain(".gnupg/random_seed");
   });
 });
 

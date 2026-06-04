@@ -183,6 +183,31 @@ export async function gnupgHasSecretKeys(home: string, listDir: (p: string) => P
   return (await listDir(`${home}/.gnupg/private-keys-v1.d`)).some((f) => f.endsWith(".key"));
 }
 
+/** chezmoi `.chezmoiignore` globs (target-relative) for ~/.gnupg runtime cruft — sockets, lock
+ * files, and the machine-specific RNG seed. Carrying these would pollute the source repo and can't
+ * be meaningfully applied on another machine. Key material (private-keys-v1.d/*.key, pubring.kbx,
+ * trustdb.gpg) is intentionally NOT ignored. */
+export function gnupgIgnorePatterns(): string[] {
+  return [".gnupg/S.*", ".gnupg/*.lock", ".gnupg/.#*", ".gnupg/random_seed", ".gnupg/public-keys.d/*.lock"];
+}
+
+/** Idempotently add `patterns` to an existing `.chezmoiignore`, under a labeled header (added once).
+ * Already-present patterns are left untouched, so re-running export doesn't duplicate lines. */
+export function mergeChezmoiignore(existing: string, patterns: string[]): string {
+  const present = new Set(
+    existing
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean),
+  );
+  const header = "# gnupg runtime cruft (managed by dotfiles chezmoi-export)";
+  const missing = patterns.filter((p) => !present.has(p));
+  if (!missing.length) return existing;
+  const block = [...(present.has(header) ? [] : [header]), ...missing];
+  const base = existing.trimEnd();
+  return `${(base ? [base, "", ...block] : block).join("\n")}\n`;
+}
+
 /**
  * Drop Brewfile lines whose directive (first token) is in `skip`. `brew bundle dump` embeds
  * `vscode "ext-id"` entries (and `mas`, `cask`…); `--skip vscode` strips them — handy when
@@ -252,6 +277,13 @@ export async function chezmoiExport(args: string[]) {
   const { apply, pin, only, skip } = parseExportArgs(args);
   const home = getHome();
 
+  // "brew" / "packages" are install-group selectors, NOT registry categories — they drive the
+  // run_onchange script, independent of which config files get added. Computed up front so a
+  // `--only brew` run still generates the script even though no registry entry matches.
+  const wantBrew = isSelected("brew", only, skip);
+  const wantPackages = isSelected("packages", only, skip);
+  const wantInstallScript = wantBrew || wantPackages;
+
   // Registry entries filtered by their category (--only / --skip).
   const entries = registryEntries.filter((e) => isSelected(e.category, only, skip));
   const plan = await planChezmoiExport(entries, home, defaultEnv.fileExists, containsSecret);
@@ -271,15 +303,21 @@ export async function chezmoiExport(args: string[]) {
     if (i >= 0) plan.splice(i, 1);
   }
 
-  if (plan.length === 0) {
+  if (plan.length === 0 && !wantInstallScript) {
     console.log("Nothing to export — no managed configs found on this machine.");
     return;
   }
 
-  const encrypted = plan.filter((p) => p.encrypt).length;
-  console.log(`chezmoi-export plan — ${plan.length} path(s), ${encrypted} encrypted:\n`);
-  for (const item of plan) {
-    console.log(`  ${item.encrypt ? "🔒 add --encrypt" : "   add          "}  ${item.src}  (${item.reason})`);
+  if (plan.length > 0) {
+    const encrypted = plan.filter((p) => p.encrypt).length;
+    console.log(`chezmoi-export plan — ${plan.length} path(s), ${encrypted} encrypted:\n`);
+    for (const item of plan) {
+      console.log(`  ${item.encrypt ? "🔒 add --encrypt" : "   add          "}  ${item.src}  (${item.reason})`);
+    }
+  }
+  if (wantInstallScript) {
+    const groups = [wantBrew && "brew", wantPackages && "packages"].filter(Boolean).join(", ");
+    console.log(`  + run_onchange install script (${groups})`);
   }
 
   if (!apply) {
@@ -297,6 +335,21 @@ export async function chezmoiExport(args: string[]) {
     return;
   }
 
+  let sourcePath = "";
+  try {
+    sourcePath = (await defaultEnv.run(["chezmoi", "source-path"])).trim();
+  } catch {}
+
+  // Before adding ~/.gnupg, write a .chezmoiignore so its sockets/locks/random_seed are never
+  // carried — only the key material is. Must exist before `chezmoi add` so the cruft is skipped.
+  if (sourcePath && plan.some((p) => p.id === "secrets.gnupg")) {
+    const ignorePath = `${sourcePath}/.chezmoiignore`;
+    const f = Bun.file(ignorePath);
+    const existing = (await f.exists()) ? await f.text() : "";
+    await Bun.write(ignorePath, mergeChezmoiignore(existing, gnupgIgnorePatterns()));
+    console.log("  ✔ .chezmoiignore (gnupg runtime cruft)");
+  }
+
   console.log("");
   for (const item of plan) {
     const cmd = item.encrypt ? ["chezmoi", "add", "--encrypt", item.src] : ["chezmoi", "add", item.src];
@@ -309,9 +362,7 @@ export async function chezmoiExport(args: string[]) {
   }
 
   // Generate a run_onchange install script (brew + node + globals), honoring --only/--skip.
-  const wantBrew = isSelected("brew", only, skip);
-  const wantPackages = isSelected("packages", only, skip);
-  if (wantBrew || wantPackages) {
+  if (wantInstallScript) {
     try {
       const manifest = await gatherInstallManifest({ redact: false, home }, pin);
       const dupes = crossManagerDuplicates(manifest);
@@ -331,7 +382,6 @@ export async function chezmoiExport(args: string[]) {
         manifest.denoBins = [];
       }
       const script = buildPackageInstallScript(manifest);
-      const sourcePath = script ? (await defaultEnv.run(["chezmoi", "source-path"])).trim() : "";
       if (script && sourcePath) {
         await Bun.write(`${sourcePath}/run_onchange_install-packages.sh`, script);
         console.log("  ✔ run_onchange_install-packages.sh");
