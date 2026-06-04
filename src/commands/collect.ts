@@ -1,8 +1,7 @@
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { generateTimestamp } from "../utils/timestamp";
-import { stringify } from "@dotformat/core";
-import type { DotfDocument } from "@dotformat/core";
+import { serializeSnapshot } from "../snapshot";
 import type { CollectorContext, CollectorResult } from "../collectors/types";
 import { resolveOutputDir } from "../utils/resolve-output";
 import { getHome } from "../utils/home";
@@ -92,11 +91,10 @@ export async function collect(args: string[]) {
 
   if (slim) slimSections(sections);
 
-  const doc: DotfDocument = { sections };
-  const output = stringify(doc);
+  const output = serializeSnapshot(sections);
 
   const ts = generateTimestamp();
-  const filename = `${hostname()}-${ts}.dotf`;
+  const filename = `${hostname()}-${ts}.json`;
   const filepath = join(resolvedOutput, filename);
   await Bun.write(filepath, output);
 

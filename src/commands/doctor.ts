@@ -1,4 +1,4 @@
-import { parse } from "@dotformat/core";
+import { parseSnapshot } from "../snapshot";
 import { runCollectors } from "./collect";
 import { getHome } from "../utils/home";
 import type { CollectorResult } from "../collectors/types";
@@ -16,13 +16,12 @@ function isInstallable(id: string): boolean {
 }
 
 /**
- * Primary identifier of an item, stable across the .dotf serialize/parse boundary
- * (stringify joins columns as "a | b"; live items use their own raw like "a@b").
- * Comparing by columns[0] (the name) also ignores version drift — parity is
- * "is it present", not "is it the same version".
+ * Primary identifier of an item: the name in columns[0], falling back to raw. Keying on the name
+ * ignores version drift — parity is "is it present", not "is it the same version". JSON snapshots
+ * persist raw and columns verbatim, so snapshot and live items key identically (no serialize quirk).
  */
 function keyOf(item: { raw: string; columns: string[] }): string {
-  return item.columns?.[0] ?? item.raw.split(" | ")[0].trim();
+  return item.columns?.[0] ?? item.raw;
 }
 
 /** Items present in the snapshot but absent from the current machine, per section. */
@@ -41,7 +40,7 @@ export async function doctor(args: string[]) {
   const snapshotPath = args.find((a) => !a.startsWith("-"));
   if (!snapshotPath) {
     console.error(
-      "Usage: dotfiles doctor <snapshot.dotf>\n  Compares a .dotf snapshot against this machine and lists what's missing.",
+      "Usage: dotfiles doctor <snapshot.json>\n  Compares a .json snapshot against this machine and lists what's missing.",
     );
     process.exitCode = 1;
     return;
@@ -54,7 +53,14 @@ export async function doctor(args: string[]) {
     return;
   }
 
-  const snapshot = parse(await file.text()).sections as CollectorResult;
+  let snapshot: CollectorResult;
+  try {
+    snapshot = parseSnapshot(await file.text());
+  } catch (error) {
+    console.error(`Invalid snapshot: ${error instanceof Error ? error.message : error}`);
+    process.exitCode = 1;
+    return;
+  }
   const current = await runCollectors({ redact: false, home: getHome() });
   const missing = findMissing(snapshot, current);
 

@@ -34,7 +34,6 @@
   ],
   "keywords": [
     "dotfiles",
-    "dotf",
     "cli",
     "config",
     "machine-state",
@@ -49,9 +48,7 @@
     "url": "git+https://github.com/doguyilmaz/dotfiles.git"
   },
   "homepage": "https://doguyilmaz.github.io/dotfiles",
-  "dependencies": {
-    "@dotformat/core": "^0.2.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
     "@types/bun": "latest",

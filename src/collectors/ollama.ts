@@ -1,4 +1,4 @@
-import type { Collector } from "./types";
+import type { Collector, CollectorResult } from "./types";
 import { makeSection } from "./types";
 import { type CommandEnv, defaultEnv } from "./env";
 
@@ -27,20 +27,19 @@ export function parseOllamaList(text: string): OllamaModel[] {
 
 export function makeOllamaCollector(env: CommandEnv = defaultEnv): Collector {
   return async () => {
+    const result: CollectorResult = {};
     try {
       const models = parseOllamaList(await env.run(["ollama", "list"]));
-      if (!models.length) return {};
-      return {
-        "ai.ollama.models": makeSection("ai.ollama.models", {
+      if (models.length) {
+        result["ai.ollama.models"] = makeSection("ai.ollama.models", {
           items: models.map((m) => {
             const cols = [m.name, m.size, m.modified].filter(Boolean);
             return { raw: cols.join(" | "), columns: cols };
           }),
-        }),
-      };
-    } catch {
-      return {};
-    }
+        });
+      }
+    } catch {}
+    return result;
   };
 }
 

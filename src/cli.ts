@@ -50,7 +50,7 @@ switch (command) {
     console.log(`Usage: dotfiles <command>
 
 Commands:
-  collect [--no-redact] [--slim] [-o path]            Collect machine config → .dotf report
+  collect [--no-redact] [--slim] [-o path]            Collect machine config → JSON snapshot
   backup  [--no-redact] [--archive] [--only a,b] [--skip c,d] [-o path]
                                                        Backup config files (--archive for .tar.gz)
   scan     [path]                                    Scan files for sensitive data (console)
@@ -58,11 +58,11 @@ Commands:
   restore <path> [--pick] [--dry-run]                Restore config files from backup
   diff    [path] [--section <name>]                  Compare backup against live system
   status                                             Quick summary of backup state
-  compare [file1] [file2]                            Diff two .dotf reports
+  compare [file1] [file2]                            Diff two JSON snapshots
   list <section>                                     Print a section from most recent report
   chezmoi-export [--apply] [--pin] [--only a,b] [--skip c,d]
                                                        Plan/run chezmoi add (--encrypt secrets).
                                                        --pin keeps captured versions (default: latest);
                                                        skip e.g. vscode,packages,editor,fonts,cloud
-  doctor <snapshot.dotf>                             Check this machine for parity against a snapshot`);
+  doctor <snapshot.json>                             Check this machine for parity against a snapshot`);
 }

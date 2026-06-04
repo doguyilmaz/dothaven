@@ -1,4 +1,4 @@
-import type { DotfSection } from "@dotformat/core";
+import type { Section } from "../snapshot/types";
 import { REDACTION_MARKER } from "../utils/constants";
 import type { ScanResult } from "./types";
 import { scanContent } from "./scanner";
@@ -29,7 +29,7 @@ export function applyRedactions(content: string, result: ScanResult): string {
  * gate (json-extract pairs and dir items previously leaked). Returns false when the section should
  * be dropped entirely (its content scanned to "skip", e.g. a private-key file).
  */
-export function redactSection(name: string, section: DotfSection, scanResults: ScanResult[]): boolean {
+export function redactSection(name: string, section: Section, scanResults: ScanResult[]): boolean {
   if (section.content) {
     const r = scanContent(name, section.content);
     scanResults.push(r);
