@@ -25,6 +25,8 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		SilenceErrors: false,
 	}
 	root.AddCommand(
+		newCollectCmd(env),
+		newDoctorCmd(env),
 		newScanCmd(env),
 		newSecurityCmd(env),
 		newCompareCmd(env),
@@ -32,6 +34,13 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 	)
 	return root
 }
+
+// ExitError carries a desired process exit code without a printed message. A
+// drift/parity failure is a normal CI outcome, not an error to surface — main
+// maps it straight to os.Exit.
+type ExitError struct{ Code int }
+
+func (e ExitError) Error() string { return "" }
 
 // --- shared helpers ---
 

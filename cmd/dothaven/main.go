@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -16,6 +17,10 @@ var version = "dev"
 func main() {
 	root := cli.NewRoot(sys.Real(), version)
 	if err := root.Execute(); err != nil {
+		var ee cli.ExitError
+		if errors.As(err, &ee) {
+			os.Exit(ee.Code)
+		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
