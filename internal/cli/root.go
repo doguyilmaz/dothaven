@@ -27,6 +27,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 	root.AddCommand(
 		newCollectCmd(env),
 		newDoctorCmd(env),
+		newBackupCmd(env),
 		newScanCmd(env),
 		newSecurityCmd(env),
 		newCompareCmd(env),
