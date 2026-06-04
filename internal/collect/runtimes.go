@@ -44,14 +44,17 @@ var (
 )
 
 // ParseVersionToken extracts the token after a word: `rustc 1.96.0 (...)` with
-// word "rustc" → "1.96.0".
+// word "rustc" → "1.96.0". Field-based (no per-call regex compile).
 func ParseVersionToken(text, word string) string {
-	re := regexp.MustCompile(`\b` + regexp.QuoteMeta(word) + `\s+(\S+)`)
-	m := re.FindStringSubmatch(text)
-	if m == nil {
-		return ""
+	for _, line := range strings.Split(text, "\n") {
+		fields := strings.Fields(line)
+		for i := 0; i+1 < len(fields); i++ {
+			if fields[i] == word {
+				return fields[i+1]
+			}
+		}
 	}
-	return m[1]
+	return ""
 }
 
 // ParseGoVersion parses `go version go1.26.3 darwin/arm64`.
