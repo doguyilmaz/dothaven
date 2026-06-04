@@ -3,6 +3,7 @@ import { backup } from "./commands/backup";
 import { scan } from "./commands/scan";
 import { security } from "./commands/security";
 import { chezmoiExport } from "./commands/chezmoi";
+import { init } from "./commands/init";
 import { doctor } from "./commands/doctor";
 import { restore } from "./commands/restore";
 import { diff } from "./commands/diff";
@@ -27,6 +28,9 @@ switch (command) {
     break;
   case "chezmoi-export":
     await chezmoiExport(args);
+    break;
+  case "init":
+    await init(args);
     break;
   case "doctor":
     await doctor(args);
@@ -64,5 +68,6 @@ Commands:
                                                        Plan/run chezmoi add (--encrypt secrets).
                                                        --pin keeps captured versions (default: latest);
                                                        skip e.g. vscode,packages,editor,fonts,cloud
+  init                                               Guided chezmoi + age setup (detects state, runs safe steps)
   doctor <snapshot.json>                             Check this machine for parity against a snapshot`);
 }
