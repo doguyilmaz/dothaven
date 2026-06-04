@@ -1,7 +1,9 @@
+import { resolve } from "node:path";
 import type { ScanFinding, ScanResult, ScanSummary, Action } from "./types";
 import { getScanPatterns } from "./patterns";
 
 const ACTION_PRIORITY: Record<Action, number> = { skip: 3, redact: 2, include: 1 };
+const MAX_FILE_SIZE = 1024 * 1024;
 
 export function scanContent(filePath: string, content: string): ScanResult {
   const patterns = getScanPatterns();
@@ -46,4 +48,20 @@ export function summarize(results: ScanResult[]): ScanSummary {
     skipped: withFindings.filter((r) => r.action === "skip").length,
     included: withFindings.filter((r) => r.action === "include").length,
   };
+}
+
+/** Recursively scan a directory, skipping node_modules/.git and files larger than 1MB. */
+export async function scanDirectory(dirPath: string): Promise<ScanResult[]> {
+  const results: ScanResult[] = [];
+  const glob = new Bun.Glob("**/*");
+
+  for await (const relative of glob.scan({ cwd: dirPath, onlyFiles: true, dot: true })) {
+    if (relative.includes("node_modules/") || relative.includes(".git/")) continue;
+    const fullPath = resolve(dirPath, relative);
+    if (Bun.file(fullPath).size > MAX_FILE_SIZE) continue;
+    const result = await scanFile(fullPath);
+    if (result) results.push(result);
+  }
+
+  return results;
 }

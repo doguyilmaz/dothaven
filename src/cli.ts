@@ -1,6 +1,7 @@
 import { collect } from "./commands/collect";
 import { backup } from "./commands/backup";
 import { scan } from "./commands/scan";
+import { security } from "./commands/security";
 import { restore } from "./commands/restore";
 import { diff } from "./commands/diff";
 import { status } from "./commands/status";
@@ -18,6 +19,9 @@ switch (command) {
     break;
   case "scan":
     await scan(args);
+    break;
+  case "security":
+    await security(args);
     break;
   case "restore":
     await restore(args);
@@ -41,7 +45,8 @@ Commands:
   collect [--no-redact] [--slim] [-o path]            Collect machine config → .dotf report
   backup  [--no-redact] [--archive] [--only a,b] [--skip c,d] [-o path]
                                                        Backup config files (--archive for .tar.gz)
-  scan    [path]                                     Scan files for sensitive data
+  scan     [path]                                    Scan files for sensitive data (console)
+  security [path] [-o file]                          Write a Markdown security report (default SECURITY.md)
   restore <path> [--pick] [--dry-run]                Restore config files from backup
   diff    [path] [--section <name>]                  Compare backup against live system
   status                                             Quick summary of backup state
