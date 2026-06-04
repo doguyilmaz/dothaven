@@ -1,0 +1,42 @@
+name: Config / tool request
+description: Request a config file, CLI, or tool that dothaven should track
+title: "[config] <tool name>"
+labels: ["config-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping dothaven cover more of the dev universe! Tell us what's
+        missing and where its config lives, and we'll add it to the registry.
+  - type: input
+    id: tool
+    attributes:
+      label: Tool / app
+      description: The CLI, app, or config you want covered.
+      placeholder: e.g. Warp terminal, OrbStack, doctl, Helix
+    validations:
+      required: true
+  - type: input
+    id: path
+    attributes:
+      label: Config path(s)
+      description: Where its config lives — macOS and/or Linux.
+      placeholder: e.g. ~/.config/warp, ~/Library/Application Support/OrbStack
+    validations:
+      required: true
+  - type: dropdown
+    id: sensitivity
+    attributes:
+      label: Does it hold secrets?
+      description: Credential-bearing configs are always age-encrypted on export.
+      options:
+        - "No — plain config"
+        - "Yes — credentials/tokens"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else? (optional)
+      description: How to list installed items / detect versions, links to docs, etc.

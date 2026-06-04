@@ -304,6 +304,14 @@ age key means those encrypted files are unrecoverable, so back the key up
 separately.
 {{< /callout >}}
 
+## Missing a tool?
+
+dothaven aims to be a **superset** of what chezmoi covers. If a config or CLI you use isn't in the registry yet, adding it is usually a one-line entry — open a request with the tool name and its config path:
+
+{{< callout type="info" >}}
+**[Request a config / tool →](https://github.com/doguyilmaz/dothaven/issues/new?template=config-request.yml)**
+{{< /callout >}}
+
 ## Related
 
 {{< cards >}}

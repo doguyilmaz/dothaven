@@ -67,6 +67,12 @@ dothaven decides *what* to encrypt; chezmoi *performs* it. It is not itself an e
 
 Full reference, with every flag: **[Commands](https://doguyilmaz.github.io/dothaven/docs/commands/)**.
 
+## Missing a tool?
+
+dothaven aims to be a **superset** of what chezmoi covers — every cloud CLI, version manager, editor, terminal, and credential store a developer uses. If something you rely on isn't tracked yet, it's a one-line registry add:
+
+**→ [Request a config / tool](https://github.com/doguyilmaz/dothaven/issues/new?template=config-request.yml)** (just the tool name + its config path).
+
 ## Security
 
 A pattern scanner classifies findings as HIGH/MEDIUM/LOW with an action of skip/redact/include. Secrets are redacted by default before anything is written, and a file containing a private key (a `skip`-action secret) is **never** written into a plaintext backup or snapshot. On export, high-sensitivity files are added with `chezmoi add --encrypt`. See [Security & redaction](https://doguyilmaz.github.io/dothaven/docs/security/).
