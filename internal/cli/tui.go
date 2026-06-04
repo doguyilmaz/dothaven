@@ -27,7 +27,7 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if action == "" {
+			if action == "" || action == "quit" {
 				return nil
 			}
 			sub, _, ferr := cmd.Root().Find([]string{action})

@@ -60,8 +60,11 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 }
 
 // MainMenu shows the top-level action picker and returns the chosen command
-// name ("" = quit).
+// name ("quit" = quit).
 func MainMenu() (string, error) {
+	// The bound value must NOT match any option's value, or huh fails to render
+	// the options before the matched one until a keypress (huh#679). An empty
+	// default matches nothing, so the cursor starts at the top and all render.
 	var choice string
 	sel := huh.NewSelect[string]().
 		Title("dothaven").
@@ -72,7 +75,7 @@ func MainMenu() (string, error) {
 			huh.NewOption("Restore from the latest backup", "restore"),
 			huh.NewOption("Check setup (chezmoi + age)", "init"),
 			huh.NewOption("Status of the latest backup", "status"),
-			huh.NewOption("Quit", ""),
+			huh.NewOption("Quit", "quit"),
 		).
 		Value(&choice)
 	if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
