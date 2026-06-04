@@ -1,0 +1,16 @@
+# scan flags a secret and reports a clean file as such
+exec dothaven scan secret.txt
+stdout '\[HIGH\] GitHub token'
+stdout 'Sensitivity report'
+
+exec dothaven scan clean.txt
+stdout 'No sensitive data found'
+
+# a missing path is an error
+! exec dothaven scan nope.txt
+stderr 'path not found'
+
+-- secret.txt --
+token=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+-- clean.txt --
+just some plain text with nothing sensitive

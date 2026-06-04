@@ -1,0 +1,8 @@
+# security writes a Markdown report to the chosen path
+exec dothaven security -o SECURITY.md secret.txt
+stdout 'Security report written'
+exists SECURITY.md
+grep 'GitHub token' SECURITY.md
+
+-- secret.txt --
+token=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

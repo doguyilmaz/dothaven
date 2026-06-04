@@ -1,0 +1,87 @@
+# GoReleaser config — single static binary, released to a Homebrew tap.
+# Validate locally with: goreleaser check
+version: 2
+
+project_name: dothaven
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: dothaven
+    main: ./cmd/dothaven
+    binary: dothaven
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Trim paths and embed the release version into main.version.
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: dothaven
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    # Ship only the binary + license/readme. Never bundle docs/, src/, configs.
+    files:
+      - LICENSE*
+      - README.md
+
+# Sign + notarize the macOS binaries (Developer ID + App Store Connect API key).
+# Conditional: only runs when the signing secret is present, so releases still
+# work before the secrets are configured. Cross-platform notarize is OSS (Quill).
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - dothaven
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Homebrew cask pushed to a separate tap repo (create doguyilmaz/homebrew-tap).
+#   Install:  brew install doguyilmaz/tap/dothaven
+#         or  brew tap doguyilmaz/tap && brew install dothaven
+# Casks distribute pre-built binaries (the modern replacement for the deprecated
+# `brews`). Casks are macOS-only; Linux users use `go install` or the release binary.
+homebrew_casks:
+  - name: dothaven
+    binaries:
+      - dothaven
+    homepage: "https://github.com/doguyilmaz/dothaven"
+    description: "Discover, back up, and migrate your machine's dev config (chezmoi + age)"
+    repository:
+      owner: doguyilmaz
+      name: homebrew-tap
+      # A PAT with contents:write on the tap repo (the default GITHUB_TOKEN can't push cross-repo).
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    # No quarantine workaround needed — the binary is signed + notarized above,
+    # so macOS Gatekeeper accepts it cleanly.
+
+release:
+  draft: false
+  prerelease: auto

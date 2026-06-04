@@ -1,0 +1,8 @@
+# version and help render
+exec dothaven --version
+stdout 'dev'
+
+exec dothaven --help
+stdout 'inventories your machine'
+stdout 'chezmoi-export'
+stdout 'collect'

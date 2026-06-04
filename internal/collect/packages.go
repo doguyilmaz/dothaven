@@ -1,0 +1,193 @@
+package collect
+
+import (
+	"encoding/json"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/doguyilmaz/dothaven/internal/snapshot"
+)
+
+// PkgItem is a parsed package name + version.
+type PkgItem struct {
+	Name    string
+	Version string
+}
+
+// NodeVersion is a parsed fnm entry.
+type NodeVersion struct {
+	Version   string
+	IsDefault bool
+}
+
+var bunTreeLine = regexp.MustCompile(`^\s*[├└]──\s*(.+?)\s*$`)
+var fnmStar = regexp.MustCompile(`^\s*\*`)
+var fnmSplit = regexp.MustCompile(`[\s,]+`)
+var fnmDefault = regexp.MustCompile(`\bdefault\b`)
+
+// splitSpec splits a package spec into name + version, preserving scoped names
+// (@scope/pkg@1.2.3). Mirrors the TS lastIndexOf("@") rule.
+func splitSpec(spec string) PkgItem {
+	at := strings.LastIndex(spec, "@")
+	if at <= 0 {
+		return PkgItem{Name: spec, Version: ""}
+	}
+	return PkgItem{Name: spec[:at], Version: spec[at+1:]}
+}
+
+func pkgSortByName(pkgs []PkgItem) {
+	sort.SliceStable(pkgs, func(i, j int) bool { return pkgs[i].Name < pkgs[j].Name })
+}
+
+func pkgsFromDeps(deps map[string]json.RawMessage) []PkgItem {
+	out := make([]PkgItem, 0, len(deps))
+	for name, raw := range deps {
+		if name == "" {
+			continue
+		}
+		var info struct {
+			Version string `json:"version"`
+		}
+		_ = json.Unmarshal(raw, &info)
+		out = append(out, PkgItem{Name: name, Version: info.Version})
+	}
+	pkgSortByName(out)
+	return out
+}
+
+// ParseNpmGlobal parses `npm ls -g --depth=0 --json`.
+func ParseNpmGlobal(jsonText string) []PkgItem {
+	var data struct {
+		Dependencies map[string]json.RawMessage `json:"dependencies"`
+	}
+	if err := json.Unmarshal([]byte(jsonText), &data); err != nil {
+		return []PkgItem{}
+	}
+	return pkgsFromDeps(data.Dependencies)
+}
+
+// ParsePnpmGlobal parses `pnpm ls -g --depth=0 --json` (array or object form).
+func ParsePnpmGlobal(jsonText string) []PkgItem {
+	trimmed := strings.TrimSpace(jsonText)
+	if trimmed == "" {
+		return []PkgItem{}
+	}
+	type node struct {
+		Dependencies map[string]json.RawMessage `json:"dependencies"`
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		var arr []node
+		if err := json.Unmarshal([]byte(trimmed), &arr); err != nil || len(arr) == 0 {
+			return []PkgItem{}
+		}
+		return pkgsFromDeps(arr[0].Dependencies)
+	}
+	var obj node
+	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+		return []PkgItem{}
+	}
+	return pkgsFromDeps(obj.Dependencies)
+}
+
+// ParseBunGlobal parses `bun pm ls -g` tree output (header line + `├──`/`└──` rows).
+func ParseBunGlobal(text string) []PkgItem {
+	out := []PkgItem{}
+	for _, line := range strings.Split(text, "\n") {
+		m := bunTreeLine.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		p := splitSpec(m[1])
+		if p.Name == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	pkgSortByName(out)
+	return out
+}
+
+// ParseFnmList parses `fnm ls` output (`* v20.20.2`, `* v24.16.0 default`, `* system`).
+func ParseFnmList(text string) []NodeVersion {
+	out := []NodeVersion{}
+	for _, line := range strings.Split(text, "\n") {
+		l := strings.TrimSpace(fnmStar.ReplaceAllString(line, ""))
+		if l == "" {
+			continue
+		}
+		tokens := fnmSplit.Split(l, -1)
+		version := ""
+		for _, t := range tokens {
+			if t != "" {
+				version = t
+				break
+			}
+		}
+		if version == "" {
+			continue
+		}
+		out = append(out, NodeVersion{Version: version, IsDefault: fnmDefault.MatchString(l)})
+	}
+	return out
+}
+
+func pkgItems(pkgs []PkgItem) []snapshot.Item {
+	out := make([]snapshot.Item, 0, len(pkgs))
+	for _, p := range pkgs {
+		raw := p.Name
+		cols := []string{p.Name}
+		if p.Version != "" {
+			raw = p.Name + "@" + p.Version
+			cols = []string{p.Name, p.Version}
+		}
+		out = append(out, snapshot.Item{Raw: raw, Columns: cols})
+	}
+	return out
+}
+
+// PackagesCollector gathers globally-installed packages from npm, bun, pnpm,
+// fnm node versions, and deno-installed binaries.
+func PackagesCollector(c Ctx) snapshot.Snapshot {
+	out := snapshot.Snapshot{}
+
+	if s, _ := c.Env.Run(c.Context, "npm", "ls", "-g", "--depth=0", "--json"); true {
+		if npm := ParseNpmGlobal(s); len(npm) > 0 {
+			out["packages.npm.global"] = snapshot.Section{Items: pkgItems(npm)}
+		}
+	}
+
+	if s, _ := c.Env.Run(c.Context, "bun", "pm", "ls", "-g"); true {
+		if bun := ParseBunGlobal(s); len(bun) > 0 {
+			out["packages.bun.global"] = snapshot.Section{Items: pkgItems(bun)}
+		}
+	}
+
+	if s, _ := c.Env.Run(c.Context, "pnpm", "ls", "-g", "--depth=0", "--json"); true {
+		if pnpm := ParsePnpmGlobal(s); len(pnpm) > 0 {
+			out["packages.pnpm.global"] = snapshot.Section{Items: pkgItems(pnpm)}
+		}
+	}
+
+	if s, _ := c.Env.Run(c.Context, "fnm", "ls"); true {
+		if versions := ParseFnmList(s); len(versions) > 0 {
+			items := make([]snapshot.Item, 0, len(versions))
+			for _, v := range versions {
+				if v.IsDefault {
+					items = append(items, snapshot.Item{Raw: v.Version + " (default)", Columns: []string{v.Version, "default"}})
+				} else {
+					items = append(items, snapshot.Item{Raw: v.Version, Columns: []string{v.Version}})
+				}
+			}
+			out["packages.node.fnm"] = snapshot.Section{Items: items}
+		}
+	}
+
+	if bins, err := c.Env.ListDir(c.Home + "/.deno/bin"); err == nil && len(bins) > 0 {
+		sorted := append([]string(nil), bins...)
+		sort.Strings(sorted)
+		out["packages.deno.bin"] = snapshot.Section{Items: toItems(sorted)}
+	}
+
+	return out
+}

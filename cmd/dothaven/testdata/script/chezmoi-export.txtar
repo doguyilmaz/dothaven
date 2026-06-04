@@ -1,0 +1,11 @@
+# chezmoi-export dry-run plans plain vs encrypted and never executes
+exec dothaven chezmoi-export
+stdout 'chezmoi-export plan'
+stdout 'add --encrypt'
+stdout 'Dry-run'
+! stdout 'Done\.'
+
+-- .zshrc --
+alias ll='ls -la'
+-- .npmrc --
+//registry.npmjs.org/:_authToken=npm_supersecret123456789012345

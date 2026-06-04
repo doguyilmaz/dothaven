@@ -1,0 +1,86 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/doguyilmaz/dothaven/internal/backup"
+	"github.com/doguyilmaz/dothaven/internal/registry"
+	"github.com/doguyilmaz/dothaven/internal/scan"
+	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/spf13/cobra"
+)
+
+// formatCategories renders a per-category count map as "shell (3), git (2)".
+func formatCategories(perCat map[string]int) string {
+	cats := make([]string, 0, len(perCat))
+	for c := range perCat {
+		cats = append(cats, c)
+	}
+	sort.Strings(cats)
+	parts := make([]string, len(cats))
+	for i, c := range cats {
+		parts[i] = fmt.Sprintf("%s (%d)", c, perCat[c])
+	}
+	return strings.Join(parts, ", ")
+}
+
+func newBackupCmd(env *sys.OS) *cobra.Command {
+	var noRedact, archive bool
+	var output string
+	var only, skip []string
+	c := &cobra.Command{
+		Use:   "backup",
+		Short: "Copy tracked config files into a timestamped backup",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			redact := !noRedact
+			dir := env.ResolveOutputDir(output)
+			host, _ := os.Hostname()
+			if host == "" {
+				host = "machine"
+			}
+			backupDir := filepath.Join(dir, fmt.Sprintf("backup-%s-%s", host, sys.Timestamp(time.Now())))
+
+			targets := registry.BackupTargets(env.Home(), registry.Entries)
+			res, err := backup.Run(targets, backupDir, backup.Options{Redact: redact, Only: only, Skip: skip})
+			if err != nil {
+				return err
+			}
+			if res.TotalFiles == 0 {
+				fmt.Println("No files found to backup.")
+				return nil
+			}
+
+			summary := formatCategories(res.PerCategory)
+			if archive {
+				archivePath := backupDir + ".tar.gz"
+				if _, err := env.Run(context.Background(), "tar", "czf", archivePath, "-C", dir, filepath.Base(backupDir)); err != nil {
+					return err
+				}
+				_ = os.RemoveAll(backupDir)
+				fmt.Printf("Archive saved to: %s\n  %d files across: %s\n", archivePath, res.TotalFiles, summary)
+			} else {
+				fmt.Printf("Backup saved to: %s\n  %d files across: %s\n", backupDir, res.TotalFiles, summary)
+			}
+
+			if redact {
+				if report := scan.FormatReport(scan.Summarize(res.ScanResults)); strings.TrimSpace(report) != "" {
+					fmt.Println(report)
+				}
+			}
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&noRedact, "no-redact", false, "keep raw values (skip secret redaction)")
+	c.Flags().BoolVar(&archive, "archive", false, "create a .tar.gz instead of a directory")
+	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/Downloads)")
+	c.Flags().StringSliceVar(&only, "only", nil, "only these categories (comma-separated)")
+	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories (comma-separated)")
+	return c
+}

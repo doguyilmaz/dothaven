@@ -18,8 +18,15 @@ ai/**/history.*
 # Comparison reports (temporary)
 reports/
 
-node_modules/
+# Go build artifacts
+/dothaven
+dist/
 
-# VitePress build/cache output
-docs/.vitepress/dist/
-docs/.vitepress/cache/
+# Hugo docs build output
+docs/public/
+docs/resources/
+docs/.hugo_build.lock
+
+# Local Claude settings (per-developer)
+.claude/settings.local.json
+.claude/worktrees/

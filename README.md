@@ -1,386 +1,90 @@
 # dothaven
 
-Collect, backup, restore, and diff machine configs across machines. Built on [Bun](https://bun.sh), outputs `.json` snapshots and structured file backups with built-in sensitivity scanning.
+Discover, back up, and migrate your machine's dev config — feeding [chezmoi](https://chezmoi.io) with age-encrypted secrets.
+
+dothaven inventories what's on your machine (shell, git, editors, SSH, cloud CLIs, Homebrew, global packages, runtimes, fonts, AI tooling), scans it for secrets, and prepares an encrypted hand-off to chezmoi so a clean-install machine comes back without losing a thing.
 
 | | |
 |---|---|
-| **Runtime** | [Bun](https://bun.sh) >= 1.0 (required) |
-| **Package** | `dothaven` — npm publish pending |
-| **Format** | Plain JSON (`.json`) — native serialization, zero runtime deps (in-tree `src/snapshot`) |
-| **Tests** | 290+ tests |
-| **Platforms** | macOS, Linux, Windows |
-| **Backbone** | [chezmoi](https://chezmoi.io) — optional, for `chezmoi-export` (storage + age encryption + apply) |
-
----
-
-## What It Does
-
-**Discover** what's on your machine — AI tools, shell, git, editors, SSH, cloud CLIs, global packages (npm/bun/pnpm/deno), language toolchains (go/rust/swift/xcode/android), fonts, and every `~/.*` dotfile. **Snapshot** it into a single parseable `.json` file. **Back up** real config files into a structured directory. **Restore** them on a new machine with conflict resolution and rollback. **Scan** for secrets and write a standalone security report. **Export to [chezmoi](https://chezmoi.io)** — encrypting secrets with age — and **doctor** a fresh machine for parity.
-
-### Hybrid model
-
-This tool is the **discovery + audit** layer; [chezmoi](https://chezmoi.io) is the **storage + encryption + apply** backbone. The tool knows *where* your configs live, classifies what's a secret, and feeds `chezmoi add`/`chezmoi add --encrypt`. chezmoi owns the private repo, age encryption, per-machine templating, and `apply`. You don't reimplement any of that.
-
----
+| **Binary** | Single static Go binary — no runtime to install |
+| **Platforms** | macOS & Linux · amd64 & arm64 |
+| **Backbone** | [chezmoi](https://chezmoi.io) + [age](https://age-encryption.org) for storage, encryption, and `apply` |
+| **Docs** | **https://doguyilmaz.github.io/dothaven** |
 
 ## Install
 
-> **Prerequisites:** [Bun](https://bun.sh) ≥ 1.0. For the `chezmoi-export` workflow also install [chezmoi](https://chezmoi.io) (`brew install chezmoi`) and configure an age key — see [docs/encryption](./docs/encryption.md).
-
 ```bash
-# Clone and run (works today)
-git clone https://github.com/doguyilmaz/dothaven.git
-cd dothaven && bun install
-bun bin/dothaven.ts collect
+# Homebrew
+brew install doguyilmaz/tap/dothaven
 
-# Once published to npm: bunx dothaven collect
+# Go
+go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest
+
+# From source
+git clone https://github.com/doguyilmaz/dothaven && cd dothaven && go build ./cmd/dothaven
 ```
 
----
+Running dothaven needs nothing else. The `chezmoi-export` and `init` commands additionally use [chezmoi](https://chezmoi.io) and a configured age key — see [Encryption & chezmoi](https://doguyilmaz.github.io/dothaven/docs/encryption/).
+
+## Quick start
+
+```bash
+dothaven collect                 # inventory the machine → timestamped JSON snapshot
+dothaven scan ~                  # scan a path for secrets (console)
+dothaven security ~              # write a Markdown security report
+dothaven chezmoi-export          # dry-run: plan plain vs --encrypt per file
+dothaven chezmoi-export --apply  # execute (needs chezmoi + age)
+dothaven doctor snapshot.json    # on a new machine: what's still missing?
+```
+
+## The hybrid model
+
+dothaven is the **discovery + audit + export** layer; chezmoi is the **storage + encryption + apply** backbone.
+
+| Stage | Owner |
+|---|---|
+| Discover the machine, snapshot installed config | dothaven |
+| Scan for secrets, redact by default | dothaven |
+| Build a `chezmoi add` plan + a `run_onchange` install script | dothaven |
+| Track files in a private source repo | chezmoi |
+| Encrypt the files marked secret | chezmoi + age |
+| Write files back into `$HOME` on a new machine | chezmoi |
+
+dothaven decides *what* to encrypt; chezmoi *performs* it. It is not itself an encryption or sync engine.
 
 ## Commands
 
-### `collect` — Machine snapshot
-
-```bash
-dothaven collect [--no-redact] [--slim] [-o path]
-```
-
-Generates a `.json` report with all detected configs. Runs all collectors in parallel via `Promise.allSettled`.
-
-| Flag | Effect |
-|------|--------|
-| `--no-redact` | Include sensitive values as-is |
-| `--slim` | Truncate content sections to 10 lines (AI-friendly, ~65% smaller) |
-| `-o path` | Custom output directory |
-
-Output: `<hostname>-YYYYMMDDHHMMSS.json`
-
-### `backup` — Structured file copy
-
-```bash
-dothaven backup [--no-redact] [--archive] [--only ai,shell] [--skip editor] [-o path]
-```
-
-Copies real config files into a categorized directory structure. Sensitivity scan runs before every write.
-
-| Flag | Effect |
-|------|--------|
-| `--archive` | Export as `.tar.gz` (uses system tar) |
-| `--only <categories>` | Include only these categories |
-| `--skip <categories>` | Exclude these categories |
-| `--no-redact` | Skip sensitivity redaction |
-| `-o path` | Custom output directory |
-
-Output: `backup-<hostname>-YYYYMMDDHHMMSS/`
-
-### `restore` — Restore from backup
-
-```bash
-dothaven restore <path> [--pick] [--dry-run]
-```
-
-Restores backed-up files to their original locations with safety features:
-
-- **Pre-restore snapshot**: saves conflicting files before overwrite (reversible via `dothaven restore`)
-- **Conflict prompt**: `o` overwrite / `s` skip / `d` show diff / `a` overwrite all / `l` skip all
-- **Redacted files**: automatically skipped (won't write `[REDACTED]` values)
-- **`.local` overrides**: `backup/shell/.zshrc.local` restores to `~/.zshrc.local`
-
-### `scan` — Sensitivity scanner
-
-```bash
-dothaven scan [path]
-```
-
-Standalone scan for secrets, tokens, and sensitive data. Scans directories recursively (skips `.git/`, `node_modules/`, files >1MB).
-
-Detects 27+ patterns across 3 severity levels. See [Sensitivity](#sensitivity-model) below.
-
-### `diff` — Backup vs live
-
-```bash
-dothaven diff [path] [--section <name>]
-```
-
-Color-coded comparison of backup state against current machine. Auto-finds latest backup if no path given. TTY-aware (no colors in pipes).
-
-### `status` — Quick summary
-
-```bash
-dothaven status
-```
-
-Shows backup age, modified/unchanged counts, lists changed files.
-
-### `compare` — Diff two reports
-
-```bash
-dothaven compare [file1] [file2]
-```
-
-Structured diff between two `.json` files. Without args, compares the newest two reports in `<cwd>/reports`.
-
-### `list` — Query a report
-
-```bash
-dothaven list <section>
-```
-
-Print a section from the latest report. Fuzzy matching: `brew`, `ai`, `cursor` all work.
-
-### `security` — Standalone security report
-
-```bash
-dothaven security [path] [-o SECURITY.md]
-```
-
-Scans a file or directory and writes a Markdown report grouping findings by severity with the action taken (redact / skip / keep) and line number — so you can see what's risky **before** syncing.
-
-### `chezmoi-export` — Feed chezmoi (with encryption)
-
-```bash
-dothaven chezmoi-export [--apply] [--pin] [--only a,b] [--skip c,d]
-```
-
-Plans `chezmoi add` for every managed config present on the machine, choosing **`--encrypt`** when an entry is high-sensitivity, declares a redact rule, *or* the scanner detects a HIGH secret inside it (including inside a directory) — so a secret is never added in plaintext (the **secret gate**). Also sweeps SSH private keys (encrypted), writes a `.chezmoiignore` for GnuPG runtime cruft, and generates a `run_onchange_` install script (brew + node + bun/pnpm/npm/cargo globals). Dry-run by default; `--apply` runs it (requires chezmoi + a configured age key). `--pin` keeps captured package versions (default: latest); `--only`/`--skip` filter by category or install group (`brew`, `packages`). See [docs/commands](./docs/commands.md#chezmoi-export).
-
-### `doctor` — New-machine parity check
-
-```bash
-dothaven doctor <snapshot.json>
-```
-
-Re-collects the current machine and lists what the snapshot has that's missing here (packages, toolchains, brew, fonts, editor extensions). Non-zero exit if anything is missing — confidence that a fresh machine got everything.
-
-### `init` — Guided bootstrap
-
-```bash
-dothaven init
-```
-
-Detects your chezmoi + age setup state and prints a tailored checklist (✓ done / → next command), offering to run the safe steps on confirmation. The age-key step is guided only (never auto-run). See [docs/commands](./docs/commands.md#init).
-
----
-
-## Config Registry
-
-All config sources are defined in a single registry (`src/registry/entries.ts`). Each entry specifies:
-
-- **ID**: section name (e.g., `ai.claude.settings`)
-- **Paths**: per-platform (`darwin`, `linux`, `win32`)
-- **Kind**: `file` | `dir` | `json-extract` | `file` + `metadata`
-- **Category**: powers `--only` / `--skip` filtering
-- **Sensitivity**: `low` / `medium` / `high`
-- **Redact**: optional custom redaction function
-
-### What's Tracked
-
-| Category | Configs |
-|----------|---------|
-| **ai** | Claude (settings, skills, CLAUDE.md), Cursor (MCP, skills), Gemini (settings, skills, GEMINI.md), Windsurf (MCP, skills) |
-| **shell** | `.zshrc`, `.zprofile`, `.zshenv`, `.bash_profile`, `.bashrc` |
-| **git** | `.gitconfig`, `.gitignore_global`, GitHub CLI config |
-| **editor** | Zed, Cursor, Neovim, Vim |
-| **terminal** | `.p10k.zsh` (metadata), `.tmux.conf` |
-| **ssh** | SSH config (auto-redacted) |
-| **npm** | `.npmrc` (auto-redacted) |
-| **bun** | `.bunfig.toml` |
-| **cloud** | AWS (`config`, `credentials` 🔒), kubeconfig 🔒, Docker config 🔒, gcloud configurations |
-| **secrets** | GnuPG home `~/.gnupg` 🔒 — carried encrypted, listed by name only |
-
-🔒 = high-sensitivity (encrypted on `chezmoi-export`).
-
-Plus runtime collectors (not registry-driven): **meta** (hostname, OS, date), **SSH hosts** (parsed table), **Ollama models**, **Homebrew** (formulae + casks + a restorable `Brewfile`), **packages** (npm/bun/pnpm globals, fnm node versions, deno bins), **runtimes** (go, rust, swift, zig, xcode, android SDK), **fonts** (user + system), **editor extensions** (VS Code, Cursor), **apps** (macOS `/Applications`, Raycast, AltTab), and a **home dotfile sweep** (classifies every `~/.*` as managed vs review).
-
----
-
-## Sensitivity Model
-
-Three-stage pipeline that runs automatically on `collect` and `backup`:
-
-1. **Detection**: regex pattern matching per line
-2. **Classification**: HIGH / MEDIUM / LOW severity
-3. **Action**: `skip` (drop file), `redact` (replace values), or `include` (keep as-is)
-
-### Detected Patterns (27+)
-
-| Severity | Patterns |
-|----------|----------|
-| **HIGH** | Private keys (PEM, PGP), auth tokens (npm, Bearer), GitHub tokens (`ghp_`, `gho_`, `github_pat_`), AI keys (OpenAI `sk-`, Anthropic `sk-ant-`), AWS keys (`AKIA...`, secret key), Google API/OAuth/Firebase, Cloudflare, Stripe (`sk_live_`, `pk_test_`), Mapbox, Twilio, SendGrid, Slack (`xoxb-`), Discord, Supabase, Vercel, JWT tokens, database URLs (postgres/mysql/mongodb/redis), generic `SECRET=`/`API_KEY=`/`PASSWORD=` patterns |
-| **MEDIUM** | IP addresses, email addresses |
-| **LOW** | Home directory paths (`/Users/<username>/`) |
-
-### Default Actions
-
-- **Private keys** → skip entire file
-- **Auth tokens, API keys, DB URLs** → redact values with `[REDACTED]`
-- **IP addresses** → redact
-- **Email addresses** → include (warn only)
-- **Home paths** → include
-
-Override with `--no-redact` when you control the destination.
-
----
-
-## Output Path Logic
-
-| Condition | Output Directory |
-|-----------|-----------------|
-| `-o /path` given | Explicit path |
-| Running from cloned repo (`.git` in cwd) | `<cwd>/reports/` |
-| Running as global CLI | `~/Downloads` |
-
----
-
-## Backup Directory Structure
-
-```
-backup-<hostname>-YYYYMMDDHHMMSS/
-├── ai/
-│   ├── claude/
-│   │   ├── settings.json
-│   │   ├── CLAUDE.md
-│   │   └── skills/
-│   ├── cursor/
-│   │   ├── mcp.json
-│   │   └── skills/
-│   ├── gemini/
-│   │   ├── settings.json
-│   │   ├── GEMINI.md
-│   │   └── skills/
-│   └── windsurf/
-│       ├── mcp_config.json
-│       └── skills/
-├── shell/
-│   └── .zshrc
-├── git/
-│   ├── .gitconfig
-│   ├── .gitignore_global
-│   └── gh/config.yml
-├── editor/
-│   ├── zed/settings.json
-│   ├── cursor/settings.json
-│   ├── nvim/init.lua
-│   └── .vimrc
-├── terminal/
-│   ├── .p10k.zsh
-│   └── .tmux.conf
-├── ssh/
-│   └── config              # redacted by default
-├── npm/
-│   └── .npmrc              # redacted by default
-└── bun/
-    └── .bunfig.toml
-```
-
-Only creates directories/files that actually exist on the machine.
-
----
-
-## Project Structure
-
-```
-dotfiles/
-├── bin/
-│   └── dotfiles.ts              # Entry point (Bun runtime check)
-├── src/
-│   ├── cli.ts                   # Command router (8 commands)
-│   ├── commands/
-│   │   ├── collect.ts           # .json snapshot generation
-│   │   ├── backup.ts            # Structured file backup
-│   │   ├── scan.ts              # Standalone sensitivity scan
-│   │   ├── restore.ts           # Restore from backup
-│   │   ├── diff.ts              # Backup vs live comparison
-│   │   ├── status.ts            # Quick backup summary
-│   │   ├── compare.ts           # Diff two .json files
-│   │   └── list.ts              # Fuzzy section query
-│   ├── snapshot/
-│   │   ├── types.ts             # Section, Snapshot, CollectorResult
-│   │   ├── serialize.ts         # serializeSnapshot / parseSnapshot (native JSON)
-│   │   └── compare.ts           # compareSnapshots / formatDiff (in-tree)
-│   ├── registry/
-│   │   ├── types.ts             # ConfigEntry, Platform, EntryKind
-│   │   ├── entries.ts           # 23 config entries (single source of truth)
-│   │   ├── resolve.ts           # Platform-aware path resolution
-│   │   ├── collector.ts         # Registry → Collector generator
-│   │   ├── backup.ts            # Registry → BackupSource generator
-│   │   └── index.ts             # Public exports
-│   ├── collectors/
-│   │   ├── types.ts             # CollectorContext, CollectorResult, Collector
-│   │   ├── meta.ts              # hostname, OS, date
-│   │   ├── ssh.ts               # Structured SSH host parsing
-│   │   ├── ollama.ts            # Ollama model list
-│   │   ├── apps.ts              # macOS apps, Raycast, AltTab
-│   │   └── homebrew.ts          # brew formulae + casks
-│   ├── scan/
-│   │   ├── types.ts             # ScanPattern, ScanResult, Severity
-│   │   ├── patterns.ts          # 27+ detection patterns (cached)
-│   │   ├── scanner.ts           # scanContent, scanFile, summarize
-│   │   ├── redactor.ts          # applyRedactions
-│   │   ├── report.ts            # Sensitivity report formatter
-│   │   └── index.ts
-│   ├── backup/
-│   │   ├── types.ts             # BackupEntry, BackupSource
-│   │   └── sources.ts           # Registry-generated backup sources
-│   ├── restore/
-│   │   ├── types.ts             # RestoreEntry, RestorePlan, FileStatus
-│   │   ├── plan.ts              # buildRestoreMap, buildRestorePlan
-│   │   ├── execute.ts           # executeRestore, createSnapshot
-│   │   ├── prompt.ts            # Interactive conflict prompts
-│   │   └── index.ts
-│   └── utils/
-│       ├── constants.ts         # REDACTION_MARKER
-│       ├── home.ts              # getHome() with validation
-│       ├── redact.ts            # SSH/npm custom redaction functions
-│       ├── resolve-output.ts    # Output directory resolution
-│       ├── find-backup.ts       # Latest backup finder + age calc
-│       └── timestamp.ts         # YYYYMMDDHHMMSS generator
-├── tests/                       # 296 tests across 35 files
-├── docs/                        # VitePress documentation site
-└── package.json
-```
-
----
+| | |
+|---|---|
+| `collect` | Inventory the machine into a JSON snapshot |
+| `doctor` | Diff a snapshot against this machine (non-zero exit on drift) |
+| `scan` / `security` | Find secrets (console / Markdown report) |
+| `backup` / `restore` | Copy tracked config files out and back, with a redaction gate |
+| `status` / `diff` | Compare a backup against the live machine |
+| `compare` / `list` | Diff two snapshots / print a snapshot section |
+| `chezmoi-export` | Plan (or `--apply`) adding configs to chezmoi, encrypting secrets |
+| `init` | Check the chezmoi + age prerequisites |
+
+Full reference, with every flag: **[Commands](https://doguyilmaz.github.io/dothaven/docs/commands/)**.
+
+## Security
+
+A pattern scanner classifies findings as HIGH/MEDIUM/LOW with an action of skip/redact/include. Secrets are redacted by default before anything is written, and a file containing a private key (a `skip`-action secret) is **never** written into a plaintext backup or snapshot. On export, high-sensitivity files are added with `chezmoi add --encrypt`. See [Security & redaction](https://doguyilmaz.github.io/dothaven/docs/security/).
+
+> The age key is the only thing protecting your encrypted files. Lose it and they are unrecoverable — back it up offline and never commit it.
 
 ## Development
 
 ```bash
-bun install
-bun test                    # 296 tests, 708 assertions
-bun bin/dothaven.ts <cmd>   # Run locally
+go build ./...      # build
+go test ./...       # unit + testscript e2e
+gofmt -l ./cmd ./internal   # formatting (CI gate)
 ```
 
-### Docs (VitePress)
+Layout: `cmd/dothaven` (entry point) + `internal/{snapshot,scan,sys,collect,registry,backup,restore,chezmoi,cli}`. See [Architecture](https://doguyilmaz.github.io/dothaven/docs/architecture/).
 
-```bash
-bun run docs:dev            # Dev server with hot reload
-bun run docs:build          # Build static site
-bun run docs:preview        # Preview build
-```
-
-Full documentation: [docs/](./docs/) (commands, architecture, sensitivity patterns, execution flows, behavior reference).
-
----
-
-## Platform Support
-
-| Platform | Path Expansion | Notes |
-|----------|---------------|-------|
-| **macOS** (`darwin`) | `~` → `$HOME`, `~/Library/...` | Full support, Homebrew/apps collectors |
-| **Linux** | `~` → `$HOME`, `~/.config/...` | Full support, no Homebrew/apps |
-| **Windows** (`win32`) | `%APPDATA%`, `%USERPROFILE%` | Registry paths defined, shell configs excluded |
-
----
-
-## Roadmap
-
-Completed: CLI rewrite, backup, sensitivity scan, restore, diff, config registry, multi-OS, status, `--slim`, parallel collectors, archive export.
-
-Next: `init` (GitHub template flow), plugin system for community collectors. See [PLAN.md](./PLAN.md) for full details.
-
----
+The docs site is Hugo + [Hextra](https://github.com/imfing/hextra): `cd docs && hugo server`.
 
 ## License
 
-`UNLICENSED`. Intended MIT for public release. See [package.json](./package.json).
+[MIT](./LICENSE).
