@@ -71,6 +71,15 @@ func (o *OS) Home() string             { return o.home }
 // Timestamp formats a time as YYYYMMDDHHMMSS (UTC) for output filenames.
 func Timestamp(t time.Time) string { return t.UTC().Format("20060102150405") }
 
+// WriteFile writes content to path, creating parent directories as needed. It is
+// the single mkdir-p+write primitive shared by backup and restore.
+func WriteFile(path, content string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
 // ResolveOutputDir decides where reports/backups land: an explicit path wins;
 // inside a git repo → <cwd>/reports; otherwise → ~/Downloads.
 func (o *OS) ResolveOutputDir(explicit string) string {

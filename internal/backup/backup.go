@@ -10,6 +10,7 @@ import (
 
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/scan"
+	"github.com/doguyilmaz/dothaven/internal/sys"
 )
 
 // Options configure a backup run.
@@ -70,13 +71,6 @@ func Run(targets []registry.BackupTarget, destRoot string, opts Options) (Result
 	return res, nil
 }
 
-func writeFile(path, content string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(content), 0o644)
-}
-
 // gate applies the redaction/skip decision to one file's content. It returns the
 // (possibly scrubbed) content and whether the file should be written at all — a
 // skip-action finding (e.g. a private key) is never copied to a plaintext backup.
@@ -105,7 +99,7 @@ func copyFile(t registry.BackupTarget, destRoot string, redact bool, results *[]
 	if !keep {
 		return 0, nil
 	}
-	if err := writeFile(filepath.Join(destRoot, t.Dest), body); err != nil {
+	if err := sys.WriteFile(filepath.Join(destRoot, t.Dest), body); err != nil {
 		return 0, err
 	}
 	return 1, nil
@@ -129,7 +123,7 @@ func copyDir(t registry.BackupTarget, destRoot string, redact bool, results *[]s
 		if !keep {
 			return nil
 		}
-		if werr := writeFile(filepath.Join(destRoot, destRel), body); werr != nil {
+		if werr := sys.WriteFile(filepath.Join(destRoot, destRel), body); werr != nil {
 			return werr
 		}
 		count++
