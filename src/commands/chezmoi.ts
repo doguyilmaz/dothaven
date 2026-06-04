@@ -2,7 +2,8 @@ import { getHome } from "../utils/home";
 import { registryEntries } from "../registry/entries";
 import { resolvePath } from "../registry/resolve";
 import type { ConfigEntry } from "../registry/types";
-import { scanFile } from "../scan";
+import { scanFile, scanDirectory, scanContent, applyRedactions } from "../scan";
+import type { ScanResult } from "../scan";
 import { defaultEnv } from "../collectors/env";
 import type { CollectorContext } from "../collectors/types";
 import { collectHomebrew } from "../collectors/homebrew";
@@ -17,16 +18,16 @@ export interface ChezmoiPlanItem {
 }
 
 /**
- * Decide, per registry entry that exists on disk, whether chezmoi should add it
- * plain or `--encrypt`. Encrypts when the entry is high-sensitivity OR when the
- * file's content is detected as containing secrets — so a secret can never be
- * added in plaintext (the secret gate). Pure given its injected probes.
+ * Decide, per registry entry that exists on disk, whether chezmoi adds it plain or `--encrypt`.
+ * Encrypts when the entry is high-sensitivity, declares a redact rule (its content is meant to be
+ * scrubbed, e.g. ssh.config), OR the scanner finds a real secret inside it — including inside a
+ * DIRECTORY entry (previously dirs bypassed the gate entirely). Pure given its injected probes.
  */
 export async function planChezmoiExport(
   entries: ConfigEntry[],
   home: string,
   fileExists: (p: string) => Promise<boolean>,
-  hasSecret: (p: string) => Promise<boolean>,
+  containsSecret: (path: string, isDir: boolean) => Promise<boolean>,
 ): Promise<ChezmoiPlanItem[]> {
   const items: ChezmoiPlanItem[] = [];
 
@@ -35,10 +36,10 @@ export async function planChezmoiExport(
     if (!src || !(await fileExists(src))) continue;
 
     const isDir = entry.kind.type === "dir";
-    let encrypt = entry.sensitivity === "high";
-    let reason = encrypt ? "sensitivity:high" : "plain";
+    let encrypt = entry.sensitivity === "high" || !!entry.redact;
+    let reason = entry.sensitivity === "high" ? "sensitivity:high" : encrypt ? "has redact rule" : "plain";
 
-    if (!encrypt && !isDir && (await hasSecret(src))) {
+    if (!encrypt && (await containsSecret(src, isDir))) {
       encrypt = true;
       reason = "secret detected";
     }
@@ -49,10 +50,17 @@ export async function planChezmoiExport(
   return items;
 }
 
-/** A file is treated as secret-bearing if the scanner would redact or skip it. */
-async function fileHasSecret(path: string): Promise<boolean> {
-  const result = await scanFile(path);
-  return !!result && (result.action === "redact" || result.action === "skip");
+/** True if the scanner finds a HIGH-severity secret in a file (or any file in a directory).
+ * HIGH-only so a benign MEDIUM hit (an IP/email in an otherwise-plain config) doesn't force encryption. */
+function hasHighFinding(result: ScanResult | null): boolean {
+  return !!result && result.findings.some((f) => f.pattern.severity === "HIGH");
+}
+
+async function containsSecret(path: string, isDir: boolean): Promise<boolean> {
+  if (isDir) {
+    return (await scanDirectory(path)).some((r) => hasHighFinding(r));
+  }
+  return hasHighFinding(await scanFile(path));
 }
 
 /**
@@ -155,8 +163,11 @@ async function gatherInstallManifest(ctx: CollectorContext): Promise<InstallMani
   const brew = await collectHomebrew(ctx);
   const pkgs = await collectPackages(ctx);
   const raws = (id: string) => (pkgs[id]?.items ?? []).map((i) => i.raw);
+  // The Brewfile is embedded verbatim into an UNENCRYPTED run_onchange script — redact any inline
+  // credentials (e.g. a private tap's https://user:pass@host remote) before it can land there.
+  const rawBrewfile = brew["apps.brew.bundle"]?.content;
   return {
-    brewfile: brew["apps.brew.bundle"]?.content ?? undefined,
+    brewfile: rawBrewfile ? applyRedactions(rawBrewfile, scanContent("Brewfile", rawBrewfile)) : undefined,
     nodeVersions: (pkgs["packages.node.fnm"]?.items ?? []).map((i) => i.columns[0]),
     bunGlobals: raws("packages.bun.global"),
     npmGlobals: raws("packages.npm.global"),
@@ -188,7 +199,7 @@ export async function chezmoiExport(args: string[]) {
 
   // Registry entries filtered by their category (--only / --skip).
   const entries = registryEntries.filter((e) => isSelected(e.category, only, skip));
-  const plan = await planChezmoiExport(entries, home, defaultEnv.fileExists, fileHasSecret);
+  const plan = await planChezmoiExport(entries, home, defaultEnv.fileExists, containsSecret);
 
   // SSH private keys aren't a single registry path (filenames vary) — sweep ~/.ssh by content.
   if (isSelected("ssh", only, skip)) {

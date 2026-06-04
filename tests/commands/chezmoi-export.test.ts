@@ -28,42 +28,58 @@ function entry(
 
 const HOME = "/fake/home";
 
+const sshConfig: ConfigEntry = {
+  id: "ssh.config",
+  name: "SSH Config",
+  paths: { darwin: "~/.ssh/config", linux: "~/.ssh/config" },
+  category: "ssh",
+  kind: { type: "file" },
+  backupDest: "ssh/config",
+  sensitivity: "medium",
+  redact: (c) => c, // declares a redact rule → must be encrypted on export
+};
+
 const entries: ConfigEntry[] = [
   entry("aws.creds", "~/.aws/credentials", "high"),
-  entry("zshrc", "~/.zshrc", "low"), // low, but contains a secret
+  entry("zshrc", "~/.zshrc", "low"), // low, but the scanner finds a secret in it
   entry("gitconfig", "~/.gitconfig", "low"), // low + clean
   entry("gnupg", "~/.gnupg", "high", "dir"),
+  entry("gcloud", "~/.config/gcloud/configurations", "medium", "dir"), // medium DIR, secret inside
+  sshConfig, // medium + redact rule
   entry("missing", "~/.missing", "low"),
 ];
 
 const fileExists = async (p: string) => !p.endsWith(".missing");
-const hasSecret = async (p: string) => p.endsWith("/.zshrc");
+// secret in ~/.zshrc (file) and inside the gcloud configurations dir
+const containsSecret = async (p: string, _isDir: boolean) => p.endsWith("/.zshrc") || p.endsWith("/configurations");
 
 describe("planChezmoiExport (secret gate)", () => {
-  test("encrypts high-sensitivity, secret-detected, and high dirs; plain for clean; skips missing", async () => {
-    const plan = await planChezmoiExport(entries, HOME, fileExists, hasSecret);
+  test("encrypts high / redact-rule / secret-in-file / secret-in-dir; plain for clean; skips missing", async () => {
+    const plan = await planChezmoiExport(entries, HOME, fileExists, containsSecret);
     const byId = Object.fromEntries(plan.map((p) => [p.id, p]));
 
     expect(byId["aws.creds"]).toMatchObject({ encrypt: true, reason: "sensitivity:high" });
     expect(byId["zshrc"]).toMatchObject({ encrypt: true, reason: "secret detected" });
     expect(byId["gitconfig"]).toMatchObject({ encrypt: false, reason: "plain" });
     expect(byId["gnupg"]).toMatchObject({ encrypt: true, kind: "dir" });
+    expect(byId["gcloud"]).toMatchObject({ encrypt: true, reason: "secret detected", kind: "dir" }); // dir gate
+    expect(byId["ssh.config"]).toMatchObject({ encrypt: true, reason: "has redact rule" }); // redact rule
     expect(byId["missing"]).toBeUndefined();
   });
 
-  test("never plain-adds a file the scanner flags as secret (the gate)", async () => {
-    const plan = await planChezmoiExport(entries, HOME, fileExists, hasSecret);
+  test("never plain-adds a file/dir the scanner flags as secret (the gate)", async () => {
+    const plan = await planChezmoiExport(entries, HOME, fileExists, containsSecret);
     const plain = plan.filter((p) => !p.encrypt);
-    expect(plain.every((p) => !p.src.endsWith("/.zshrc"))).toBe(true);
+    expect(plain.every((p) => !p.src.endsWith("/.zshrc") && !p.src.endsWith("/configurations"))).toBe(true);
   });
 
   test("resolves src paths against the given home", async () => {
-    const plan = await planChezmoiExport(entries, HOME, fileExists, hasSecret);
+    const plan = await planChezmoiExport(entries, HOME, fileExists, containsSecret);
     expect(plan.find((p) => p.id === "aws.creds")?.src).toBe("/fake/home/.aws/credentials");
   });
 
   test("nothing on disk → empty plan", async () => {
-    const plan = await planChezmoiExport(entries, HOME, async () => false, hasSecret);
+    const plan = await planChezmoiExport(entries, HOME, async () => false, containsSecret);
     expect(plan).toEqual([]);
   });
 });
