@@ -1,0 +1,65 @@
+# GoReleaser config — single static binary, released to a Homebrew tap.
+# Validate locally with: goreleaser check
+version: 2
+
+project_name: dothaven
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: dothaven
+    main: ./cmd/dothaven
+    binary: dothaven
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Trim paths and embed the release version into main.version.
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: dothaven
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Homebrew formula pushed to a separate tap repo (create doguyilmaz/homebrew-tap).
+# Install with: brew install doguyilmaz/tap/dothaven
+brews:
+  - name: dothaven
+    repository:
+      owner: doguyilmaz
+      name: homebrew-tap
+      # A PAT with write access to the tap repo (GITHUB_TOKEN can't push cross-repo).
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/doguyilmaz/dothaven"
+    description: "Discover, back up, and migrate your machine's dev config (chezmoi + age)"
+    license: "MIT"
+    install: |
+      bin.install "dothaven"
+    test: |
+      system "#{bin}/dothaven", "--version"
+
+release:
+  draft: false
+  prerelease: auto
