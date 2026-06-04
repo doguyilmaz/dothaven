@@ -4,6 +4,8 @@ import {
   findSshPrivateKeys,
   buildPackageInstallScript,
   crossManagerDuplicates,
+  pickInstallSpec,
+  parseExportArgs,
   gnupgHasSecretKeys,
   isSelected,
   filterBrewfile,
@@ -139,6 +141,39 @@ describe("buildPackageInstallScript", () => {
 
   test("deno bins alone → null (nothing executable to reinstall)", () => {
     expect(buildPackageInstallScript({ denoBins: ["deployctl"] })).toBeNull();
+  });
+});
+
+describe("pickInstallSpec (--pin)", () => {
+  const item = { raw: "eas-cli@16.19.2", columns: ["eas-cli", "16.19.2"] };
+
+  test("default (no pin) → bare name, installs latest", () => {
+    expect(pickInstallSpec(item, false)).toBe("eas-cli");
+  });
+
+  test("pin → captured name@version, reproducible", () => {
+    expect(pickInstallSpec(item, true)).toBe("eas-cli@16.19.2");
+  });
+
+  test("no columns (e.g. deno bin) → raw either way", () => {
+    const bin = { raw: "deployctl", columns: [] };
+    expect(pickInstallSpec(bin, false)).toBe("deployctl");
+    expect(pickInstallSpec(bin, true)).toBe("deployctl");
+  });
+});
+
+describe("parseExportArgs", () => {
+  test("flags: --apply, --pin, and trimmed --only/--skip", () => {
+    expect(parseExportArgs(["--apply", "--pin", "--only", "ai, ssh,", "--skip", " editor "])).toEqual({
+      apply: true,
+      pin: true,
+      only: ["ai", "ssh"],
+      skip: ["editor"],
+    });
+  });
+
+  test("defaults: dry-run, latest, no filters", () => {
+    expect(parseExportArgs([])).toEqual({ apply: false, pin: false, only: [], skip: [] });
   });
 });
 

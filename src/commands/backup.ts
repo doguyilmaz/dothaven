@@ -2,6 +2,7 @@ import { hostname } from "node:os";
 import { join, dirname } from "node:path";
 import { resolveOutputDir } from "../utils/resolve-output";
 import { getHome } from "../utils/home";
+import { splitList } from "../utils/args";
 import { generateTimestamp } from "../utils/timestamp";
 import { backupSources } from "../backup/sources";
 import { scanContent, summarize, formatReport, applyRedactions } from "../scan";
@@ -19,8 +20,8 @@ function parseArgs(args: string[]) {
     if (args[i] === "--no-redact") redact = false;
     if (args[i] === "--archive") archive = true;
     if (args[i] === "-o" && args[i + 1]) outputDir = args[++i];
-    if (args[i] === "--only" && args[i + 1]) only = args[++i].split(",");
-    if (args[i] === "--skip" && args[i + 1]) skip = args[++i].split(",");
+    if (args[i] === "--only" && args[i + 1]) only = splitList(args[++i]);
+    if (args[i] === "--skip" && args[i + 1]) skip = splitList(args[++i]);
   }
 
   return { redact, archive, outputDir, only, skip };

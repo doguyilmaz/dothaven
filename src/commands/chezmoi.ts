@@ -1,4 +1,5 @@
 import { getHome } from "../utils/home";
+import { splitList } from "../utils/args";
 import { registryEntries } from "../registry/entries";
 import { resolvePath } from "../registry/resolve";
 import type { ConfigEntry } from "../registry/types";
@@ -196,25 +197,34 @@ export function filterBrewfile(brewfile: string, skip: string[]): string {
     .trim();
 }
 
-async function gatherInstallManifest(ctx: CollectorContext): Promise<InstallManifest> {
+/**
+ * The token to install a package with. Default (`pin=false`) is the bare name → a fresh machine gets
+ * the current release of each global tool. `pin=true` keeps the captured `name@version` for a
+ * reproducible set (some setups deliberately freeze versions). Falls back to `raw` when there are no
+ * columns (e.g. a deno bin name, which has no version anyway).
+ */
+export function pickInstallSpec(item: { raw: string; columns: string[] }, pin: boolean): string {
+  return pin ? item.raw : (item.columns[0] ?? item.raw);
+}
+
+async function gatherInstallManifest(ctx: CollectorContext, pin = false): Promise<InstallManifest> {
   const brew = await collectHomebrew(ctx);
   const pkgs = await collectPackages(ctx);
   const runtimes = await collectRuntimes(ctx);
-  // Install with the bare NAME (columns[0]), not the captured name@version, so a fresh machine gets
-  // the current release of each global tool. Node runtimes are the exception — those keep their exact
-  // version (you want the specific node, not "latest").
-  const names = (src: CollectorResult, id: string) => (src[id]?.items ?? []).map((i) => i.columns[0]).filter(Boolean);
+  const specs = (src: CollectorResult, id: string) =>
+    (src[id]?.items ?? []).map((i) => pickInstallSpec(i, pin)).filter(Boolean);
   // The Brewfile is embedded verbatim into an UNENCRYPTED run_onchange script — redact any inline
   // credentials (e.g. a private tap's https://user:pass@host remote) before it can land there.
   const rawBrewfile = brew["apps.brew.bundle"]?.content;
   return {
+    // Node runtimes always keep their exact version — you want the specific node, not "latest".
     brewfile: rawBrewfile ? applyRedactions(rawBrewfile, scanContent("Brewfile", rawBrewfile)) : undefined,
     nodeVersions: (pkgs["packages.node.fnm"]?.items ?? []).map((i) => i.columns[0]),
-    bunGlobals: names(pkgs, "packages.bun.global"),
-    npmGlobals: names(pkgs, "packages.npm.global"),
-    pnpmGlobals: names(pkgs, "packages.pnpm.global"),
-    cargoCrates: names(runtimes, "runtimes.rust.crates"),
-    denoBins: names(pkgs, "packages.deno.bin"),
+    bunGlobals: specs(pkgs, "packages.bun.global"),
+    npmGlobals: specs(pkgs, "packages.npm.global"),
+    pnpmGlobals: specs(pkgs, "packages.pnpm.global"),
+    cargoCrates: specs(runtimes, "runtimes.rust.crates"),
+    denoBins: specs(pkgs, "packages.deno.bin"),
   };
 }
 
@@ -224,20 +234,22 @@ export function isSelected(category: string, only: string[], skip: string[]): bo
   return only.length === 0 || only.includes(category);
 }
 
-function parseExportArgs(args: string[]) {
+export function parseExportArgs(args: string[]) {
   let apply = false;
+  let pin = false;
   let only: string[] = [];
   let skip: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--apply") apply = true;
-    else if (args[i] === "--only" && args[i + 1]) only = args[++i].split(",");
-    else if (args[i] === "--skip" && args[i + 1]) skip = args[++i].split(",");
+    else if (args[i] === "--pin") pin = true;
+    else if (args[i] === "--only" && args[i + 1]) only = splitList(args[++i]);
+    else if (args[i] === "--skip" && args[i + 1]) skip = splitList(args[++i]);
   }
-  return { apply, only, skip };
+  return { apply, pin, only, skip };
 }
 
 export async function chezmoiExport(args: string[]) {
-  const { apply, only, skip } = parseExportArgs(args);
+  const { apply, pin, only, skip } = parseExportArgs(args);
   const home = getHome();
 
   // Registry entries filtered by their category (--only / --skip).
@@ -301,7 +313,7 @@ export async function chezmoiExport(args: string[]) {
   const wantPackages = isSelected("packages", only, skip);
   if (wantBrew || wantPackages) {
     try {
-      const manifest = await gatherInstallManifest({ redact: false, home });
+      const manifest = await gatherInstallManifest({ redact: false, home }, pin);
       const dupes = crossManagerDuplicates(manifest);
       if (dupes.length) {
         console.warn(
