@@ -93,4 +93,16 @@ describe("formatDiff (verified byte-identical to @dotformat/core)", () => {
     const out = formatDiff(compareSnapshots(s, structuredClone(s)), { color: false });
     expect(out).toBe(["[x]", "  = i", "  = k = v"].join("\n"));
   });
+
+  test("changesOnly: identical snapshots render empty (so 'No differences' is reachable)", () => {
+    const s = { x: sec("x", { items: [item("i")], pairs: { k: "v" }, content: "c" }) };
+    expect(formatDiff(compareSnapshots(s, structuredClone(s)), { color: false, changesOnly: true })).toBe("");
+  });
+
+  test("changesOnly: skips equal sections and common lines, keeps +/-/~", () => {
+    const left = { keep: sec("keep", { items: [item("a")] }), chg: sec("chg", { items: [item("x"), item("only")] }) };
+    const right = { keep: sec("keep", { items: [item("a")] }), chg: sec("chg", { items: [item("x")] }) };
+    const out = formatDiff(compareSnapshots(left, right), { color: false, changesOnly: true });
+    expect(out).toBe(["[chg]", "  + only  (only in left)"].join("\n")); // 'keep' gone, common 'x' gone
+  });
 });

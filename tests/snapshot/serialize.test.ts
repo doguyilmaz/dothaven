@@ -58,6 +58,18 @@ describe("parseSnapshot", () => {
     expect(() => parseSnapshot("[1,2,3]")).toThrow();
     expect(() => parseSnapshot("42")).toThrow();
   });
+
+  test('a "__proto__" section survives as an own property (not silently dropped)', () => {
+    const snap = parseSnapshot('{ "__proto__": { "content": "x" }, "real": { "content": "y" } }');
+    expect(Object.keys(snap).sort()).toEqual(["__proto__", "real"]);
+    expect(snap.__proto__.content).toBe("x");
+    expect(snap.real.content).toBe("y");
+  });
+
+  test("coerces non-string pair values to strings", () => {
+    const snap = parseSnapshot('{ "s": { "pairs": { "port": 8080, "flag": true, "n": null } } }');
+    expect(snap.s.pairs).toEqual({ port: "8080", flag: "true", n: "null" });
+  });
 });
 
 describe("round-trip", () => {

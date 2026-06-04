@@ -39,6 +39,15 @@ describe("redactSection (pairs + items + content)", () => {
     expect(section.content).not.toContain("npm_secrettoken123456");
   });
 
+  test("secret in a pair KEY drops the whole pair (key can't be masked in place)", () => {
+    const section = makeSection("ai.gemini.settings", {
+      pairs: { "GITHUB_TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "enabled", theme: "dark" },
+    });
+    redactSection("ai.gemini.settings", section, []);
+    expect(section.pairs.theme).toBe("dark");
+    expect(Object.keys(section.pairs)).toEqual(["theme"]); // secret-bearing key removed entirely
+  });
+
   test("clean section is untouched", () => {
     const section = makeSection("x", { pairs: { theme: "dark" }, items: [{ raw: "a", columns: ["a"] }] });
     expect(redactSection("x", section, [])).toBe(true);

@@ -48,16 +48,29 @@ export function parseSnapshot(text: string): Snapshot {
     throw new Error("Snapshot must be a JSON object of sections");
   }
 
-  const snapshot: Snapshot = {};
+  // Object.create(null): a "__proto__" section key must become an own property, not hit the prototype
+  // accessor (which would silently drop the section). Same for pairs below.
+  const snapshot: Snapshot = Object.create(null);
   for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
     const v = (value ?? {}) as Partial<Section>;
     snapshot[name] = {
       name,
-      pairs:
-        v.pairs && typeof v.pairs === "object" && !Array.isArray(v.pairs) ? (v.pairs as Record<string, string>) : {},
+      pairs: normalizePairs(v.pairs),
       items: Array.isArray(v.items) ? v.items.map(normalizeItem) : [],
       content: typeof v.content === "string" ? v.content : null,
     };
   }
   return snapshot;
+}
+
+function normalizePairs(value: unknown): Record<string, string> {
+  const pairs: Record<string, string> = Object.create(null);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    // Coerce non-string values (a JSON number/bool/null) to string — the model is string→string, and
+    // consumers (diff, redaction) assume strings.
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      pairs[k] = typeof v === "string" ? v : String(v);
+    }
+  }
+  return pairs;
 }

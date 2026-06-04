@@ -39,10 +39,19 @@ export async function compareCli(args: string[]) {
   const right = parseSnapshot(rightContent);
   const diff = compareSnapshots(left, right);
 
-  const leftLabel = files[0].split("/").pop()?.replace(".json", "") ?? "left";
-  const rightLabel = files[1].split("/").pop()?.replace(".json", "") ?? "right";
+  const leftLabel =
+    files[0]
+      .split("/")
+      .pop()
+      ?.replace(/\.json$/, "") ?? "left";
+  const rightLabel =
+    files[1]
+      .split("/")
+      .pop()
+      ?.replace(/\.json$/, "") ?? "right";
 
-  const output = formatDiff(diff, { leftLabel, rightLabel, color: true });
+  // changesOnly: show only what differs (and so identical snapshots render empty → "No differences").
+  const output = formatDiff(diff, { leftLabel, rightLabel, color: true, changesOnly: true });
 
   if (!output.trim()) {
     console.log("No differences found.");

@@ -38,6 +38,15 @@ export function redactSection(name: string, section: Section, scanResults: ScanR
   }
 
   for (const key of Object.keys(section.pairs)) {
+    // The KEY itself can carry a secret — e.g. a flattened JSON object whose key is a token
+    // (json-extract with fields:[]). A key can't be masked in place without losing it, so drop the
+    // whole pair when the key scans as sensitive.
+    const keyScan = scanContent(name, key);
+    if (keyScan.action !== "include") {
+      scanResults.push(keyScan);
+      delete section.pairs[key];
+      continue;
+    }
     const r = scanContent(`${name}.${key}`, section.pairs[key]);
     if (r.action !== "include") {
       scanResults.push(r);

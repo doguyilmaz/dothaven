@@ -97,16 +97,21 @@ export interface FormatDiffOptions {
   leftLabel?: string;
   rightLabel?: string;
   color?: boolean;
+  /** Skip equal sections and the dim "=" common lines, leaving only +/-/~ entries. With this set,
+   * two identical snapshots render as "" (so callers can detect "no differences"). Default false,
+   * which preserves the full listing. */
+  changesOnly?: boolean;
 }
 
 /**
- * Render a diff to text. Emits EVERY section (including equal ones, as dim "=" lines) in the diff's
- * insertion order — callers that want changes-only must filter first. No trailing newline.
+ * Render a diff to text in the diff's insertion order, no trailing newline. By default emits EVERY
+ * section (equal ones as dim "=" lines); pass `changesOnly` to show only what differs.
  */
 export function formatDiff(diff: SnapshotDiff, options: FormatDiffOptions = {}): string {
   const leftLabel = options.leftLabel ?? "left";
   const rightLabel = options.rightLabel ?? "right";
   const c = options.color ?? true;
+  const changesOnly = options.changesOnly ?? false;
   const green = c ? "\x1b[32m" : "";
   const red = c ? "\x1b[31m" : "";
   const yellow = c ? "\x1b[33m" : "";
@@ -116,13 +121,14 @@ export function formatDiff(diff: SnapshotDiff, options: FormatDiffOptions = {}):
   const lines: string[] = [];
   for (const section of Object.values(diff.sections)) {
     const { name, status } = section;
+    if (changesOnly && status === "equal") continue;
     if (status === "added") lines.push(`${green}+ [${name}]${reset}  (only in ${leftLabel})`);
     else if (status === "removed") lines.push(`${red}- [${name}]${reset}  (only in ${rightLabel})`);
     else lines.push(`[${name}]`);
 
     for (const item of section.items.added) lines.push(`  ${green}+ ${item}${reset}  (only in ${leftLabel})`);
     for (const item of section.items.removed) lines.push(`  ${red}- ${item}${reset}  (only in ${rightLabel})`);
-    for (const item of section.items.common) lines.push(`  ${dim}= ${item}${reset}`);
+    if (!changesOnly) for (const item of section.items.common) lines.push(`  ${dim}= ${item}${reset}`);
 
     for (const [k, v] of Object.entries(section.pairs.added)) {
       lines.push(`  ${green}+ ${k} = ${v}${reset}  (only in ${leftLabel})`);
@@ -133,9 +139,10 @@ export function formatDiff(diff: SnapshotDiff, options: FormatDiffOptions = {}):
     for (const [k, ch] of Object.entries(section.pairs.changed)) {
       lines.push(`  ${yellow}~ ${k} = ${ch.left} → ${ch.right}${reset}`);
     }
-    for (const [k, v] of Object.entries(section.pairs.common)) {
-      lines.push(`  ${dim}= ${k} = ${v}${reset}`);
-    }
+    if (!changesOnly)
+      for (const [k, v] of Object.entries(section.pairs.common)) {
+        lines.push(`  ${dim}= ${k} = ${v}${reset}`);
+      }
 
     const content = section.content;
     if (content.changed) {
