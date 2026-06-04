@@ -124,6 +124,13 @@ describe("parseFnmList", () => {
     ]);
   });
 
+  test("isolates version when extra aliases follow (multi-alias / comma-separated)", () => {
+    expect(parseFnmList("* v24.16.0 default, lts-latest")).toEqual([
+      { version: "v24.16.0", isDefault: true },
+    ]);
+    expect(parseFnmList("* v22.0.0 lts-jod")).toEqual([{ version: "v22.0.0", isDefault: false }]);
+  });
+
   test("empty → []", () => {
     expect(parseFnmList("")).toEqual([]);
   });

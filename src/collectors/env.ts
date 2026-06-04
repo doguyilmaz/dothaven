@@ -14,6 +14,8 @@ export interface CommandEnv {
   listDir: (path: string) => Promise<string[]>;
   /** Whether a path exists (file or directory). */
   fileExists: (path: string) => Promise<boolean>;
+  /** Read an environment variable (undefined if unset). */
+  getEnv: (name: string) => string | undefined;
 }
 
 export const defaultEnv: CommandEnv = {
@@ -33,4 +35,5 @@ export const defaultEnv: CommandEnv = {
       return false;
     }
   },
+  getEnv: (name) => process.env[name],
 };

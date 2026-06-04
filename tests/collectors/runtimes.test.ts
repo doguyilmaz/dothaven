@@ -58,6 +58,15 @@ describe("parseCargoCrates", () => {
       { name: "fd-find", version: "10.2.0" },
     ]);
   });
+  test("parses git- and path-source crates (source annotation before colon)", () => {
+    expect(
+      parseCargoCrates("cargo-watch v8.5.0 (https://github.com/watchexec/cargo-watch#a1b2c3d):\n    cargo-watch"),
+    ).toEqual([{ name: "cargo-watch", version: "8.5.0" }]);
+    expect(parseCargoCrates("localtool v0.2.0 (/Users/me/proj):\n    localtool")).toEqual([
+      { name: "localtool", version: "0.2.0" },
+    ]);
+  });
+
   test("empty (no global crates) → []", () => {
     expect(parseCargoCrates("")).toEqual([]);
   });
@@ -167,6 +176,19 @@ describe("makeRuntimesCollector", () => {
 
   test("no toolchains present → empty result", async () => {
     expect(await makeRuntimesCollector(fakeEnv())(ctx)).toEqual({});
+  });
+
+  test("honors ANDROID_HOME over the default macOS path", async () => {
+    const env = fakeEnv({
+      env: { ANDROID_HOME: "/opt/android-sdk" },
+      files: ["/opt/android-sdk"],
+      dirs: { "/opt/android-sdk/platforms": ["android-34"] },
+      run: (cmd) => (cmd.join(" ") === "adb version" ? "Android Debug Bridge version 1.0.41\nVersion 35.0.0" : ""),
+    });
+    const r = await makeRuntimesCollector(env)(ctx);
+    expect(r["runtimes.android"]?.pairs.sdk).toBe("/opt/android-sdk");
+    expect(r["runtimes.android"]?.pairs.platformTools).toBe("35.0.0");
+    expect(r["runtimes.android.platforms"]?.items.map((i) => i.raw)).toEqual(["android-34"]);
   });
 
   test("android section omitted when SDK dir absent", async () => {

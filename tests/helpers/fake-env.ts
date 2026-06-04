@@ -9,6 +9,8 @@ export interface FakeEnvSpec {
   dirs?: Record<string, string[]>;
   /** Paths that should report as existing. */
   files?: string[];
+  /** Environment variables exposed via getEnv. */
+  env?: Record<string, string>;
 }
 
 /** Build a deterministic CommandEnv for collector tests. */
@@ -17,5 +19,6 @@ export function fakeEnv(spec: FakeEnvSpec = {}): CommandEnv {
     run: async (cmd) => (spec.run ? spec.run(cmd) : spec.outputs?.[cmd[0]] ?? ""),
     listDir: async (path) => spec.dirs?.[path] ?? [],
     fileExists: async (path) => spec.files?.includes(path) ?? false,
+    getEnv: (name) => spec.env?.[name],
   };
 }

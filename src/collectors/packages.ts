@@ -68,7 +68,8 @@ export function parseFnmList(text: string): NodeVersion[] {
     .map((l) => l.replace(/^\s*\*/, "").trim())
     .filter(Boolean)
     .map((l) => ({
-      version: l.replace(/\bdefault\b/, "").trim(),
+      // Version is the first token; aliases (default, lts-*) may follow, comma- or space-separated.
+      version: l.split(/[\s,]+/).filter(Boolean)[0] ?? "",
       isDefault: /\bdefault\b/.test(l),
     }))
     .filter((v) => v.version);

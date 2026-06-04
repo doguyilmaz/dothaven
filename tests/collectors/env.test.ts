@@ -42,4 +42,11 @@ describe("defaultEnv (real IO)", () => {
     expect(await defaultEnv.fileExists(join(dir, "subdir"))).toBe(true);
     expect(await defaultEnv.fileExists(join(dir, "missing"))).toBe(false);
   });
+
+  test("getEnv reads process environment", () => {
+    process.env.DOTF_ENV_TEST = "yes";
+    expect(defaultEnv.getEnv("DOTF_ENV_TEST")).toBe("yes");
+    expect(defaultEnv.getEnv("DOTF_DEFINITELY_UNSET_XYZ")).toBeUndefined();
+    delete process.env.DOTF_ENV_TEST;
+  });
 });

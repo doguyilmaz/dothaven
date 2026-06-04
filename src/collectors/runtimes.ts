@@ -52,7 +52,8 @@ export function parseRustupToolchains(text: string): RustToolchain[] {
 export function parseCargoCrates(text: string): Crate[] {
   const crates: Crate[] = [];
   for (const line of text.split("\n")) {
-    const m = line.match(/^(\S+)\s+v(\S+):\s*$/);
+    // Registry: `ripgrep v14.1.0:` — git/path installs add a ` (source)` before the colon.
+    const m = line.match(/^(\S+)\s+v(\S+?)(?:\s+\([^)]*\))?:\s*$/);
     if (m) crates.push({ name: m[1], version: m[2] });
   }
   return crates;
@@ -147,7 +148,10 @@ export function makeRuntimesCollector(env: CommandEnv = defaultEnv): Collector {
     } catch {}
 
     try {
-      const sdk = `${ctx.home}/Library/Android/sdk`;
+      const sdk =
+        env.getEnv("ANDROID_HOME") ||
+        env.getEnv("ANDROID_SDK_ROOT") ||
+        `${ctx.home}/Library/Android/sdk`;
       if (await env.fileExists(sdk)) {
         const pairs: Record<string, string> = { sdk };
         const adb = parseAdbVersion(await env.run(["adb", "version"]));
