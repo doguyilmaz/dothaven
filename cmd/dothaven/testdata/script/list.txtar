@@ -1,0 +1,13 @@
+# list prints a fuzzy-matched section from the newest report in reports/
+exec dothaven list shell
+stdout 'shell\.zshrc'
+stdout 'alias ll'
+
+# an unmatched query says so
+exec dothaven list doesnotexist
+stdout 'No sections matching'
+
+-- reports/box-20240101000000.json --
+{
+  "shell.zshrc": { "content": "alias ll='ls -la'" }
+}

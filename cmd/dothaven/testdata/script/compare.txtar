@@ -1,0 +1,28 @@
+# identical snapshots report no differences
+exec dothaven compare same1.json same2.json
+stdout 'No differences found'
+
+# a changed section shows up in the diff
+exec dothaven compare a.json b.json
+stdout 'shell\.zshrc'
+
+# a missing file is an error
+! exec dothaven compare a.json missing.json
+stderr 'file not found'
+
+-- same1.json --
+{
+  "shell.zshrc": { "content": "alias ll='ls -la'" }
+}
+-- same2.json --
+{
+  "shell.zshrc": { "content": "alias ll='ls -la'" }
+}
+-- a.json --
+{
+  "shell.zshrc": { "content": "alias ll='ls -la'" }
+}
+-- b.json --
+{
+  "shell.zshrc": { "content": "alias ll='ls -lah'" }
+}
