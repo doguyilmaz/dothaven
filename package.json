@@ -7,12 +7,6 @@
     "dotfiles": "./bin/dotfiles.ts"
   },
   "scripts": {
-    "collect": "bun bin/dotfiles.ts collect",
-    "backup": "bun bin/dotfiles.ts backup",
-    "scan": "bun bin/dotfiles.ts scan",
-    "restore": "bun bin/dotfiles.ts restore",
-    "diff": "bun bin/dotfiles.ts diff",
-    "compare": "bun bin/dotfiles.ts compare",
     "test": "bun test",
     "format": "biome format --write src tests bin",
     "lint": "biome lint src tests bin",
@@ -21,9 +15,9 @@
     "bump:patch": "npm version patch",
     "bump:minor": "npm version minor",
     "bump:major": "npm version major",
-    "release:patch": "bun run bump:patch && bun publish",
-    "release:minor": "bun run bump:minor && bun publish",
-    "release:major": "bun run bump:major && bun publish",
+    "release:patch": "bun run bump:patch && bash setup/publish.sh",
+    "release:minor": "bun run bump:minor && bash setup/publish.sh",
+    "release:major": "bun run bump:major && bash setup/publish.sh",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

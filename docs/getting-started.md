@@ -43,17 +43,7 @@ Then run commands via:
 ```bash
 bun bin/dotfiles.ts collect
 bun bin/dotfiles.ts backup
-```
-
-Or use the npm script shortcuts:
-
-```bash
-bun run collect
-bun run backup
-bun run scan
-bun run restore
-bun run diff
-bun run compare
+# …every command runs the same way: bun bin/dotfiles.ts <command>
 ```
 
 ### Option C: Global install
