@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { planChezmoiExport } from "../../src/commands/chezmoi";
+import { planChezmoiExport, findSshPrivateKeys } from "../../src/commands/chezmoi";
 import type { ConfigEntry } from "../../src/registry/types";
 
 function entry(
@@ -58,5 +58,22 @@ describe("planChezmoiExport (secret gate)", () => {
   test("nothing on disk → empty plan", async () => {
     const plan = await planChezmoiExport(entries, HOME, async () => false, hasSecret);
     expect(plan).toEqual([]);
+  });
+});
+
+describe("findSshPrivateKeys", () => {
+  test("selects key files by content, skips .pub and non-keys", async () => {
+    const listDir = async (p: string) =>
+      p.endsWith("/.ssh") ? ["id_ed25519", "id_ed25519.pub", "config", "known_hosts", "work.key", "backup.zip"] : [];
+    const isPriv = async (p: string) => p.endsWith("/id_ed25519") || p.endsWith("/work.key");
+    expect(await findSshPrivateKeys("/home/u", listDir, isPriv)).toEqual([
+      "/home/u/.ssh/id_ed25519",
+      "/home/u/.ssh/work.key",
+    ]);
+  });
+
+  test("no private keys → []", async () => {
+    const listDir = async () => ["config", "known_hosts"];
+    expect(await findSshPrivateKeys("/h", listDir, async () => false)).toEqual([]);
   });
 });

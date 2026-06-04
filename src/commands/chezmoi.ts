@@ -52,9 +52,43 @@ async function fileHasSecret(path: string): Promise<boolean> {
   return !!result && (result.action === "redact" || result.action === "skip");
 }
 
+/**
+ * SSH private keys in ~/.ssh, detected by content (a private-key header) rather than
+ * filename — so it catches id_ed25519, id_rsa, custom *.key, etc. Skips .pub files.
+ */
+export async function findSshPrivateKeys(
+  home: string,
+  listDir: (p: string) => Promise<string[]>,
+  isPrivateKey: (p: string) => Promise<boolean>,
+): Promise<string[]> {
+  const dir = `${home}/.ssh`;
+  const keys: string[] = [];
+  for (const name of await listDir(dir)) {
+    if (name.endsWith(".pub")) continue;
+    const path = `${dir}/${name}`;
+    if (await isPrivateKey(path)) keys.push(path);
+  }
+  return keys.sort();
+}
+
+async function isSshPrivateKey(path: string): Promise<boolean> {
+  const result = await scanFile(path);
+  return (
+    !!result && result.findings.some((f) => f.pattern.id === "private-key-pem" || f.pattern.id === "pgp-private-key")
+  );
+}
+
 export async function chezmoiExport(args: string[]) {
   const apply = args.includes("--apply");
-  const plan = await planChezmoiExport(registryEntries, getHome(), defaultEnv.fileExists, fileHasSecret);
+  const home = getHome();
+  const plan = await planChezmoiExport(registryEntries, home, defaultEnv.fileExists, fileHasSecret);
+
+  // SSH private keys aren't a single registry path (filenames vary) — sweep ~/.ssh by content.
+  for (const key of await findSshPrivateKeys(home, defaultEnv.listDir, isSshPrivateKey)) {
+    if (!plan.some((p) => p.src === key)) {
+      plan.push({ id: "ssh.key", src: key, kind: "file", encrypt: true, reason: "ssh private key" });
+    }
+  }
 
   if (plan.length === 0) {
     console.log("Nothing to export — no managed configs found on this machine.");

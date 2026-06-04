@@ -4,7 +4,7 @@ import { registryEntries } from "../../src/registry/entries";
 const byId = (id: string) => registryEntries.find((e) => e.id === id);
 
 describe("cloud + secret registry entries", () => {
-  test("credential files are high sensitivity (encrypted on chezmoi-export)", () => {
+  test("credential files/dirs are high sensitivity (encrypted on chezmoi-export)", () => {
     expect(byId("cloud.aws.credentials")?.sensitivity).toBe("high");
     expect(byId("cloud.kube.config")?.sensitivity).toBe("high");
     expect(byId("cloud.docker.config")?.sensitivity).toBe("high");
@@ -15,7 +15,7 @@ describe("cloud + secret registry entries", () => {
     expect(byId("cloud.aws.config")?.sensitivity).toBe("medium");
   });
 
-  test("gnupg + gcloud configurations are directories (names listed, encrypted on export)", () => {
+  test("gnupg + gcloud configurations are directories (declarative, no-op until present)", () => {
     expect(byId("secrets.gnupg")?.kind.type).toBe("dir");
     expect(byId("cloud.gcloud.configurations")?.kind.type).toBe("dir");
   });

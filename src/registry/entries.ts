@@ -354,6 +354,8 @@ export const registryEntries: ConfigEntry[] = [
 
   // === Secrets (carried encrypted, never plaintext) ===
   {
+    // Declarative: a no-op until ~/.gnupg exists with real keys. Kept so GPG is
+    // captured automatically if/when you start signing commits or encrypting.
     id: "secrets.gnupg",
     name: "GnuPG home",
     paths: { darwin: "~/.gnupg", linux: "~/.gnupg" },
