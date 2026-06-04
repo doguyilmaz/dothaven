@@ -1,7 +1,7 @@
 {
   "name": "@dotformat/cli",
   "version": "0.3.3",
-  "description": "Collect, backup, restore, scan, and diff machine configs across machines",
+  "description": "Renamed to dothaven — use that instead.",
   "type": "module",
   "bin": {
     "dotfiles": "./bin/dotfiles.ts"

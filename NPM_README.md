@@ -1,11 +1,7 @@
-# @dotformat/cli
+# @dotformat/cli — renamed to `dothaven`
 
-Personal dotfiles CLI — collect, sync, and manage configs across machines.
-
-## Usage
+This package has been **renamed to [`dothaven`](https://github.com/doguyilmaz/dothaven)**. Please use that instead:
 
 ```bash
-bunx @dotformat/cli
+npm i dothaven
 ```
-
-Generates a report of all installed AI skills, MCP servers, plugins, shell config, git config, and editor settings.
