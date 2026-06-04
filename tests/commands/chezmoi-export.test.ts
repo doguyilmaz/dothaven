@@ -1,5 +1,10 @@
 import { test, expect, describe } from "bun:test";
-import { planChezmoiExport, findSshPrivateKeys, buildPackageInstallScript } from "../../src/commands/chezmoi";
+import {
+  planChezmoiExport,
+  findSshPrivateKeys,
+  buildPackageInstallScript,
+  gnupgHasSecretKeys,
+} from "../../src/commands/chezmoi";
 import type { ConfigEntry } from "../../src/registry/types";
 
 function entry(
@@ -103,5 +108,17 @@ describe("buildPackageInstallScript", () => {
     expect(script).not.toContain("brew bundle");
     expect(script).not.toContain("fnm install");
     expect(script).not.toContain("add -g");
+  });
+});
+
+describe("gnupgHasSecretKeys", () => {
+  test("true when private-keys-v1.d holds *.key files", async () => {
+    const listDir = async (p: string) => (p.endsWith("/private-keys-v1.d") ? ["ABC123.key", "DEF456.key"] : []);
+    expect(await gnupgHasSecretKeys("/h", listDir)).toBe(true);
+  });
+
+  test("false when empty or only non-key files (just cruft)", async () => {
+    expect(await gnupgHasSecretKeys("/h", async () => [])).toBe(false);
+    expect(await gnupgHasSecretKeys("/h", async () => ["README", "pubring.db"])).toBe(false);
   });
 });

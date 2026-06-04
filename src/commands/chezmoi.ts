@@ -131,6 +131,12 @@ export function buildPackageInstallScript(m: InstallManifest): string {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+/** gnupg is worth carrying only if it holds real secret keys (private-keys-v1.d/*.key); otherwise
+ * `chezmoi add ~/.gnupg` just captures lock-file/runtime cruft. */
+export async function gnupgHasSecretKeys(home: string, listDir: (p: string) => Promise<string[]>): Promise<boolean> {
+  return (await listDir(`${home}/.gnupg/private-keys-v1.d`)).some((f) => f.endsWith(".key"));
+}
+
 async function gatherInstallManifest(ctx: CollectorContext): Promise<InstallManifest> {
   const brew = await collectHomebrew(ctx);
   const pkgs = await collectPackages(ctx);
@@ -154,6 +160,12 @@ export async function chezmoiExport(args: string[]) {
     if (!plan.some((p) => p.src === key)) {
       plan.push({ id: "ssh.key", src: key, kind: "file", encrypt: true, reason: "ssh private key" });
     }
+  }
+
+  // Drop the gnupg dir unless it has real secret keys — avoids carrying lock-file/runtime cruft.
+  if (!(await gnupgHasSecretKeys(home, defaultEnv.listDir))) {
+    const i = plan.findIndex((p) => p.id === "secrets.gnupg");
+    if (i >= 0) plan.splice(i, 1);
   }
 
   if (plan.length === 0) {
