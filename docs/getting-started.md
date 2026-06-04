@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-`@dotformat/cli` requires the [Bun](https://bun.sh) runtime (>= 1.0). Install it:
+`dothaven` requires the [Bun](https://bun.sh) runtime (>= 1.0). Install it:
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
@@ -23,9 +23,9 @@ The CLI uses `Bun.file()`, `Bun.$`, `Bun.Glob`, `Bun.hash`, and `Bun.color` thro
 ### Option A: Run directly (no clone)
 
 ```bash
-bunx @dotformat/cli collect
-bunx @dotformat/cli backup
-bunx @dotformat/cli scan ~/.ssh/config
+bunx dothaven collect
+bunx dothaven backup
+bunx dothaven scan ~/.ssh/config
 ```
 
 This downloads the package on first run and caches it. Good for quick one-off snapshots.
@@ -33,8 +33,8 @@ This downloads the package on first run and caches it. Good for quick one-off sn
 ### Option B: Clone the repository
 
 ```bash
-git clone https://github.com/doguyilmaz/dotfiles.git
-cd dotfiles
+git clone https://github.com/doguyilmaz/dothaven.git
+cd dothaven
 bun install
 ```
 
@@ -59,7 +59,7 @@ bun run compare
 ### Option C: Global install
 
 ```bash
-bun install -g @dotformat/cli
+bun install -g dothaven
 dotfiles collect
 ```
 

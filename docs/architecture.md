@@ -90,7 +90,7 @@ dotfiles/
 │
 ├── PLAN.md                          # Master plan and roadmap
 ├── CLAUDE.md                        # Project-level Claude Code instructions
-└── package.json                     # @dotformat/cli package definition
+└── package.json                     # dothaven package definition
 ```
 
 ## Type System

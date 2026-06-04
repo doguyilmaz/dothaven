@@ -33,7 +33,7 @@
 Guided onboarding for new users:
 
 ```bash
-bunx @dotformat/cli init
+bunx dothaven init
 # → "Create a private GitHub repo? (y/n)"
 # → gh repo create my-dotfiles --private --template dotformat/template
 # → cd my-dotfiles && dotfiles backup

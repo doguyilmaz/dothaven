@@ -4,7 +4,7 @@
 
 **Runtime:** Bun (required) — uses `Bun.file()`, `Bun.$`, `Bun.Glob` throughout
 **Depends on:** native JSON (zero deps) — in-tree `src/snapshot` (parseSnapshot, serializeSnapshot, compareSnapshots, formatDiff)
-**Package:** `@dotformat/cli`
+**Package:** `dothaven`
 
 ---
 
@@ -355,7 +355,7 @@ const registry: ConfigEntry[] = [
 ### New user (no repo)
 
 ```bash
-bunx @dotformat/cli init
+bunx dothaven init
   → "Create a private GitHub repo? (y/n)"
   → gh repo create my-dotfiles --private --template dotformat/template
   → cd my-dotfiles

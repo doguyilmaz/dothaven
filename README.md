@@ -1,11 +1,11 @@
-# @dotformat/cli
+# dothaven
 
 Collect, backup, restore, and diff machine configs across machines. Built on [Bun](https://bun.sh), outputs `.json` snapshots and structured file backups with built-in sensitivity scanning.
 
 | | |
 |---|---|
 | **Runtime** | [Bun](https://bun.sh) >= 1.0 (required) |
-| **Package** | [`@dotformat/cli`](https://www.npmjs.com/package/@dotformat/cli) |
+| **Package** | `dothaven` — npm publish pending |
 | **Format** | Plain JSON (`.json`) — native serialization, zero runtime deps (in-tree `src/snapshot`) |
 | **Tests** | 290+ tests |
 | **Platforms** | macOS, Linux, Windows |
@@ -28,13 +28,12 @@ This tool is the **discovery + audit** layer; [chezmoi](https://chezmoi.io) is t
 > **Prerequisites:** [Bun](https://bun.sh) ≥ 1.0. For the `chezmoi-export` workflow also install [chezmoi](https://chezmoi.io) (`brew install chezmoi`) and configure an age key — see [docs/encryption](./docs/encryption.md).
 
 ```bash
-# Run directly (no install)
-bunx @dotformat/cli collect
-
-# Or clone and run
-git clone https://github.com/doguyilmaz/dotfiles.git
-cd dotfiles && bun install
+# Clone and run (works today)
+git clone https://github.com/doguyilmaz/dothaven.git
+cd dothaven && bun install
 bun bin/dotfiles.ts collect
+
+# Once published to npm: bunx dothaven collect
 ```
 
 ---

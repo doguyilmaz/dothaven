@@ -3,7 +3,7 @@
 All commands are available via:
 
 ```bash
-bunx @dotformat/cli <command>
+bunx dothaven <command>
 # or from a clone:
 bun bin/dotfiles.ts <command>
 ```

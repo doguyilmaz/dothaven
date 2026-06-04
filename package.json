@@ -1,6 +1,6 @@
 {
-  "name": "@dotformat/cli",
-  "version": "0.3.3",
+  "name": "dothaven",
+  "version": "0.4.0",
   "description": "Collect, backup, restore, scan, and diff machine configs across machines",
   "type": "module",
   "bin": {
@@ -45,9 +45,9 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/doguyilmaz/dotfiles.git"
+    "url": "git+https://github.com/doguyilmaz/dothaven.git"
   },
-  "homepage": "https://doguyilmaz.github.io/dotfiles",
+  "homepage": "https://doguyilmaz.github.io/dothaven",
   "dependencies": {},
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",

@@ -265,8 +265,8 @@ This supports the common dotfiles pattern of having `~/.zshrc` source a machine-
 ### Initial Setup (New Repo)
 
 ```bash
-git clone https://github.com/you/dotfiles.git
-cd dotfiles
+git clone https://github.com/you/dothaven.git
+cd dothaven
 bun install
 
 # Back up current machine
@@ -297,8 +297,8 @@ git add . && git commit -m "update configs"
 ### New Machine Setup
 
 ```bash
-git clone https://github.com/you/dotfiles.git
-cd dotfiles
+git clone https://github.com/you/dothaven.git
+cd dothaven
 bun install
 
 # Preview what would be restored

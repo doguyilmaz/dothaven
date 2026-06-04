@@ -37,10 +37,10 @@ encryption = "age"
 
 ```bash
 # Full inventory snapshot (packages, toolchains, fonts, brew, every ~/.* dotfile)
-bunx @dotformat/cli collect
+bunx dothaven collect
 
 # Security report — what's risky before you sync anything
-bunx @dotformat/cli security ~ -o ~/SECURITY.md
+bunx dothaven security ~ -o ~/SECURITY.md
 ```
 
 Review `SECURITY.md` and the snapshot's `home.dotfiles.review` section — it surfaces obscure
@@ -55,8 +55,8 @@ files; `doctor` and `compare` use them later.
 
 ```bash
 chezmoi init                         # creates the source repo at ~/.local/share/chezmoi
-bunx @dotformat/cli chezmoi-export   # DRY RUN — review the plan (what's plain vs 🔒 encrypted)
-bunx @dotformat/cli chezmoi-export --apply
+bunx dothaven chezmoi-export   # DRY RUN — review the plan (what's plain vs 🔒 encrypted)
+bunx dothaven chezmoi-export --apply
 ```
 
 `chezmoi-export` adds every managed config, choosing `--encrypt` for high-sensitivity entries
@@ -116,7 +116,7 @@ fnm install <each version>           # from packages.node.fnm
 ## Phase 6 — Verify parity
 
 ```bash
-bunx @dotformat/cli doctor old-machine.json
+bunx dothaven doctor old-machine.json
 ```
 
 Lists anything the old machine had that's still missing here (packages, toolchains, fonts,

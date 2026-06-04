@@ -3,10 +3,10 @@ import { withMermaid } from 'vitepress-plugin-mermaid';
 
 export default withMermaid(
   defineConfig({
-    title: '@dotformat/cli',
+    title: 'dothaven',
     description: 'Collect, backup, restore, and diff machine configs across machines',
     lang: 'en-US',
-    base: '/dotfiles/',
+    base: '/dothaven/',
     appearance: 'dark',
     cleanUrls: true,
     lastUpdated: true,
@@ -57,7 +57,7 @@ export default withMermaid(
           ],
         },
       ],
-      socialLinks: [{ icon: 'github', link: 'https://github.com/doguyilmaz/dotfiles' }],
+      socialLinks: [{ icon: 'github', link: 'https://github.com/doguyilmaz/dothaven' }],
     },
   }),
 );

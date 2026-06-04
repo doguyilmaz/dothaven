@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: '@dotformat/cli'
+  name: 'dothaven'
   text: Machine Identity CLI
   tagline: Collect, backup, restore, and diff your configs across machines.
   actions:
@@ -32,13 +32,13 @@ features:
 
 ```bash
 # Snapshot your machine
-bunx @dotformat/cli collect
+bunx dothaven collect
 
 # Back up real files
-bunx @dotformat/cli backup
+bunx dothaven backup
 
 # Restore on a new machine
-bunx @dotformat/cli restore ./backup --pick --dry-run
+bunx dothaven restore ./backup --pick --dry-run
 ```
 
 ## What's in a Snapshot?
