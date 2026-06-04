@@ -38,6 +38,29 @@ func Real() *OS {
 // block the whole run. CommandContext SIGKILLs the child when it fires.
 const CommandTimeout = 30 * time.Second
 
+// maxCmdOutput caps captured stdout so a misbehaving tool can't stream
+// unbounded data into memory. Tool output is line-oriented and parsed; 16 MiB
+// is far more than any real listing.
+const maxCmdOutput = 16 << 20
+
+// capBuffer collects up to cap bytes and silently drops the rest, reporting
+// every write as fully consumed so the child never sees a short-write/EPIPE.
+type capBuffer struct {
+	buf bytes.Buffer
+	cap int
+}
+
+func (c *capBuffer) Write(p []byte) (int, error) {
+	if room := c.cap - c.buf.Len(); room > 0 {
+		if len(p) > room {
+			c.buf.Write(p[:room])
+		} else {
+			c.buf.Write(p)
+		}
+	}
+	return len(p), nil
+}
+
 func (o *OS) Run(ctx context.Context, args ...string) (string, error) {
 	if len(args) == 0 {
 		return "", errors.New("empty command")
@@ -45,16 +68,16 @@ func (o *OS) Run(ctx context.Context, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, CommandTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	out := &capBuffer{cap: maxCmdOutput}
+	cmd.Stdout = out
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return out.String(), nil // tolerate non-zero exit, keep stdout
+			return out.buf.String(), nil // tolerate non-zero exit, keep stdout
 		}
-		return out.String(), err // spawn failure (command not found, ctx cancelled)
+		return out.buf.String(), err // spawn failure (command not found, ctx cancelled)
 	}
-	return out.String(), nil
+	return out.buf.String(), nil
 }
 
 func (o *OS) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }

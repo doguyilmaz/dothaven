@@ -9,7 +9,10 @@ import (
 
 var actionPriority = map[Action]int{Skip: 3, Redact: 2, Include: 1}
 
-const maxFileSize = 1 << 20 // 1 MiB
+// MaxFileSize bounds how much of a file scanning will read into memory. Files
+// larger than this are skipped — secrets live in small config files, and an
+// uncapped read is a memory-exhaustion vector on an attacker-supplied tree.
+const MaxFileSize = 1 << 20 // 1 MiB
 
 // ScanContent scans text line by line against every pattern. The result's
 // Action is the highest-priority action among the findings (skip > redact >
@@ -32,9 +35,12 @@ func ScanContent(path, content string) Result {
 	return Result{Path: path, Findings: findings, Action: action}
 }
 
-// ScanFile scans a file's contents. A missing or unreadable path returns nil
-// (callers may pass any path defensively).
+// ScanFile scans a file's contents. A missing/unreadable path, or one larger
+// than MaxFileSize, returns nil (callers may pass any path defensively).
 func ScanFile(path string) *Result {
+	if info, err := os.Stat(path); err != nil || info.Size() > MaxFileSize {
+		return nil
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -57,7 +63,7 @@ func ScanDir(dir string) []Result {
 			}
 			return nil
 		}
-		if info, err := d.Info(); err == nil && info.Size() > maxFileSize {
+		if info, err := d.Info(); err == nil && info.Size() > MaxFileSize {
 			return nil
 		}
 		if r := ScanFile(path); r != nil {

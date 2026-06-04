@@ -105,7 +105,20 @@ func gate(scanPath, body string, redact bool, entryRedact func(string) string, r
 	return body, true
 }
 
+// maxBackupFileSize caps a single file copied into a backup. Config files are
+// small; a larger file is anomalous and is skipped rather than read whole into
+// memory (and, unscanned, it could smuggle a secret into a plaintext backup).
+const maxBackupFileSize = 16 << 20 // 16 MiB
+
+func tooLarge(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Size() > maxBackupFileSize
+}
+
 func copyFile(t registry.BackupTarget, destRoot string, redact bool, results *[]scan.Result) (int, error) {
+	if tooLarge(t.Src) {
+		return 0, nil
+	}
 	raw, err := os.ReadFile(t.Src)
 	if err != nil {
 		return 0, nil // missing/unreadable → skip silently
@@ -126,6 +139,9 @@ func copyDir(t registry.BackupTarget, destRoot string, redact bool, results *[]s
 	count := 0
 	walkErr := filepath.WalkDir(t.Src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
+			return nil
+		}
+		if tooLarge(path) {
 			return nil
 		}
 		raw, rerr := os.ReadFile(path)
