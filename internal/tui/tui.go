@@ -58,3 +58,24 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 	}
 	return selected, nil
 }
+
+// Confirm asks a yes/no question.
+func Confirm(prompt string) (bool, error) {
+	var v bool
+	if err := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(prompt).Value(&v))).Run(); err != nil {
+		return false, err
+	}
+	return v, nil
+}
+
+// Input asks for a line of text, returning def if left blank.
+func Input(prompt, def string) (string, error) {
+	v := def
+	if err := huh.NewForm(huh.NewGroup(huh.NewInput().Title(prompt).Value(&v))).Run(); err != nil {
+		return "", err
+	}
+	if v == "" {
+		return def, nil
+	}
+	return v, nil
+}
