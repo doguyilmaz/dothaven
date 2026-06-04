@@ -31,12 +31,8 @@ describe("makeFontsCollector", () => {
       }),
     );
     const r = await collect(ctx);
-    expect(r["fonts.user"]?.items).toEqual([
-      { raw: "FedraSansTogg-Bold.otf", columns: ["FedraSansTogg-Bold.otf"] },
-    ]);
-    expect(r["fonts.system"]?.items).toEqual([
-      { raw: "Arial Unicode.ttf", columns: ["Arial Unicode.ttf"] },
-    ]);
+    expect(r["fonts.user"]?.items).toEqual([{ raw: "FedraSansTogg-Bold.otf", columns: ["FedraSansTogg-Bold.otf"] }]);
+    expect(r["fonts.system"]?.items).toEqual([{ raw: "Arial Unicode.ttf", columns: ["Arial Unicode.ttf"] }]);
   });
 
   test("collects Linux user fonts (~/.local/share/fonts) and dedupes across dirs", async () => {

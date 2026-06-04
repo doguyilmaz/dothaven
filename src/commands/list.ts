@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import { parse, stringify } from "@dotformat/core";
 import type { DotfDocument } from "@dotformat/core";
 
@@ -16,7 +16,7 @@ async function getReportsDir(): Promise<string> {
 export async function list(args: string[]) {
   if (!args.length) {
     console.log("Usage: dotfiles list <section>");
-    console.log('Example: dotfiles list brew');
+    console.log("Example: dotfiles list brew");
     return;
   }
 
@@ -41,9 +41,7 @@ export async function list(args: string[]) {
   const content = await Bun.file(entries[0].path).text();
   const doc = parse(content);
 
-  const matches = Object.keys(doc.sections).filter((name) =>
-    fuzzyMatch(query, name)
-  );
+  const matches = Object.keys(doc.sections).filter((name) => fuzzyMatch(query, name));
 
   if (!matches.length) {
     console.log(`No sections matching "${query}".`);

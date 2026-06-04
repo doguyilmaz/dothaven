@@ -36,7 +36,10 @@ export function managedDotNames(entries: ConfigEntry[]): Set<string> {
 
 /** Parse `ls -A` output into entry names. */
 export function parseLsA(text: string): string[] {
-  return text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
 export interface DotfileSweep {
@@ -66,7 +69,8 @@ export function makeDotfilesSweepCollector(env: CommandEnv = defaultEnv): Collec
     const { managed, review } = classifyDotfiles(entries, managedDotNames(registryEntries), NOISE);
     const result: CollectorResult = {};
     if (review.length) result["home.dotfiles.review"] = makeSection("home.dotfiles.review", { items: toItems(review) });
-    if (managed.length) result["home.dotfiles.managed"] = makeSection("home.dotfiles.managed", { items: toItems(managed) });
+    if (managed.length)
+      result["home.dotfiles.managed"] = makeSection("home.dotfiles.managed", { items: toItems(managed) });
     return result;
   };
 }

@@ -1,4 +1,4 @@
-import { basename } from "path";
+import { basename } from "node:path";
 import { getHome } from "../utils/home";
 import { findLatestBackup, getBackupAge } from "../utils/find-backup";
 import { buildRestorePlan } from "../restore/plan";

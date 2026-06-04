@@ -32,7 +32,8 @@ export function makeHomebrewCollector(env: CommandEnv = defaultEnv): Collector {
 
     try {
       const formulae = parseBrewList(await env.run(["brew", "list", "--formula"]));
-      if (formulae.length) result["apps.brew.formulae"] = makeSection("apps.brew.formulae", { items: toItems(formulae) });
+      if (formulae.length)
+        result["apps.brew.formulae"] = makeSection("apps.brew.formulae", { items: toItems(formulae) });
     } catch {}
 
     try {

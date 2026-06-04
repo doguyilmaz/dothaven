@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
+import { join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { registryCollector } from "../../src/registry/collector";
 import { registryEntries } from "../../src/registry/entries";
 import type { CollectorContext } from "../../src/collectors/types";
@@ -11,7 +11,7 @@ let tempHome: string;
 beforeAll(async () => {
   tempHome = await mkdtemp(join(tmpdir(), "collector-test-"));
   await Bun.write(join(tempHome, ".p10k.zsh"), "line1\nline2\nline3\nline4\nline5");
-  await Bun.write(join(tempHome, ".bunfig.toml"), '[install]\noptional = true');
+  await Bun.write(join(tempHome, ".bunfig.toml"), "[install]\noptional = true");
 });
 
 afterAll(async () => {

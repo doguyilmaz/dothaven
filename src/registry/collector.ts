@@ -60,9 +60,7 @@ export function registryCollector(entries: ConfigEntry[]): Collector {
                     pairs[k] = String(v);
                   }
                 } else {
-                  pairs[field] = typeof json[field] === "object"
-                    ? JSON.stringify(json[field])
-                    : String(json[field]);
+                  pairs[field] = typeof json[field] === "object" ? JSON.stringify(json[field]) : String(json[field]);
                 }
               }
             }

@@ -18,12 +18,14 @@ export function makeEditorsExtCollector(env: CommandEnv = defaultEnv): Collector
 
     try {
       const code = parseExtensions(await env.run(["code", "--list-extensions"]));
-      if (code.length) result["editor.vscode.extensions"] = makeSection("editor.vscode.extensions", { items: toItems(code) });
+      if (code.length)
+        result["editor.vscode.extensions"] = makeSection("editor.vscode.extensions", { items: toItems(code) });
     } catch {}
 
     try {
       const cursor = parseExtensions(await env.run(["cursor", "--list-extensions"]));
-      if (cursor.length) result["editor.cursor.extensions"] = makeSection("editor.cursor.extensions", { items: toItems(cursor) });
+      if (cursor.length)
+        result["editor.cursor.extensions"] = makeSection("editor.cursor.extensions", { items: toItems(cursor) });
     } catch {}
 
     return result;

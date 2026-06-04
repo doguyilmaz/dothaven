@@ -1,4 +1,4 @@
-import { resolve } from "path";
+import { resolve } from "node:path";
 import { scanFile, summarize, formatReport } from "../scan";
 import type { ScanResult, Severity } from "../scan";
 
@@ -46,7 +46,7 @@ async function scanDirectory(dirPath: string): Promise<ScanResult[]> {
 export async function scan(args: string[]) {
   const target = resolve(args[0] ?? ".");
   const file = Bun.file(target);
-  const isFile = await file.exists() && file.size > 0;
+  const isFile = (await file.exists()) && file.size > 0;
 
   let results: ScanResult[];
 

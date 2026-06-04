@@ -1,6 +1,6 @@
-import type { Collector, CollectorResult } from './types';
-import { makeSection, toItems } from './types';
-import { type CommandEnv, defaultEnv } from './env';
+import type { Collector, CollectorResult } from "./types";
+import { makeSection, toItems } from "./types";
+import { type CommandEnv, defaultEnv } from "./env";
 
 const FONT_EXT = /\.(ttf|ttc|otf|otc|dfont|woff2?|pfb)$/i;
 
@@ -27,14 +27,14 @@ export function makeFontsCollector(env: CommandEnv = defaultEnv): Collector {
       `${ctx.home}/.fonts`, // Linux
       `${ctx.home}/.local/share/fonts`, // Linux
     ]);
-    if (user.length) result['fonts.user'] = makeSection('fonts.user', { items: toItems(user) });
+    if (user.length) result["fonts.user"] = makeSection("fonts.user", { items: toItems(user) });
 
     const system = await fontsIn(env, [
-      '/Library/Fonts', // macOS
-      '/usr/share/fonts', // Linux
-      '/usr/local/share/fonts', // Linux
+      "/Library/Fonts", // macOS
+      "/usr/share/fonts", // Linux
+      "/usr/local/share/fonts", // Linux
     ]);
-    if (system.length) result['fonts.system'] = makeSection('fonts.system', { items: toItems(system) });
+    if (system.length) result["fonts.system"] = makeSection("fonts.system", { items: toItems(system) });
 
     return result;
   };

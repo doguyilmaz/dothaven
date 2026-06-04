@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import { REDACTION_MARKER } from "../utils/constants";
 import type { Collector } from "./types";
 import { makeSection } from "./types";

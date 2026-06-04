@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
-import { join } from "path";
-import { tmpdir } from "os";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { scanContent, scanFile, summarize } from "../../src/scan/scanner";
 import { applyRedactions } from "../../src/scan/redactor";
 
@@ -130,7 +130,8 @@ describe("scanContent", () => {
   });
 
   test("detects JWT tokens → redact", () => {
-    const content = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+    const content =
+      "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
     const result = scanContent("config", content);
     expect(result.findings.some((f) => f.pattern.id === "jwt-token")).toBe(true);
   });
@@ -163,7 +164,7 @@ describe("scanContent", () => {
   });
 
   test("truncates long matches to 40 chars", () => {
-    const longToken = "Bearer " + "A".repeat(100);
+    const longToken = `Bearer ${"A".repeat(100)}`;
     const result = scanContent("config", longToken);
     expect(result.findings[0].match.length).toBeLessThanOrEqual(43);
     expect(result.findings[0].match.endsWith("...")).toBe(true);
@@ -186,9 +187,7 @@ describe("summarize", () => {
   });
 
   test("excludes files with no findings", () => {
-    const results = [
-      scanContent("clean", "no sensitive data here"),
-    ];
+    const results = [scanContent("clean", "no sensitive data here")];
     const summary = summarize(results);
     expect(summary.results).toHaveLength(0);
   });

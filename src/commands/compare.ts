@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import { parse, compare, formatDiff } from "@dotformat/core";
 
 async function getReportsDir(): Promise<string> {
@@ -33,10 +33,7 @@ export async function compareCli(args: string[]) {
     files = [entries[0].path, entries[1].path];
   }
 
-  const [leftContent, rightContent] = await Promise.all([
-    Bun.file(files[0]).text(),
-    Bun.file(files[1]).text(),
-  ]);
+  const [leftContent, rightContent] = await Promise.all([Bun.file(files[0]).text(), Bun.file(files[1]).text()]);
 
   const left = parse(leftContent);
   const right = parse(rightContent);

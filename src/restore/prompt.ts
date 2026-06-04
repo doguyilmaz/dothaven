@@ -8,10 +8,7 @@ export async function readLine(prompt: string): Promise<string> {
   return "";
 }
 
-export async function pickCategories(
-  categories: string[],
-  counts: Record<string, number>,
-): Promise<string[]> {
+export async function pickCategories(categories: string[], counts: Record<string, number>): Promise<string[]> {
   console.log("\nAvailable categories:");
   for (let i = 0; i < categories.length; i++) {
     console.log(`  ${i + 1}) ${categories[i]} (${counts[categories[i]] ?? 0} files)`);

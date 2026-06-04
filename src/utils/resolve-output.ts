@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import { getHome } from "./home";
 
 export async function resolveOutputDir(explicit: string | null): Promise<string> {

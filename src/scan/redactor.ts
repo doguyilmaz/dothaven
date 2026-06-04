@@ -15,7 +15,7 @@ export function applyRedactions(content: string, result: ScanResult): string {
     applied.add(finding.pattern.id);
 
     const re = finding.pattern.regex;
-    const global = re.global ? re : new RegExp(re.source, re.flags + "g");
+    const global = re.global ? re : new RegExp(re.source, `${re.flags}g`);
     redacted = redacted.replace(global, REDACTION_MARKER);
   }
 

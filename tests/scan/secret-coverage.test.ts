@@ -28,14 +28,24 @@ describe("shell secret export coverage (was leaking)", () => {
     test(`redacts: ${line.split(/[=:]/)[0].trim()}`, () => {
       const out = redact(line);
       expect(out).toContain("[REDACTED]");
-      const value = line.split(/[=:]\s*/).slice(1).join("");
+      const value = line
+        .split(/[=:]\s*/)
+        .slice(1)
+        .join("");
       expect(out).not.toContain(value);
     });
   }
 });
 
 describe("does NOT over-redact benign assignments", () => {
-  for (const line of ["theme = dark", "font_size = 14", "monkey=1", "primary_key = id", "EDITOR=vim", "export PATH=/usr/bin"]) {
+  for (const line of [
+    "theme = dark",
+    "font_size = 14",
+    "monkey=1",
+    "primary_key = id",
+    "EDITOR=vim",
+    "export PATH=/usr/bin",
+  ]) {
     test(`leaves alone: ${line}`, () => {
       const result = scanContent("settings", line);
       const redactFindings = result.findings.filter((f) => f.pattern.defaultAction === "redact");

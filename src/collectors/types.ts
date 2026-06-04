@@ -15,7 +15,7 @@ export function makeSection(
     pairs?: Record<string, string>;
     items?: { raw: string; columns: string[] }[];
     content?: string | null;
-  } = {}
+  } = {},
 ): DotfSection {
   return {
     name,

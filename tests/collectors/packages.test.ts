@@ -31,9 +31,7 @@ describe("parseNpmGlobal", () => {
   });
 
   test("missing version field → empty version string", () => {
-    expect(parseNpmGlobal(JSON.stringify({ dependencies: { foo: {} } }))).toEqual([
-      { name: "foo", version: "" },
-    ]);
+    expect(parseNpmGlobal(JSON.stringify({ dependencies: { foo: {} } }))).toEqual([{ name: "foo", version: "" }]);
   });
 
   test("null / absent dependencies → []", () => {
@@ -84,9 +82,7 @@ describe("parseBunGlobal", () => {
 
 describe("parsePnpmGlobal", () => {
   test("array form (pnpm --json)", () => {
-    const json = JSON.stringify([
-      { path: "/x", dependencies: { tldr: { version: "3.3.0", from: "tldr" } } },
-    ]);
+    const json = JSON.stringify([{ path: "/x", dependencies: { tldr: { version: "3.3.0", from: "tldr" } } }]);
     expect(parsePnpmGlobal(json)).toEqual([{ name: "tldr", version: "3.3.0" }]);
   });
 
@@ -125,9 +121,7 @@ describe("parseFnmList", () => {
   });
 
   test("isolates version when extra aliases follow (multi-alias / comma-separated)", () => {
-    expect(parseFnmList("* v24.16.0 default, lts-latest")).toEqual([
-      { version: "v24.16.0", isDefault: true },
-    ]);
+    expect(parseFnmList("* v24.16.0 default, lts-latest")).toEqual([{ version: "v24.16.0", isDefault: true }]);
     expect(parseFnmList("* v22.0.0 lts-jod")).toEqual([{ version: "v22.0.0", isDefault: false }]);
   });
 
@@ -155,22 +149,14 @@ describe("makePackagesCollector", () => {
     );
     const r = await collect(ctx);
 
-    expect(r["packages.npm.global"]?.items).toEqual([
-      { raw: "typescript@5.4.0", columns: ["typescript", "5.4.0"] },
-    ]);
-    expect(r["packages.bun.global"]?.items).toEqual([
-      { raw: "eas-cli@16.19.2", columns: ["eas-cli", "16.19.2"] },
-    ]);
-    expect(r["packages.pnpm.global"]?.items).toEqual([
-      { raw: "tldr@3.3.0", columns: ["tldr", "3.3.0"] },
-    ]);
+    expect(r["packages.npm.global"]?.items).toEqual([{ raw: "typescript@5.4.0", columns: ["typescript", "5.4.0"] }]);
+    expect(r["packages.bun.global"]?.items).toEqual([{ raw: "eas-cli@16.19.2", columns: ["eas-cli", "16.19.2"] }]);
+    expect(r["packages.pnpm.global"]?.items).toEqual([{ raw: "tldr@3.3.0", columns: ["tldr", "3.3.0"] }]);
     expect(r["packages.node.fnm"]?.items).toEqual([
       { raw: "v20.0.0", columns: ["v20.0.0"] },
       { raw: "v22.0.0 (default)", columns: ["v22.0.0", "default"] },
     ]);
-    expect(r["packages.deno.bin"]?.items).toEqual([
-      { raw: "deno-deploy", columns: ["deno-deploy"] },
-    ]);
+    expect(r["packages.deno.bin"]?.items).toEqual([{ raw: "deno-deploy", columns: ["deno-deploy"] }]);
   });
 
   test("omits sections whose tool produced no output", async () => {

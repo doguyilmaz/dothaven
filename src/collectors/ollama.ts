@@ -15,7 +15,10 @@ export function parseOllamaList(text: string): OllamaModel[] {
   return lines
     .slice(1)
     .map((line) => {
-      const parts = line.split(/\s{2,}/).map((s) => s.trim()).filter(Boolean);
+      const parts = line
+        .split(/\s{2,}/)
+        .map((s) => s.trim())
+        .filter(Boolean);
       const [name, _id, size, modified] = parts;
       return { name: name ?? "", size: size ?? "", modified: modified ?? "" };
     })

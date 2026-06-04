@@ -1,5 +1,5 @@
-import { hostname } from "os";
-import { join } from "path";
+import { hostname } from "node:os";
+import { join } from "node:path";
 import { generateTimestamp } from "../utils/timestamp";
 import { stringify } from "@dotformat/core";
 import type { DotfDocument } from "@dotformat/core";
@@ -55,7 +55,7 @@ function slimSections(sections: CollectorResult) {
     if (!section.content) continue;
     const lines = section.content.split("\n");
     if (lines.length > SLIM_MAX_LINES) {
-      section.content = lines.slice(0, SLIM_MAX_LINES).join("\n") + `\n... (${lines.length - SLIM_MAX_LINES} more lines)`;
+      section.content = `${lines.slice(0, SLIM_MAX_LINES).join("\n")}\n... (${lines.length - SLIM_MAX_LINES} more lines)`;
     }
   }
 }

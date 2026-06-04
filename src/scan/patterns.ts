@@ -1,4 +1,4 @@
-import { userInfo } from "os";
+import { userInfo } from "node:os";
 import type { ScanPattern } from "./types";
 
 function getUsername(): string {
@@ -56,7 +56,8 @@ export function getScanPatterns(): ScanPattern[] {
       id: "secret-keyword",
       label: "secret value",
       severity: "HIGH",
-      regex: /\b(password|passwd|secret|client[_-]?secret|secret[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|refresh[_-]?token|private[_-]?key)\b\s*[=:]\s*\S+/i,
+      regex:
+        /\b(password|passwd|secret|client[_-]?secret|secret[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|refresh[_-]?token|private[_-]?key)\b\s*[=:]\s*\S+/i,
       defaultAction: "redact",
     },
 
@@ -79,7 +80,8 @@ export function getScanPatterns(): ScanPattern[] {
       id: "github-token",
       label: "GitHub token",
       severity: "HIGH",
-      regex: /\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b/,
+      regex:
+        /\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b/,
       defaultAction: "redact",
     },
     {
@@ -102,7 +104,7 @@ export function getScanPatterns(): ScanPattern[] {
       id: "anthropic-key",
       label: "Anthropic key",
       severity: "HIGH",
-      regex: /\bsk-ant-[A-Za-z0-9\-]{20,}\b/,
+      regex: /\bsk-ant-[A-Za-z0-9-]{20,}\b/,
       defaultAction: "redact",
     },
 
@@ -185,7 +187,7 @@ export function getScanPatterns(): ScanPattern[] {
       id: "slack-token",
       label: "Slack token",
       severity: "HIGH",
-      regex: /\b(xoxb|xoxp|xoxs|xoxa|xoxr)-[A-Za-z0-9\-]+\b/,
+      regex: /\b(xoxb|xoxp|xoxs|xoxa|xoxr)-[A-Za-z0-9-]+\b/,
       defaultAction: "redact",
     },
     {

@@ -91,7 +91,8 @@ export function makeRuntimesCollector(env: CommandEnv = defaultEnv): Collector {
 
     try {
       const go = parseGoVersion(await env.run(["go", "version"]));
-      if (go) result["runtimes.go"] = makeSection("runtimes.go", { pairs: { version: go.version, platform: go.platform } });
+      if (go)
+        result["runtimes.go"] = makeSection("runtimes.go", { pairs: { version: go.version, platform: go.platform } });
     } catch {}
 
     try {
@@ -146,10 +147,7 @@ export function makeRuntimesCollector(env: CommandEnv = defaultEnv): Collector {
     } catch {}
 
     try {
-      const sdk =
-        env.getEnv("ANDROID_HOME") ||
-        env.getEnv("ANDROID_SDK_ROOT") ||
-        `${ctx.home}/Library/Android/sdk`;
+      const sdk = env.getEnv("ANDROID_HOME") || env.getEnv("ANDROID_SDK_ROOT") || `${ctx.home}/Library/Android/sdk`;
       if (await env.fileExists(sdk)) {
         const pairs: Record<string, string> = { sdk };
         const adb = parseAdbVersion(await env.run(["adb", "version"]));
@@ -157,10 +155,16 @@ export function makeRuntimesCollector(env: CommandEnv = defaultEnv): Collector {
         result["runtimes.android"] = makeSection("runtimes.android", { pairs });
 
         const buildTools = [...(await env.listDir(`${sdk}/build-tools`))].sort();
-        if (buildTools.length) result["runtimes.android.buildTools"] = makeSection("runtimes.android.buildTools", { items: toItems(buildTools) });
+        if (buildTools.length)
+          result["runtimes.android.buildTools"] = makeSection("runtimes.android.buildTools", {
+            items: toItems(buildTools),
+          });
 
         const platforms = [...(await env.listDir(`${sdk}/platforms`))].sort();
-        if (platforms.length) result["runtimes.android.platforms"] = makeSection("runtimes.android.platforms", { items: toItems(platforms) });
+        if (platforms.length)
+          result["runtimes.android.platforms"] = makeSection("runtimes.android.platforms", {
+            items: toItems(platforms),
+          });
       }
     } catch {}
 

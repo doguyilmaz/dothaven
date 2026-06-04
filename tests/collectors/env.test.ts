@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
-import { mkdtemp, mkdir, rm } from "fs/promises";
-import { tmpdir } from "os";
+import { join } from "node:path";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { defaultEnv } from "../../src/collectors/env";
 
 // Exercises the real IO boundary (Bun.$ / Bun.Glob / Bun.file) — the one place

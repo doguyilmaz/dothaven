@@ -161,11 +161,12 @@ describe("makeRuntimesCollector", () => {
     expect(r["runtimes.go"]?.pairs).toEqual({ version: "go1.26.3", platform: "darwin/arm64" });
     expect(r["runtimes.rust"]?.pairs).toEqual({ rustc: "1.96.0", cargo: "1.96.0" });
     expect(r["runtimes.rust.toolchains"]?.items).toEqual([
-      { raw: "stable-aarch64-apple-darwin (active, default)", columns: ["stable-aarch64-apple-darwin", "active, default"] },
+      {
+        raw: "stable-aarch64-apple-darwin (active, default)",
+        columns: ["stable-aarch64-apple-darwin", "active, default"],
+      },
     ]);
-    expect(r["runtimes.rust.crates"]?.items).toEqual([
-      { raw: "ripgrep@14.1.0", columns: ["ripgrep", "14.1.0"] },
-    ]);
+    expect(r["runtimes.rust.crates"]?.items).toEqual([{ raw: "ripgrep@14.1.0", columns: ["ripgrep", "14.1.0"] }]);
     expect(r["runtimes.swift"]?.pairs).toEqual({ version: "6.3.1" });
     expect(r["runtimes.zig"]?.pairs).toEqual({ version: "0.13.0" });
     expect(r["runtimes.xcode"]?.pairs).toEqual({
@@ -199,7 +200,9 @@ describe("makeRuntimesCollector", () => {
   });
 
   test("android section omitted when SDK dir absent", async () => {
-    const r = await makeRuntimesCollector(fakeEnv({ run: (cmd) => (cmd[0] === "go" ? "go version go1.26.3 darwin/arm64" : "") }))(ctx);
+    const r = await makeRuntimesCollector(
+      fakeEnv({ run: (cmd) => (cmd[0] === "go" ? "go version go1.26.3 darwin/arm64" : "") }),
+    )(ctx);
     expect(r["runtimes.go"]).toBeDefined();
     expect(r["runtimes.android"]).toBeUndefined();
   });

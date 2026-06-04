@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
+import { join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { collectSsh } from "../../src/collectors/ssh";
 import type { CollectorContext } from "../../src/collectors/types";
 
@@ -19,7 +19,7 @@ beforeAll(async () => {
 Host work-server
   HostName 10.0.0.50
   IdentityFile ~/.ssh/work_key
-`
+`,
   );
 });
 

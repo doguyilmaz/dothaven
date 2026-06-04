@@ -15,7 +15,7 @@ export function scanContent(filePath: string, content: string): ScanResult {
         findings.push({
           pattern,
           line: i + 1,
-          match: match[0].length > 40 ? match[0].slice(0, 40) + "..." : match[0],
+          match: match[0].length > 40 ? `${match[0].slice(0, 40)}...` : match[0],
         });
       }
     }

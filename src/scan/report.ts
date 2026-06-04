@@ -14,8 +14,7 @@ export function formatReport(summary: ScanSummary): string {
 
     const level = top.pattern.severity.padEnd(6);
     const path = result.filePath.padEnd(30);
-    const actionLabel =
-      result.action === "redact" ? "redacted" : result.action === "skip" ? "skipped" : "included";
+    const actionLabel = result.action === "redact" ? "redacted" : result.action === "skip" ? "skipped" : "included";
     lines.push(`  ${level} ${path} ${top.pattern.label} — ${actionLabel}`);
   }
 

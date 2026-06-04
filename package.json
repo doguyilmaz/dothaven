@@ -14,6 +14,9 @@
     "diff": "bun bin/dotfiles.ts diff",
     "compare": "bun bin/dotfiles.ts compare",
     "test": "bun test",
+    "format": "biome format --write src tests bin",
+    "lint": "biome lint src tests bin",
+    "check": "biome check src tests bin",
     "prepublishOnly": "bun test",
     "bump:patch": "npm version patch",
     "bump:minor": "npm version minor",
@@ -50,6 +53,7 @@
     "@dotformat/core": "^0.2.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "@types/bun": "latest",
     "mermaid": "^11.14.0",
     "vitepress": "^1.6.4",

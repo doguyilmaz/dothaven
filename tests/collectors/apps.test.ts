@@ -9,11 +9,7 @@ const ALTTAB = "/Applications/AltTab.app/Contents/Info.plist";
 
 describe("parseAppList", () => {
   test("trims, drops blanks, sorts", () => {
-    expect(parseAppList("Safari.app\n  Zed.app \n\nArc.app\n")).toEqual([
-      "Arc.app",
-      "Safari.app",
-      "Zed.app",
-    ]);
+    expect(parseAppList("Safari.app\n  Zed.app \n\nArc.app\n")).toEqual(["Arc.app", "Safari.app", "Zed.app"]);
   });
 
   test("empty → []", () => {

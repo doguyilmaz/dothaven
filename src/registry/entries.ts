@@ -6,7 +6,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.claude.settings",
     name: "Claude Settings",
-    paths: { darwin: "~/.claude/settings.json", linux: "~/.claude/settings.json", win32: "%USERPROFILE%/.claude/settings.json" },
+    paths: {
+      darwin: "~/.claude/settings.json",
+      linux: "~/.claude/settings.json",
+      win32: "%USERPROFILE%/.claude/settings.json",
+    },
     category: "ai",
     kind: { type: "json-extract", fields: ["permissions", "enabledPlugins"] },
     backupDest: "ai/claude/settings.json",
@@ -55,7 +59,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.gemini.settings",
     name: "Gemini Settings",
-    paths: { darwin: "~/.gemini/settings.json", linux: "~/.gemini/settings.json", win32: "%USERPROFILE%/.gemini/settings.json" },
+    paths: {
+      darwin: "~/.gemini/settings.json",
+      linux: "~/.gemini/settings.json",
+      win32: "%USERPROFILE%/.gemini/settings.json",
+    },
     category: "ai",
     kind: { type: "json-extract", fields: [] },
     backupDest: "ai/gemini/settings.json",
@@ -84,7 +92,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.windsurf.mcp",
     name: "Windsurf MCP Config",
-    paths: { darwin: "~/.codeium/windsurf/mcp_config.json", linux: "~/.codeium/windsurf/mcp_config.json", win32: "%USERPROFILE%/.codeium/windsurf/mcp_config.json" },
+    paths: {
+      darwin: "~/.codeium/windsurf/mcp_config.json",
+      linux: "~/.codeium/windsurf/mcp_config.json",
+      win32: "%USERPROFILE%/.codeium/windsurf/mcp_config.json",
+    },
     category: "ai",
     kind: { type: "file" },
     backupDest: "ai/windsurf/mcp_config.json",
@@ -93,7 +105,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.windsurf.skills",
     name: "Windsurf Skills",
-    paths: { darwin: "~/.codeium/windsurf/skills", linux: "~/.codeium/windsurf/skills", win32: "%USERPROFILE%/.codeium/windsurf/skills" },
+    paths: {
+      darwin: "~/.codeium/windsurf/skills",
+      linux: "~/.codeium/windsurf/skills",
+      win32: "%USERPROFILE%/.codeium/windsurf/skills",
+    },
     category: "ai",
     kind: { type: "dir" },
     backupDest: "ai/windsurf/skills",
@@ -169,7 +185,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "gh.config",
     name: "GitHub CLI Config",
-    paths: { darwin: "~/.config/gh/config.yml", linux: "~/.config/gh/config.yml", win32: "%APPDATA%/GitHub CLI/config.yml" },
+    paths: {
+      darwin: "~/.config/gh/config.yml",
+      linux: "~/.config/gh/config.yml",
+      win32: "%APPDATA%/GitHub CLI/config.yml",
+    },
     category: "git",
     kind: { type: "file" },
     backupDest: "git/gh/config.yml",
@@ -180,7 +200,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "editor.zed",
     name: "Zed Settings",
-    paths: { darwin: "~/.config/zed/settings.json", linux: "~/.config/zed/settings.json", win32: "%APPDATA%/Zed/settings.json" },
+    paths: {
+      darwin: "~/.config/zed/settings.json",
+      linux: "~/.config/zed/settings.json",
+      win32: "%APPDATA%/Zed/settings.json",
+    },
     category: "editor",
     kind: { type: "file" },
     backupDest: "editor/zed/settings.json",
@@ -202,7 +226,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "editor.nvim",
     name: "Neovim Config",
-    paths: { darwin: "~/.config/nvim/init.lua", linux: "~/.config/nvim/init.lua", win32: "%USERPROFILE%/AppData/Local/nvim/init.lua" },
+    paths: {
+      darwin: "~/.config/nvim/init.lua",
+      linux: "~/.config/nvim/init.lua",
+      win32: "%USERPROFILE%/AppData/Local/nvim/init.lua",
+    },
     category: "editor",
     kind: { type: "file" },
     backupDest: "editor/nvim/init.lua",
