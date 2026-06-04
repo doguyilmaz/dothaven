@@ -19,13 +19,13 @@ dotfiles/
 │   ├── cli.ts                       # Command router — switch on argv[2], delegates to commands/
 │   │
 │   ├── commands/                    # One file per CLI command
-│   │   ├── collect.ts               # .dotf snapshot generation (parallel collectors → scan → stringify)
+│   │   ├── collect.ts               # .json snapshot generation (parallel collectors → scan → serialize)
 │   │   ├── backup.ts                # Structured file backup (registry sources → scan → copy)
 │   │   ├── scan.ts                  # Standalone sensitivity scanner (file or directory)
 │   │   ├── restore.ts               # Restore from backup (plan → pick → execute)
 │   │   ├── diff.ts                  # Backup vs live comparison (color-coded, TTY-aware)
 │   │   ├── status.ts                # Quick backup summary (age, counts, modified list)
-│   │   ├── compare.ts               # Diff two .dotf files (via @dotformat/core)
+│   │   ├── compare.ts               # Diff two .json files (via src/snapshot compareSnapshots)
 │   │   └── list.ts                  # Fuzzy section query from latest report
 │   │
 │   ├── registry/                    # Config source definitions (single source of truth)
@@ -43,6 +43,11 @@ dotfiles/
 │   │   ├── ollama.ts                # Ollama model list (parses `ollama list` output)
 │   │   ├── apps.ts                  # macOS apps, Raycast, AltTab (darwin-only)
 │   │   └── homebrew.ts              # Homebrew formulae + casks (darwin-only)
+│   │
+│   ├── snapshot/                    # Snapshot model + JSON serialization + diffing (zero deps)
+│   │   ├── types.ts                 # Section, Snapshot, CollectorResult type definitions
+│   │   ├── serialize.ts             # serializeSnapshot() / parseSnapshot() (native JSON)
+│   │   └── compare.ts               # compareSnapshots() + formatDiff() (in-tree diff)
 │   │
 │   ├── scan/                        # Sensitivity detection engine
 │   │   ├── types.ts                 # ScanPattern, ScanResult, ScanFinding, Severity, ScanSummary
@@ -93,6 +98,20 @@ dotfiles/
 ### Core Types
 
 ```typescript
+// === Snapshot Types (src/snapshot/types.ts) ===
+
+interface Section {
+  name: string;
+  pairs: Record<string, string>;              // Key-value metadata
+  items: { raw: string; columns: string[] }[]; // Tabular data
+  content: string | null;                      // Full text content
+}
+
+type Snapshot = Record<string, Section>;        // section ID → section
+type CollectorResult = Record<string, Section>; // collectors return the same shape
+```
+
+```typescript
 // === Collector Types (src/collectors/types.ts) ===
 
 interface CollectorContext {
@@ -100,15 +119,14 @@ interface CollectorContext {
   home: string;       // $HOME — injected for testability
 }
 
-type CollectorResult = Record<string, DotfSection>;
 type Collector = (ctx: CollectorContext) => Promise<CollectorResult>;
 
-// makeSection() helper creates DotfSection objects
+// makeSection() helper creates Section objects
 function makeSection(name: string, opts?: {
   pairs?: Record<string, string>;
   items?: { raw: string; columns: string[] }[];
   content?: string | null;
-}): DotfSection;
+}): Section;
 ```
 
 ```typescript
@@ -226,8 +244,8 @@ CLI args → parseArgs()
   → merge fulfilled results → CollectorResult
   → if redact: scanContent() each section → skip/redact/include
   → if slim: truncate content to 10 lines
-  → stringify(doc) via @dotformat/core
-  → Bun.write() timestamped .dotf file
+  → serializeSnapshot(sections) via src/snapshot (native JSON.stringify)
+  → Bun.write() timestamped .json file
 ```
 
 ### Backup Flow
@@ -289,11 +307,14 @@ The scan system doesn't just block or allow — it operates as a three-stage pip
 
 ## Dependencies
 
+The CLI has **zero runtime dependencies**. Snapshot serialization, parsing, and diffing
+are handled entirely in-tree by the `src/snapshot` module (native `JSON.stringify` /
+`JSON.parse` plus an in-tree `compareSnapshots()` / `formatDiff()`).
+
 | Package | Role |
 |---------|------|
-| [`@dotformat/core`](https://www.npmjs.com/package/@dotformat/core) | `.dotf` format parser, stringifier, comparator, diff formatter ([source](https://github.com/doguyilmaz/dotf)) |
 | `vitepress` | Documentation site (dev dependency) |
 | `vitepress-plugin-mermaid` | Mermaid diagram support in docs (dev dependency) |
 | `@types/bun` | TypeScript definitions for Bun APIs (dev dependency) |
 
-No other runtime dependencies. The CLI uses only Bun built-ins (`Bun.file`, `Bun.$`, `Bun.Glob`, `Bun.hash`, `Bun.color`, `Bun.env`) and Node.js standard library modules (`path`, `os`, `fs/promises`).
+The CLI uses only Bun built-ins (`Bun.file`, `Bun.$`, `Bun.Glob`, `Bun.hash`, `Bun.color`, `Bun.env`) and Node.js standard library modules (`path`, `os`, `fs/promises`).

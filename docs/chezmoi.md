@@ -37,7 +37,7 @@ machine:
 ```
 
 `collect` tags every snapshot with the hostname (`meta` section), so you can `compare` a work vs
-personal `.dotf` to see exactly what differs and decide what to templatize.
+personal `.json` to see exactly what differs and decide what to templatize.
 
 ---
 

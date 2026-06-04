@@ -1,12 +1,12 @@
 # @dotformat/cli
 
-Collect, backup, restore, and diff machine configs across machines. Built on [Bun](https://bun.sh), outputs `.dotf` snapshots and structured file backups with built-in sensitivity scanning.
+Collect, backup, restore, and diff machine configs across machines. Built on [Bun](https://bun.sh), outputs `.json` snapshots and structured file backups with built-in sensitivity scanning.
 
 | | |
 |---|---|
 | **Runtime** | [Bun](https://bun.sh) >= 1.0 (required) |
 | **Package** | [`@dotformat/cli`](https://www.npmjs.com/package/@dotformat/cli) |
-| **Format** | [`@dotformat/core`](https://www.npmjs.com/package/@dotformat/core) `.dotf` parser/stringify/compare |
+| **Format** | Plain JSON (`.json`) — native serialization, zero runtime deps (in-tree `src/snapshot`) |
 | **Tests** | 230+ tests |
 | **Platforms** | macOS, Linux, Windows |
 | **Backbone** | [chezmoi](https://chezmoi.io) — optional, for `chezmoi-export` (storage + age encryption + apply) |
@@ -15,7 +15,7 @@ Collect, backup, restore, and diff machine configs across machines. Built on [Bu
 
 ## What It Does
 
-**Discover** what's on your machine — AI tools, shell, git, editors, SSH, cloud CLIs, global packages (npm/bun/pnpm/deno), language toolchains (go/rust/swift/xcode/android), fonts, and every `~/.*` dotfile. **Snapshot** it into a single parseable `.dotf` file. **Back up** real config files into a structured directory. **Restore** them on a new machine with conflict resolution and rollback. **Scan** for secrets and write a standalone security report. **Export to [chezmoi](https://chezmoi.io)** — encrypting secrets with age — and **doctor** a fresh machine for parity.
+**Discover** what's on your machine — AI tools, shell, git, editors, SSH, cloud CLIs, global packages (npm/bun/pnpm/deno), language toolchains (go/rust/swift/xcode/android), fonts, and every `~/.*` dotfile. **Snapshot** it into a single parseable `.json` file. **Back up** real config files into a structured directory. **Restore** them on a new machine with conflict resolution and rollback. **Scan** for secrets and write a standalone security report. **Export to [chezmoi](https://chezmoi.io)** — encrypting secrets with age — and **doctor** a fresh machine for parity.
 
 ### Hybrid model
 
@@ -47,7 +47,7 @@ bun bin/dotfiles.ts collect
 dotfiles collect [--no-redact] [--slim] [-o path]
 ```
 
-Generates a `.dotf` report with all detected configs. Runs all collectors in parallel via `Promise.allSettled`.
+Generates a `.json` report with all detected configs. Runs all collectors in parallel via `Promise.allSettled`.
 
 | Flag | Effect |
 |------|--------|
@@ -55,7 +55,7 @@ Generates a `.dotf` report with all detected configs. Runs all collectors in par
 | `--slim` | Truncate content sections to 10 lines (AI-friendly, ~65% smaller) |
 | `-o path` | Custom output directory |
 
-Output: `<hostname>-YYYYMMDDHHMMSS.dotf`
+Output: `<hostname>-YYYYMMDDHHMMSS.json`
 
 ### `backup` — Structured file copy
 
@@ -120,7 +120,7 @@ Shows backup age, modified/unchanged counts, lists changed files.
 dotfiles compare [file1] [file2]
 ```
 
-Structured diff between two `.dotf` files. Without args, compares the newest two reports in `<cwd>/reports`.
+Structured diff between two `.json` files. Without args, compares the newest two reports in `<cwd>/reports`.
 
 ### `list` — Query a report
 
@@ -149,7 +149,7 @@ Plans `chezmoi add` for every managed config present on the machine, choosing **
 ### `doctor` — New-machine parity check
 
 ```bash
-dotfiles doctor <snapshot.dotf>
+dotfiles doctor <snapshot.json>
 ```
 
 Re-collects the current machine and lists what the snapshot has that's missing here (packages, toolchains, brew, fonts, editor extensions). Non-zero exit if anything is missing — confidence that a fresh machine got everything.
@@ -280,14 +280,18 @@ dotfiles/
 ├── src/
 │   ├── cli.ts                   # Command router (8 commands)
 │   ├── commands/
-│   │   ├── collect.ts           # .dotf snapshot generation
+│   │   ├── collect.ts           # .json snapshot generation
 │   │   ├── backup.ts            # Structured file backup
 │   │   ├── scan.ts              # Standalone sensitivity scan
 │   │   ├── restore.ts           # Restore from backup
 │   │   ├── diff.ts              # Backup vs live comparison
 │   │   ├── status.ts            # Quick backup summary
-│   │   ├── compare.ts           # Diff two .dotf files
+│   │   ├── compare.ts           # Diff two .json files
 │   │   └── list.ts              # Fuzzy section query
+│   ├── snapshot/
+│   │   ├── types.ts             # Section, Snapshot, CollectorResult
+│   │   ├── serialize.ts         # serializeSnapshot / parseSnapshot (native JSON)
+│   │   └── compare.ts           # compareSnapshots / formatDiff (in-tree)
 │   ├── registry/
 │   │   ├── types.ts             # ConfigEntry, Platform, EntryKind
 │   │   ├── entries.ts           # 23 config entries (single source of truth)

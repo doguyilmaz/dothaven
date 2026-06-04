@@ -46,7 +46,7 @@ bunx @dotformat/cli security ~ -o ~/SECURITY.md
 Review `SECURITY.md` and the snapshot's `home.dotfiles.review` section — it surfaces obscure
 configs you'd otherwise forget (e.g. `.app-store`, `.netrc`, `.aws`). Decide what to carry.
 
-Run this on **both** the old personal machine and the current work machine — keep both `.dotf`
+Run this on **both** the old personal machine and the current work machine — keep both `.json`
 files; `doctor` and `compare` use them later.
 
 ---
@@ -116,7 +116,7 @@ fnm install <each version>           # from packages.node.fnm
 ## Phase 6 — Verify parity
 
 ```bash
-bunx @dotformat/cli doctor old-machine.dotf
+bunx @dotformat/cli doctor old-machine.json
 ```
 
 Lists anything the old machine had that's still missing here (packages, toolchains, fonts,

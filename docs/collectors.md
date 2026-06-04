@@ -10,26 +10,37 @@ interface CollectorContext {
   home: string;      // $HOME — injected for testability
 }
 
-type CollectorResult = Record<string, DotfSection>;
+type CollectorResult = Record<string, Section>;
 type Collector = (ctx: CollectorContext) => Promise<CollectorResult>;
 ```
 
 Every collector:
 - Takes a `CollectorContext` with redaction flag and home directory
-- Returns a `CollectorResult` — a map of section IDs to `DotfSection` objects
+- Returns a `CollectorResult` — a map of section IDs to `Section` objects
 - Returns `{}` if data is unavailable (no errors for missing tools/files)
 - Wraps external commands in try/catch (tools may not be installed)
 
 ## Section Structure
 
-Each section in a `.dotf` report uses `DotfSection` from `@dotformat/core`:
+Each section in a `.json` report uses `Section` from `src/snapshot/types.ts`:
 
 ```typescript
-interface DotfSection {
+interface Section {
   name: string;
   pairs: Record<string, string>;              // Key-value metadata
   items: { raw: string; columns: string[] }[]; // Tabular data
   content: string | null;                      // Full text content
+}
+```
+
+On disk, sections are written as a flat map of section ID → section, with empty
+fields omitted and pretty-printed (2-space):
+
+```json
+{
+  "runtimes.go": { "pairs": { "version": "go1.26.3" } },
+  "packages.bun.global": { "items": [ { "raw": "eas-cli@16.19.2", "columns": ["eas-cli", "16.19.2"] } ] },
+  "shell.zshrc": { "content": "alias ll='ls -la'\n..." }
 }
 ```
 
@@ -156,7 +167,7 @@ Captures machine identity:
 | `os` | `uname -s` + `uname -m` (e.g., `Darwin arm64`) |
 | `date` | `new Date().toISOString()` date portion (e.g., `2026-04-07`) |
 
-This is always the first section in a `.dotf` report.
+This is always the first section in a `.json` report.
 
 ### `collectSsh`
 
@@ -272,4 +283,4 @@ After collectors finish, the collect command applies:
    - A `... (N more lines)` suffix is appended
 
 3. **Serialization**:
-   - `stringify()` from `@dotformat/core` converts to `.dotf` text format
+   - `serializeSnapshot()` from `src/snapshot/serialize.ts` converts the section map to JSON text (native `JSON.stringify`, pretty-printed 2-space, empty fields omitted)

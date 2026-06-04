@@ -4,7 +4,7 @@
 
 | Phase | Feature | What Was Done |
 |-------|---------|---------------|
-| 1 | CLI Rewrite | Rewrote bash script → Bun/TypeScript CLI with `.dotf` output |
+| 1 | CLI Rewrite | Rewrote bash script → Bun/TypeScript CLI with `.json` output |
 | 2 | Backup | Real file copies in structured directories with `--archive` support |
 | 3 | Sensitivity Scan | 27+ detection patterns, three-stage pipeline, auto-redaction |
 | 4 | Restore | Interactive picker, dry-run, pre-restore snapshots, conflict resolution |
@@ -15,7 +15,8 @@
 | — | Slim mode | `--slim` flag for AI-friendly truncated snapshots |
 | — | Parallel collectors | `Promise.allSettled` for independent collectors |
 | — | Archive export | `--archive` flag for `.tar.gz` backup output |
-| — | Timestamped reports | `<hostname>-YYYYMMDDHHMMSS.dotf` naming |
+| — | Timestamped reports | `<hostname>-YYYYMMDDHHMMSS.json` naming |
+| — | JSON migration | Retired the custom `.dotf` format and `@dotformat/core` dependency in favour of native JSON — the CLI now has zero runtime dependencies |
 
 ## Current Stats
 
@@ -83,8 +84,8 @@ dotfiles add ~/.config/starship.toml   # Future: adds entry to local registry
 | Encryption | Encrypt sensitive files with passphrase before storing | Medium |
 | Shallow clone + submodules | Fast remote install | Low |
 | Stream-based file copy | `Bun.file().stream()` for large backups | Low |
-| Binary format | Optional `--format binary` for `.dotf` files | Low |
-| Pluggable output | `--format json\|yaml\|toml\|dotf` via registry layer | Medium |
+| Binary format | Optional `--format binary` for snapshot files | Low |
+| Pluggable output | `--format json\|yaml\|toml` via registry layer | Medium |
 | `bun build --compile` | Standalone binary distribution (no Bun required) | Medium |
 | License change | MIT when going public | — |
 

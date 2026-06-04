@@ -12,20 +12,20 @@ bun bin/dotfiles.ts <command>
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
-| `collect` | Machine snapshot → `.dotf` report | `--no-redact`, `--slim`, `-o` |
+| `collect` | Machine snapshot → `.json` report | `--no-redact`, `--slim`, `-o` |
 | `backup` | Copy config files → structured directory | `--archive`, `--only`, `--skip`, `--no-redact`, `-o` |
 | `scan` | Standalone sensitivity scan | path argument |
 | `restore` | Restore backup → live locations | `--pick`, `--dry-run` |
 | `diff` | Backup vs live system | `--section` |
 | `status` | Quick backup summary | — |
-| `compare` | Diff two `.dotf` files | positional file paths |
+| `compare` | Diff two `.json` files | positional file paths |
 | `list` | Query section from latest report | fuzzy section name |
 
 ---
 
 ## `collect`
 
-Generate a structured `.dotf` machine snapshot. This is the primary "what's on my machine?" command.
+Generate a structured `.json` machine snapshot. This is the primary "what's on my machine?" command.
 
 ```bash
 dotfiles collect [--no-redact] [--slim] [-o path]
@@ -49,8 +49,8 @@ dotfiles collect [--no-redact] [--slim] [-o path]
    - Drops sections where action is `skip` (e.g., private keys)
    - Applies `[REDACTED]` replacements where action is `redact`
 5. If `--slim` is enabled, truncates content sections to 10 lines
-6. Stringifies to `.dotf` format via `@dotformat/core`
-7. Writes to `<hostname>-YYYYMMDDHHMMSS.dotf`
+6. Serializes to JSON via `serializeSnapshot()` (native `JSON.stringify`, pretty-printed 2-space, empty fields omitted)
+7. Writes to `<hostname>-YYYYMMDDHHMMSS.json`
 8. Prints sensitivity report if any findings
 
 ### Collectors
@@ -70,7 +70,7 @@ The collect command runs these collectors in parallel:
 
 ```bash
 $ dotfiles collect
-Report saved to: reports/MacBook-Pro-20260407143022.dotf
+Report saved to: reports/MacBook-Pro-20260407143022.json
 
 ⚠ Sensitivity report:
   HIGH   npm.config                     auth token — redacted
@@ -81,7 +81,7 @@ Report saved to: reports/MacBook-Pro-20260407143022.dotf
 
 ```bash
 $ dotfiles collect --slim -o /tmp
-Report saved to: /tmp/MacBook-Pro-20260407143022.dotf
+Report saved to: /tmp/MacBook-Pro-20260407143022.json
 ```
 
 ---
@@ -374,7 +374,7 @@ Everything up to date.
 
 ## `compare`
 
-Structured diff between two `.dotf` report files. Powered by `@dotformat/core`'s `compare()` and `formatDiff()`.
+Structured diff between two `.json` report files. Uses the in-tree `src/snapshot` module's `compareSnapshots()` and `formatDiff()`.
 
 ```bash
 dotfiles compare [file1] [file2]
@@ -384,22 +384,22 @@ dotfiles compare [file1] [file2]
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `file1` | no | Path to first `.dotf` file |
-| `file2` | no | Path to second `.dotf` file |
+| `file1` | no | Path to first `.json` file |
+| `file2` | no | Path to second `.json` file |
 
-If both are omitted, `compare` finds the **two newest** `.dotf` files in `<cwd>/reports/` (sorted by modification time).
+If both are omitted, `compare` finds the **two newest** `.json` files in `<cwd>/reports/` (sorted by modification time).
 
 ### Behavior
 
-- Parses both files via `@dotformat/core`'s `parse()`
-- Computes structured diff via `compare()`
-- Formats with `formatDiff()` with color enabled
-- Labels are derived from filenames (without `.dotf` extension)
+- Parses both files via `parseSnapshot()` (native `JSON.parse`)
+- Computes structured diff via `compareSnapshots()`
+- Formats with `formatDiff()` with color enabled (green `+`, red `-`, yellow `~`, dim `=`)
+- Labels are derived from filenames (without `.json` extension)
 
 ### Example
 
 ```bash
-$ dotfiles compare reports/MacBook-20260401.dotf reports/MacBook-20260407.dotf
+$ dotfiles compare reports/MacBook-20260401.json reports/MacBook-20260407.json
 ```
 
 ::: warning
@@ -410,7 +410,7 @@ $ dotfiles compare reports/MacBook-20260401.dotf reports/MacBook-20260407.dotf
 
 ## `list`
 
-Print a section from the most recent `.dotf` report. Supports **fuzzy matching** on section names.
+Print a section from the most recent `.json` report. Supports **fuzzy matching** on section names.
 
 ```bash
 dotfiles list <section>
@@ -429,11 +429,11 @@ The query is matched against section names using two strategies:
 1. **Substring match**: `brew` matches `apps.brew.formulae` and `apps.brew.casks`
 2. **Dot-segment match**: `claude` matches `ai.claude.settings`, `ai.claude.skills`, `ai.claude.md`
 
-All matching sections are printed in `.dotf` format.
+All matching sections are printed.
 
 ### Available Sections
 
-These are the section IDs used in `.dotf` reports:
+These are the section IDs used in `.json` reports:
 
 | Section | Source |
 |---------|--------|

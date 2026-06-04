@@ -3,7 +3,7 @@
 > The ultimate machine identity tool. Collect, backup, restore, compare, and sync configs across machines.
 
 **Runtime:** Bun (required) — uses `Bun.file()`, `Bun.$`, `Bun.Glob` throughout
-**Depends on:** `@dotformat/core` (parse, stringify, compare, formatDiff)
+**Depends on:** native JSON (zero deps) — in-tree `src/snapshot` (parseSnapshot, serializeSnapshot, compareSnapshots, formatDiff)
 **Package:** `@dotformat/cli`
 
 ---
@@ -11,12 +11,12 @@
 ## User Journeys
 
 ### Journey A: "What's on my machine?"
-Single-file `.dotf` snapshot — parseable, diffable, queryable.
+Single-file `.json` snapshot — parseable, diffable, queryable.
 
 ```bash
-dotfiles collect                    # → reports/<hostname>.dotf
+dotfiles collect                    # → reports/<hostname>.json
 dotfiles list models                # → fuzzy query a section
-dotfiles compare home.dotf work.dotf # → structured diff
+dotfiles compare home.json work.json # → structured diff
 ```
 
 **Status: Done**
@@ -35,7 +35,7 @@ Real file copies in structured directories. Two tracks:
      (power users)                   (quick & portable)
               │                             │
     ┌─────────┴─────────┐          ┌───────┴───────┐
-    │ Real files in repo │          │ Single .dotf  │
+    │ Real files in repo │          │ Single .json  │
     │ shell/.zshrc       │          │ snapshot file │
     │ ai/claude/...      │          │ (carry/email) │
     │ git/.gitconfig     │          └───────────────┘
@@ -91,7 +91,7 @@ Also available standalone: `dotfiles scan [path]`
 
 ## 1. CLI Rewrite (Done)
 
-Rewrote bash script → Bun/TypeScript CLI outputting `.dotf` files.
+Rewrote bash script → Bun/TypeScript CLI outputting `.json` files.
 
 ### Commands
 
@@ -109,9 +109,22 @@ interface CollectorContext {
   home: string      // $HOME — injected for testability
 }
 
-type CollectorResult = Record<string, DotfSection>
+interface Section {
+  name: string
+  pairs: Record<string, string>
+  items: { raw: string; columns: string[] }[]
+  content: string | null
+}
+
+type Snapshot = Record<string, Section>
+type CollectorResult = Record<string, Section>
 type Collector = (ctx: CollectorContext) => Promise<CollectorResult>
 ```
+
+Snapshots serialize to plain JSON via the in-tree `src/snapshot` module
+(`serializeSnapshot` / `parseSnapshot`). On disk, each section is keyed by its
+id; empty `pairs` / `items` / `content` fields are omitted, pretty-printed with
+2-space indent.
 
 - Returns `{}` if tool/file not found (no errors for missing stuff)
 - Uses `Bun.file()` for reads, `Bun.$` for shell commands
@@ -157,9 +170,13 @@ dotfiles/
 ├── src/
 │   ├── cli.ts                    # Entry point — command routing
 │   ├── commands/
-│   │   ├── collect.ts            # Orchestrates all collectors → .dotf file
-│   │   ├── compare.ts            # Diffs two .dotf reports
+│   │   ├── collect.ts            # Orchestrates all collectors → .json file
+│   │   ├── compare.ts            # Diffs two .json reports
 │   │   └── list.ts               # Fuzzy section query
+│   ├── snapshot/
+│   │   ├── types.ts              # Section, Snapshot, CollectorResult
+│   │   ├── serialize.ts          # serializeSnapshot / parseSnapshot (native JSON)
+│   │   └── compare.ts            # compareSnapshots / formatDiff (in-tree)
 │   ├── collectors/
 │   │   ├── types.ts              # CollectorContext, CollectorResult, makeSection
 │   │   ├── meta.ts, claude.ts, cursor.ts, gemini.ts, windsurf.ts
@@ -223,7 +240,7 @@ backup/
 - Sensitivity scan runs before writing
 - `--only` / `--skip` for selective backup
 - Clone track: writes into repo structure → user commits
-- CLI-only track: still uses `.dotf` single-file export
+- CLI-only track: still uses `.json` single-file export
 
 ---
 
@@ -391,7 +408,7 @@ dotfiles status
 ### 8b. `--slim` flag for collect
 AI token-efficient snapshots — strips verbose content, keeps structure + metadata only.
 ```bash
-dotfiles collect --slim    # smaller .dotf, good for feeding to AI
+dotfiles collect --slim    # smaller .json, good for feeding to AI
 ```
 
 ### 8c. Parallel collectors
@@ -404,7 +421,7 @@ Bun requirement, full CLI usage docs, all commands documented.
 
 ## Ideas Backlog
 
-- [x] Timestamped report filenames — `<hostname>-YYYYMMDDHHMMSS.dotf`, no overwrites
+- [x] Timestamped report filenames — `<hostname>-YYYYMMDDHHMMSS.json`, no overwrites
 - [ ] `.local` override pattern — separate shared vs machine-specific configs (inspired by gko/dotfiles)
 - [ ] `--assume-unchanged` for sensitive template files in GitHub flow
 - [ ] Profile switching — `dotfiles use work` / `dotfiles use personal`
@@ -413,8 +430,8 @@ Bun requirement, full CLI usage docs, all commands documented.
 - [ ] Plugin system — community collectors for tools we don't cover
 - [ ] Stream-based file copy — `Bun.file().stream()` for memory-safe large backup operations
 - [x] Archive output — `--archive` flag for `.tar.gz` backup export (uses system tar, migrate to `Bun.Archiver` when available)
-- [ ] Binary format — optional `--format binary` for `.dotf` files
-- [ ] Pluggable output format — `--format json|yaml|toml|dotf` via registry layer. Bun has native TOML/YAML parsers — use them when implementing
+- [ ] Binary format — optional `--format binary` for `.json` snapshots
+- [ ] Pluggable output format — `--format json|yaml|toml` via registry layer. Bun has native TOML/YAML parsers — use them when implementing
 - [ ] `bun build --compile` — standalone binary distribution (no Bun install required)
 - [ ] License — change to MIT when going public
 - [ ] Init (GitHub template flow) — guided onboarding, `gh` repo create, one-line install

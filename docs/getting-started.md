@@ -84,16 +84,16 @@ dotfiles backup -o /tmp/backup-test
 
 ### Journey A: "What's on my machine?"
 
-Generate a `.dotf` snapshot — a single parseable text file capturing your entire machine config.
+Generate a `.json` snapshot — a single parseable JSON file capturing your entire machine config.
 
 ```bash
 dotfiles collect                           # Full snapshot
 dotfiles collect --slim                    # AI-friendly (truncated content)
 dotfiles list brew                         # Query a section from latest report
-dotfiles compare home.dotf work.dotf       # Diff two snapshots
+dotfiles compare home.json work.json       # Diff two snapshots
 ```
 
-The `.dotf` format is structured text with sections, key-value pairs, and content blocks. It's designed to be human-readable, git-diffable, and parseable by [`@dotformat/core`](https://www.npmjs.com/package/@dotformat/core).
+The `.json` snapshot is a flat map of section id → section, with each section carrying key-value `pairs`, structured `items`, and/or a `content` block. It's pretty-printed (2-space), human-readable, git-diffable, and parseable by any JSON tool. Serialization is native (`JSON.stringify` / `JSON.parse`) via the in-tree `src/snapshot` module — no runtime dependencies.
 
 ### Journey B: "Back up my configs"
 
@@ -165,7 +165,7 @@ All outputs use timestamped names to prevent overwrites:
 
 | Output Type | Naming Pattern |
 |------------|----------------|
-| Collect report | `<hostname>-YYYYMMDDHHMMSS.dotf` |
+| Collect report | `<hostname>-YYYYMMDDHHMMSS.json` |
 | Backup directory | `backup-<hostname>-YYYYMMDDHHMMSS/` |
 | Archive | `backup-<hostname>-YYYYMMDDHHMMSS.tar.gz` |
 | Pre-restore snapshot | `pre-restore-YYYYMMDDHHMMSS/` |

@@ -31,8 +31,8 @@ flowchart TD
   P & Q & R --> S{--slim enabled?}
   S -->|yes| T[Truncate content sections to 10 lines]
   S -->|no| U[Keep full content]
-  T & U --> V["stringify(doc) via @dotformat/core"]
-  V --> W["Write hostname-YYYYMMDDHHMMSS.dotf"]
+  T & U --> V["serializeSnapshot(snapshot) via JSON.stringify"]
+  V --> W["Write hostname-YYYYMMDDHHMMSS.json"]
   W --> X[Print file path]
   X --> Y{Has findings?}
   Y -->|yes| Z[Print sensitivity report]
@@ -210,16 +210,16 @@ flowchart TD
 ```mermaid
 flowchart TD
   A{Two file args provided?} -->|yes| B[Use provided paths]
-  A -->|no| C["Glob scan <cwd>/reports/*.dotf"]
+  A -->|no| C["Glob scan <cwd>/reports/*.json"]
   C --> D[Sort by mtime descending]
   D --> E{At least 2 files?}
   E -->|no| F[Print error + usage]
   E -->|yes| G[Use two newest files]
 
   B & G --> H["Read both files in parallel"]
-  H --> I["parse() both via @dotformat/core"]
-  I --> J["compare(left, right) → diff"]
-  J --> K["formatDiff(diff, { labels, color })"]
+  H --> I["parseSnapshot() both via JSON.parse"]
+  I --> J["compareSnapshots(left, right) → diff"]
+  J --> K["formatDiff(diff, { labels, color }) — in-tree"]
   K --> L{Output empty?}
   L -->|yes| M["Print 'No differences found.'"]
   L -->|no| N[Print formatted diff]
@@ -230,15 +230,15 @@ flowchart TD
 ```mermaid
 flowchart TD
   A{Section arg provided?} -->|no| B[Print usage]
-  A -->|yes| C["Glob scan <cwd>/reports/*.dotf"]
+  A -->|yes| C["Glob scan <cwd>/reports/*.json"]
   C --> D[Sort by mtime descending]
   D --> E{Any reports?}
   E -->|no| F["Print 'No reports found'"]
   E -->|yes| G[Read newest report]
-  G --> H["parse() → DotfDocument"]
+  G --> H["parseSnapshot() → Snapshot"]
   H --> I[Filter sections by fuzzy match]
   I --> J{Any matches?}
   J -->|no| K[Print available sections]
-  J -->|yes| L["stringify() each matching section"]
+  J -->|yes| L["Print each matching section: pairs, items, content"]
   L --> M[Print output]
 ```

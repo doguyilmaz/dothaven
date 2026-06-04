@@ -25,7 +25,7 @@ export default withMermaid(
           items: [
             { text: 'Introduction', link: '/' },
             { text: 'Getting Started', link: '/getting-started' },
-            { text: '.dotf File Format', link: '/dotf-format' },
+            { text: 'Snapshot Format (JSON)', link: '/snapshot-format' },
           ],
         },
         {

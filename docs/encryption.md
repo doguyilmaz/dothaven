@@ -3,7 +3,7 @@
 This tool never stores secrets in plaintext. There are two complementary mechanisms:
 
 1. **Redaction** (on `collect` / `backup`) — the sensitivity scanner masks or skips secret
-   values in `.dotf` snapshots and structured backups.
+   values in JSON snapshots and structured backups.
 2. **Encryption** (on `chezmoi-export`) — secrets are handed to chezmoi with `--encrypt`, which
    encrypts them with [age](https://age-encryption.org) so they can be carried — even committed to a
    private repo — and decrypted on `apply`.

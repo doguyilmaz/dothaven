@@ -1,6 +1,6 @@
 #!/bin/bash
 # DEPRECATED: Use `bun bin/dotfiles.ts collect` instead.
-# This script outputs markdown. The new CLI outputs .dotf format with
+# This script outputs markdown. The new CLI outputs .json format with
 # structured sections, redaction, comparison, and section listing.
 #
 # Collects AI tool configs and system info from any machine.

@@ -6,7 +6,7 @@ The CLI offers two complementary ways to capture machine state:
 
 | Track | Command | Output | Use Case |
 |-------|---------|--------|----------|
-| **Snapshot** | `collect` | Single `.dotf` text file | Quick inspection, AI feeds, cross-machine compare |
+| **Snapshot** | `collect` | Single `.json` file | Quick inspection, AI feeds, cross-machine compare |
 | **File backup** | `backup` | Structured directory of real files | Git-committable, full restore capability |
 
 Both tracks run sensitivity scanning by default.
@@ -317,6 +317,6 @@ dotfiles collect -o /tmp
 # On machine B:
 dotfiles collect -o /tmp
 
-# Compare (copy both .dotf files to same location):
-dotfiles compare machineA.dotf machineB.dotf
+# Compare (copy both .json files to same location):
+dotfiles compare machineA.json machineB.json
 ```
