@@ -217,7 +217,9 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			if err != nil {
 				continue
 			}
-			if err := sys.WriteFile(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
+			// The snapshot captures the user's CURRENT (unredacted) files before
+			// overwrite — owner-only so it can't leak a secret.
+			if err := sys.WriteFileSecure(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
 				return res, err
 			}
 			res.SnapshotDir = opts.SnapshotDir

@@ -95,7 +95,7 @@ func newSecurityCmd(_ *sys.OS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := os.WriteFile(out, []byte(scan.FormatSecurityReport(results)), 0o644); err != nil {
+			if err := sys.WriteFileSecure(out, scan.FormatSecurityReport(results)); err != nil {
 				return err
 			}
 			withFindings := 0

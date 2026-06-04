@@ -78,13 +78,48 @@ func (o *OS) Home() string             { return o.home }
 // Timestamp formats a time as YYYYMMDDHHMMSS (UTC) for output filenames.
 func Timestamp(t time.Time) string { return t.UTC().Format("20060102150405") }
 
-// WriteFile writes content to path, creating parent directories as needed. It is
-// the single mkdir-p+write primitive shared by backup and restore.
+// WriteFile atomically writes content to path (0644), creating parent dirs. Used
+// for restoring ordinary configs.
 func WriteFile(path, content string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	return writeFile(path, content, 0o755, 0o644)
+}
+
+// WriteFileSecure atomically writes content owner-only (0600 file, 0700 dirs).
+// Used for any output that can hold secrets — backups, snapshots, security
+// reports, pre-restore snapshots — so it is never world-readable.
+func WriteFileSecure(path, content string) error {
+	return writeFile(path, content, 0o700, 0o600)
+}
+
+// writeFile writes to a temp file in the destination dir and renames it into
+// place, so an interrupted write can never leave a half-written (or empty)
+// target — the rename is atomic on the same filesystem.
+func writeFile(path, content string, dirPerm, filePerm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	tmp, err := os.CreateTemp(dir, ".dothaven-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func(e error) error { tmp.Close(); os.Remove(tmpName); return e }
+	if _, err := tmp.WriteString(content); err != nil {
+		return cleanup(err)
+	}
+	if err := tmp.Chmod(filePerm); err != nil {
+		return cleanup(err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 // ResolveOutputDir decides where reports/backups land: an explicit path wins;

@@ -111,7 +111,7 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 				host = "machine"
 			}
 			path := filepath.Join(dir, fmt.Sprintf("%s-%s.json", host, sys.Timestamp(time.Now())))
-			if err := os.WriteFile(path, data, 0o644); err != nil {
+			if err := sys.WriteFileSecure(path, string(data)); err != nil {
 				return err
 			}
 			fmt.Printf("Report saved to: %s\n", path)

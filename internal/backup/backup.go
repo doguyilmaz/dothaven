@@ -114,7 +114,7 @@ func copyFile(t registry.BackupTarget, destRoot string, redact bool, results *[]
 	if !keep {
 		return 0, nil
 	}
-	if err := sys.WriteFile(filepath.Join(destRoot, t.Dest), body); err != nil {
+	if err := sys.WriteFileSecure(filepath.Join(destRoot, t.Dest), body); err != nil {
 		return 0, err
 	}
 	return 1, nil
@@ -138,7 +138,7 @@ func copyDir(t registry.BackupTarget, destRoot string, redact bool, results *[]s
 		if !keep {
 			return nil
 		}
-		if werr := sys.WriteFile(filepath.Join(destRoot, destRel), body); werr != nil {
+		if werr := sys.WriteFileSecure(filepath.Join(destRoot, destRel), body); werr != nil {
 			return werr
 		}
 		count++
