@@ -18,7 +18,7 @@ Detection uses `Bun.file(join(cwd, ".git/HEAD")).exists()` — it checks for the
 
 | Type | Pattern | Example |
 |------|---------|---------|
-| Collect report | `<hostname>-YYYYMMDDHHMMSS.dotf` | `MacBook-Pro-20260407143022.dotf` |
+| Collect report | `<hostname>-YYYYMMDDHHMMSS.json` | `MacBook-Pro-20260407143022.json` |
 | Backup directory | `backup-<hostname>-YYYYMMDDHHMMSS` | `backup-MacBook-Pro-20260407143022` |
 | Archive | `backup-<hostname>-YYYYMMDDHHMMSS.tar.gz` | `backup-MacBook-Pro-20260407143022.tar.gz` |
 | Pre-restore snapshot | `pre-restore-YYYYMMDDHHMMSS` | `pre-restore-20260407143500` |
@@ -92,10 +92,10 @@ Timestamps use `YYYYMMDDHHMMSS` format (no separators) for filesystem-safe, sort
 
 | Behavior | Detail |
 |----------|--------|
-| Auto-detect | Finds two newest `.dotf` files in `<cwd>/reports/` by modification time |
+| Auto-detect | Finds two newest `.json` files in `<cwd>/reports/` by modification time |
 | Search scope | Only searches `<cwd>/reports/` — **not** `~/Downloads` |
-| Minimum files | Requires at least 2 `.dotf` files when auto-detecting |
-| Diff labels | Derived from filename without `.dotf` extension |
+| Minimum files | Requires at least 2 `.json` files when auto-detecting |
+| Diff labels | Derived from filename without `.json` extension |
 | Color | Always enabled (color: true passed to formatter) |
 | No diff output | Prints "No differences found." when reports are identical |
 
@@ -104,10 +104,10 @@ Timestamps use `YYYYMMDDHHMMSS` format (no separators) for filesystem-safe, sort
 | Behavior | Detail |
 |----------|--------|
 | Fuzzy matching | Substring match on full name + dot-segment match on parts |
-| Search scope | Latest `.dotf` file in `<cwd>/reports/` only |
+| Search scope | Latest `.json` file in `<cwd>/reports/` only |
 | Multiple matches | All matching sections are printed |
 | No match | Lists all available section names |
-| Output format | Re-stringified via `@dotformat/core` (properly formatted `.dotf` output) |
+| Output format | Human-readable dump of the matched section's `pairs`, `items`, and `content` |
 
 ### `scan`
 
@@ -130,7 +130,7 @@ Timestamps use `YYYYMMDDHHMMSS` format (no separators) for filesystem-safe, sort
 | Condition | Behavior |
 |-----------|----------|
 | `$HOME` not set | `console.error` + `process.exit(1)` |
-| Bun runtime not available | Error message + `process.exit(1)` (checked in `bin/dotfiles.ts`) |
+| Bun runtime not available | Error message + `process.exit(1)` (checked in `bin/dothaven.ts`) |
 | No backup path for `restore` | Prints usage message, exits normally |
 
 ### Graceful Degradation
@@ -144,7 +144,7 @@ Timestamps use `YYYYMMDDHHMMSS` format (no separators) for filesystem-safe, sort
 | Non-macOS for apps/brew | Platform guard → returns `{}` |
 | JSON parse error | Registry collector catches → skips entry |
 | `stat()` fails in age calculation | Returns "unknown" |
-| No backup found for `diff`/`status` | "No backup found. Run 'dotfiles backup' first." |
+| No backup found for `diff`/`status` | "No backup found. Run 'dothaven backup' first." |
 | No reports for `compare`/`list` | Appropriate message with usage hint |
 
 ### Bun API Usage
@@ -176,5 +176,5 @@ Timestamps use `YYYYMMDDHHMMSS` format (no separators) for filesystem-safe, sort
 - `diff` command: checks `process.stdout.isTTY ?? false`
   - TTY present: uses `Bun.color()` for yellow/green/blue/gray output
   - Not a TTY (pipe, redirect): all color strings are empty, output is plain text
-- `compare` command: always passes `color: true` to `formatDiff()` (color is handled by `@dotformat/core`)
+- `compare` command: always passes `color: true` to `formatDiff()` (color is handled by the in-tree `formatDiff` in `src/snapshot/compare.ts`)
 - ANSI reset: `\x1b[0m` is used after each colored line (only when TTY)

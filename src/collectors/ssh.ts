@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import { REDACTION_MARKER } from "../utils/constants";
 import type { Collector, CollectorResult } from "./types";
 import { makeSection } from "./types";
@@ -38,15 +38,16 @@ function parseSshConfig(content: string): SshHost[] {
 }
 
 export const collectSsh: Collector = async (ctx) => {
+  const result: CollectorResult = {};
   const configPath = join(ctx.home, ".ssh/config");
   const file = Bun.file(configPath);
 
-  if (!(await file.exists())) return {} as CollectorResult;
+  if (!(await file.exists())) return result;
 
   const content = await file.text();
   const hosts = parseSshConfig(content);
 
-  if (!hosts.length) return {} as CollectorResult;
+  if (!hosts.length) return result;
 
   const items = hosts.map((h) => {
     const hn = ctx.redact ? REDACTION_MARKER : h.hostname;
@@ -55,7 +56,6 @@ export const collectSsh: Collector = async (ctx) => {
     return { raw, columns: [h.host, hn, id] };
   });
 
-  return {
-    "ssh.hosts": makeSection("ssh.hosts", { items }),
-  };
+  result["ssh.hosts"] = makeSection("ssh.hosts", { items });
+  return result;
 };

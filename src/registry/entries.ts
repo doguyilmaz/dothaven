@@ -6,7 +6,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.claude.settings",
     name: "Claude Settings",
-    paths: { darwin: "~/.claude/settings.json", linux: "~/.claude/settings.json", win32: "%USERPROFILE%/.claude/settings.json" },
+    paths: {
+      darwin: "~/.claude/settings.json",
+      linux: "~/.claude/settings.json",
+      win32: "%USERPROFILE%/.claude/settings.json",
+    },
     category: "ai",
     kind: { type: "json-extract", fields: ["permissions", "enabledPlugins"] },
     backupDest: "ai/claude/settings.json",
@@ -55,7 +59,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.gemini.settings",
     name: "Gemini Settings",
-    paths: { darwin: "~/.gemini/settings.json", linux: "~/.gemini/settings.json", win32: "%USERPROFILE%/.gemini/settings.json" },
+    paths: {
+      darwin: "~/.gemini/settings.json",
+      linux: "~/.gemini/settings.json",
+      win32: "%USERPROFILE%/.gemini/settings.json",
+    },
     category: "ai",
     kind: { type: "json-extract", fields: [] },
     backupDest: "ai/gemini/settings.json",
@@ -84,7 +92,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.windsurf.mcp",
     name: "Windsurf MCP Config",
-    paths: { darwin: "~/.codeium/windsurf/mcp_config.json", linux: "~/.codeium/windsurf/mcp_config.json", win32: "%USERPROFILE%/.codeium/windsurf/mcp_config.json" },
+    paths: {
+      darwin: "~/.codeium/windsurf/mcp_config.json",
+      linux: "~/.codeium/windsurf/mcp_config.json",
+      win32: "%USERPROFILE%/.codeium/windsurf/mcp_config.json",
+    },
     category: "ai",
     kind: { type: "file" },
     backupDest: "ai/windsurf/mcp_config.json",
@@ -93,7 +105,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "ai.windsurf.skills",
     name: "Windsurf Skills",
-    paths: { darwin: "~/.codeium/windsurf/skills", linux: "~/.codeium/windsurf/skills", win32: "%USERPROFILE%/.codeium/windsurf/skills" },
+    paths: {
+      darwin: "~/.codeium/windsurf/skills",
+      linux: "~/.codeium/windsurf/skills",
+      win32: "%USERPROFILE%/.codeium/windsurf/skills",
+    },
     category: "ai",
     kind: { type: "dir" },
     backupDest: "ai/windsurf/skills",
@@ -108,6 +124,42 @@ export const registryEntries: ConfigEntry[] = [
     category: "shell",
     kind: { type: "file" },
     backupDest: "shell/.zshrc",
+    sensitivity: "low",
+  },
+  {
+    id: "shell.zprofile",
+    name: ".zprofile",
+    paths: { darwin: "~/.zprofile", linux: "~/.zprofile" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.zprofile",
+    sensitivity: "low",
+  },
+  {
+    id: "shell.zshenv",
+    name: ".zshenv",
+    paths: { darwin: "~/.zshenv", linux: "~/.zshenv" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.zshenv",
+    sensitivity: "low",
+  },
+  {
+    id: "shell.bash_profile",
+    name: ".bash_profile",
+    paths: { darwin: "~/.bash_profile", linux: "~/.bash_profile" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.bash_profile",
+    sensitivity: "low",
+  },
+  {
+    id: "shell.bashrc",
+    name: ".bashrc",
+    paths: { darwin: "~/.bashrc", linux: "~/.bashrc" },
+    category: "shell",
+    kind: { type: "file" },
+    backupDest: "shell/.bashrc",
     sensitivity: "low",
   },
 
@@ -133,7 +185,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "gh.config",
     name: "GitHub CLI Config",
-    paths: { darwin: "~/.config/gh/config.yml", linux: "~/.config/gh/config.yml", win32: "%APPDATA%/GitHub CLI/config.yml" },
+    paths: {
+      darwin: "~/.config/gh/config.yml",
+      linux: "~/.config/gh/config.yml",
+      win32: "%APPDATA%/GitHub CLI/config.yml",
+    },
     category: "git",
     kind: { type: "file" },
     backupDest: "git/gh/config.yml",
@@ -144,7 +200,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "editor.zed",
     name: "Zed Settings",
-    paths: { darwin: "~/.config/zed/settings.json", linux: "~/.config/zed/settings.json", win32: "%APPDATA%/Zed/settings.json" },
+    paths: {
+      darwin: "~/.config/zed/settings.json",
+      linux: "~/.config/zed/settings.json",
+      win32: "%APPDATA%/Zed/settings.json",
+    },
     category: "editor",
     kind: { type: "file" },
     backupDest: "editor/zed/settings.json",
@@ -166,7 +226,11 @@ export const registryEntries: ConfigEntry[] = [
   {
     id: "editor.nvim",
     name: "Neovim Config",
-    paths: { darwin: "~/.config/nvim/init.lua", linux: "~/.config/nvim/init.lua", win32: "%USERPROFILE%/AppData/Local/nvim/init.lua" },
+    paths: {
+      darwin: "~/.config/nvim/init.lua",
+      linux: "~/.config/nvim/init.lua",
+      win32: "%USERPROFILE%/AppData/Local/nvim/init.lua",
+    },
     category: "editor",
     kind: { type: "file" },
     backupDest: "editor/nvim/init.lua",
@@ -235,5 +299,69 @@ export const registryEntries: ConfigEntry[] = [
     kind: { type: "file" },
     backupDest: "bun/.bunfig.toml",
     sensitivity: "low",
+  },
+
+  // === Cloud CLIs ===
+  {
+    id: "cloud.aws.config",
+    name: "AWS CLI config",
+    paths: { darwin: "~/.aws/config", linux: "~/.aws/config", win32: "%USERPROFILE%/.aws/config" },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/aws/config",
+    sensitivity: "medium",
+  },
+  {
+    id: "cloud.aws.credentials",
+    name: "AWS CLI credentials",
+    paths: { darwin: "~/.aws/credentials", linux: "~/.aws/credentials", win32: "%USERPROFILE%/.aws/credentials" },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/aws/credentials",
+    sensitivity: "high",
+  },
+  {
+    id: "cloud.gcloud.configurations",
+    name: "gcloud configurations",
+    paths: { darwin: "~/.config/gcloud/configurations", linux: "~/.config/gcloud/configurations" },
+    category: "cloud",
+    kind: { type: "dir" },
+    backupDest: "cloud/gcloud/configurations",
+    sensitivity: "medium",
+  },
+  {
+    id: "cloud.kube.config",
+    name: "kubeconfig",
+    paths: { darwin: "~/.kube/config", linux: "~/.kube/config", win32: "%USERPROFILE%/.kube/config" },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/kube/config",
+    sensitivity: "high",
+  },
+  {
+    id: "cloud.docker.config",
+    name: "Docker config",
+    paths: {
+      darwin: "~/.docker/config.json",
+      linux: "~/.docker/config.json",
+      win32: "%USERPROFILE%/.docker/config.json",
+    },
+    category: "cloud",
+    kind: { type: "file" },
+    backupDest: "cloud/docker/config.json",
+    sensitivity: "high",
+  },
+
+  // === Secrets (carried encrypted, never plaintext) ===
+  {
+    // Declarative: a no-op until ~/.gnupg exists with real keys. Kept so GPG is
+    // captured automatically if/when you start signing commits or encrypting.
+    id: "secrets.gnupg",
+    name: "GnuPG home",
+    paths: { darwin: "~/.gnupg", linux: "~/.gnupg" },
+    category: "secrets",
+    kind: { type: "dir" },
+    backupDest: "secrets/gnupg",
+    sensitivity: "high",
   },
 ];

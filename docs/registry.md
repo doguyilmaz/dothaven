@@ -24,7 +24,7 @@ type EntryKind =
   | { type: "json-extract"; fields: string[] }; // Extract specific JSON fields as pairs
 
 interface ConfigEntry {
-  id: string;                                 // Section name in .dotf report
+  id: string;                                 // Section name in JSON snapshot
   name: string;                               // Human-readable label
   paths: Partial<Record<Platform, string>>;   // Per-OS source paths
   category: string;                           // Powers --only/--skip filtering
@@ -51,7 +51,7 @@ Checks if file exists and counts lines. Does **not** read full content into the 
 - **Collect**: creates section with `pairs: { exists: "true", lines: "N" }`
 - **Backup**: reads and copies the full file (metadata is a collect-side optimization)
 
-Currently used for `.p10k.zsh` — the file is large and its content isn't useful in a `.dotf` report, but its existence and size matter.
+Currently used for `.p10k.zsh` — the file is large and its content isn't useful in a JSON snapshot, but its existence and size matter.
 
 #### `{ type: "dir" }` — Directory listing
 
@@ -253,9 +253,9 @@ To add support for a new tool:
 ```
 
 2. That's it. The new entry will automatically:
-   - Be collected by `registryCollector` → appears as `editor.helix` section in `.dotf` reports
+   - Be collected by `registryCollector` → appears as `editor.helix` section in JSON snapshots
    - Be backed up by `registryBackupSources` → copies to `editor/helix/config.toml` in backup dir
-   - Be restorable → `dotfiles restore` maps it back to `~/.config/helix/config.toml`
+   - Be restorable → `dothaven restore` maps it back to `~/.config/helix/config.toml`
    - Respect `--only editor` and `--skip editor` filtering
    - Be scanned for sensitivity
 

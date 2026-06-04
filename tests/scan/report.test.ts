@@ -26,10 +26,7 @@ describe("formatReport", () => {
   });
 
   test("shows counts in summary line", () => {
-    const results = [
-      scanContent("a", "-----BEGIN RSA PRIVATE KEY-----"),
-      scanContent("b", "_authToken=secret"),
-    ];
+    const results = [scanContent("a", "-----BEGIN RSA PRIVATE KEY-----"), scanContent("b", "_authToken=secret")];
     const report = formatReport(summarize(results));
     expect(report).toContain("1 items redacted");
     expect(report).toContain("1 skipped");

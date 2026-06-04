@@ -4,7 +4,7 @@
 
 | Phase | Feature | What Was Done |
 |-------|---------|---------------|
-| 1 | CLI Rewrite | Rewrote bash script → Bun/TypeScript CLI with `.dotf` output |
+| 1 | CLI Rewrite | Rewrote bash script → Bun/TypeScript CLI with `.json` output |
 | 2 | Backup | Real file copies in structured directories with `--archive` support |
 | 3 | Sensitivity Scan | 27+ detection patterns, three-stage pipeline, auto-redaction |
 | 4 | Restore | Interactive picker, dry-run, pre-restore snapshots, conflict resolution |
@@ -15,28 +15,29 @@
 | — | Slim mode | `--slim` flag for AI-friendly truncated snapshots |
 | — | Parallel collectors | `Promise.allSettled` for independent collectors |
 | — | Archive export | `--archive` flag for `.tar.gz` backup output |
-| — | Timestamped reports | `<hostname>-YYYYMMDDHHMMSS.dotf` naming |
+| — | Timestamped reports | `<hostname>-YYYYMMDDHHMMSS.json` naming |
+| — | JSON migration | Retired the custom `.dotf` text format for native JSON — the CLI now has zero runtime dependencies |
 
 ## Current Stats
 
 - **8 commands**: collect, backup, scan, restore, diff, status, compare, list
 - **23 registry entries**: across 8 categories
 - **27+ scan patterns**: HIGH, MEDIUM, LOW severity
-- **102 tests**: 307 assertions, 0 failures
+- **296 tests**: 708 assertions, 0 failures
 - **3 platforms**: macOS, Linux, Windows
 
 ## Next Up
 
-### `dotfiles init` — GitHub Template Flow
+### `dothaven init` — guided bootstrap
 
-Guided onboarding for new users:
+**Shipped:** `dothaven init` detects the chezmoi + age setup state and walks you through the rest (✓ done / → next command), running the safe steps on confirmation; the age-key step is guided only. See [commands](/commands#init).
+
+**Future enhancements** (not yet shipped):
 
 ```bash
-bunx @dotformat/cli init
-# → "Create a private GitHub repo? (y/n)"
-# → gh repo create my-dotfiles --private --template dotformat/template
-# → cd my-dotfiles && dotfiles backup
-# → git add . && git commit -m "initial backup" && git push
+# Offer to create the private repo from a template, then seed it:
+# → gh repo create dotfiles --private --template <template>
+# → first chezmoi-export + push
 ```
 
 **New machine flow:**
@@ -44,7 +45,7 @@ bunx @dotformat/cli init
 ```bash
 git clone github.com/you/my-dotfiles
 cd my-dotfiles
-dotfiles restore --pick
+dothaven restore --pick
 ```
 
 **One-line remote install:**
@@ -83,8 +84,8 @@ dotfiles add ~/.config/starship.toml   # Future: adds entry to local registry
 | Encryption | Encrypt sensitive files with passphrase before storing | Medium |
 | Shallow clone + submodules | Fast remote install | Low |
 | Stream-based file copy | `Bun.file().stream()` for large backups | Low |
-| Binary format | Optional `--format binary` for `.dotf` files | Low |
-| Pluggable output | `--format json\|yaml\|toml\|dotf` via registry layer | Medium |
+| Binary format | Optional `--format binary` for snapshot files | Low |
+| Pluggable output | `--format json\|yaml\|toml` via registry layer | Medium |
 | `bun build --compile` | Standalone binary distribution (no Bun required) | Medium |
 | License change | MIT when going public | — |
 

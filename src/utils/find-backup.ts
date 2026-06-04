@@ -1,5 +1,5 @@
-import { join } from "path";
-import { readdir, stat } from "fs/promises";
+import { join } from "node:path";
+import { readdir, stat } from "node:fs/promises";
 import { resolveOutputDir } from "./resolve-output";
 
 export async function findLatestBackup(): Promise<string | null> {

@@ -6,7 +6,7 @@ The CLI offers two complementary ways to capture machine state:
 
 | Track | Command | Output | Use Case |
 |-------|---------|--------|----------|
-| **Snapshot** | `collect` | Single `.dotf` text file | Quick inspection, AI feeds, cross-machine compare |
+| **Snapshot** | `collect` | Single `.json` file | Quick inspection, AI feeds, cross-machine compare |
 | **File backup** | `backup` | Structured directory of real files | Git-committable, full restore capability |
 
 Both tracks run sensitivity scanning by default.
@@ -17,15 +17,15 @@ Both tracks run sensitivity scanning by default.
 
 ### How It Works
 
-`dotfiles backup` reads every config file defined in the [registry](/registry), scans it for sensitivity, applies redaction, and writes a copy to a structured directory.
+`dothaven backup` reads every config file defined in the [registry](/registry), scans it for sensitivity, applies redaction, and writes a copy to a structured directory.
 
 ```bash
-dotfiles backup                            # Everything
-dotfiles backup --only ai,shell            # Selective
-dotfiles backup --skip editor              # Exclusive
-dotfiles backup --archive                  # .tar.gz output
-dotfiles backup --archive -o ~/Desktop     # Archive to specific location
-dotfiles backup --no-redact                # Raw files, no redaction
+dothaven backup                            # Everything
+dothaven backup --only ai,shell            # Selective
+dothaven backup --skip editor              # Exclusive
+dothaven backup --archive                  # .tar.gz output
+dothaven backup --archive -o ~/Desktop     # Archive to specific location
+dothaven backup --no-redact                # Raw files, no redaction
 ```
 
 ### Backup Directory Layout
@@ -135,12 +135,12 @@ The sensitivity scan runs per-file during backup:
 
 ### How It Works
 
-`dotfiles restore` reads a backup directory, maps each file to its original location on the machine, compares content, and writes files back.
+`dothaven restore` reads a backup directory, maps each file to its original location on the machine, compares content, and writes files back.
 
 ```bash
-dotfiles restore ./backup --dry-run        # Preview only
-dotfiles restore ./backup --pick           # Select categories
-dotfiles restore ./backup                  # Restore everything
+dothaven restore ./backup --dry-run        # Preview only
+dothaven restore ./backup --pick           # Select categories
+dothaven restore ./backup                  # Restore everything
 ```
 
 ### Restore Plan
@@ -180,7 +180,7 @@ pre-restore-YYYYMMDDHHMMSS/
 This snapshot:
 - Uses the same directory structure as a regular backup
 - Is stored in the resolved output directory
-- Can be restored with `dotfiles restore` — it's a valid backup
+- Can be restored with `dothaven restore` — it's a valid backup
 
 Only conflicting files are snapshot'd. New files (nothing to overwrite) and same files (no change) are not included.
 
@@ -235,7 +235,7 @@ Only selected categories are processed. The plan is filtered before execution.
 Preview the restore plan without writing anything:
 
 ```bash
-$ dotfiles restore ./backup --dry-run
+$ dothaven restore ./backup --dry-run
 
 Dry run — no files will be changed:
 
@@ -265,15 +265,15 @@ This supports the common dotfiles pattern of having `~/.zshrc` source a machine-
 ### Initial Setup (New Repo)
 
 ```bash
-git clone https://github.com/you/dotfiles.git
-cd dotfiles
+git clone https://github.com/you/dothaven.git
+cd dothaven
 bun install
 
 # Back up current machine
-dotfiles backup
+dothaven backup
 
 # Review what was captured
-dotfiles diff
+dothaven diff
 
 # Commit
 git add . && git commit -m "initial backup"
@@ -284,39 +284,39 @@ git push
 
 ```bash
 # Quick check: what changed?
-dotfiles status
+dothaven status
 
 # Detailed diff
-dotfiles diff
+dothaven diff
 
 # Re-backup if needed
-dotfiles backup
+dothaven backup
 git add . && git commit -m "update configs"
 ```
 
 ### New Machine Setup
 
 ```bash
-git clone https://github.com/you/dotfiles.git
-cd dotfiles
+git clone https://github.com/you/dothaven.git
+cd dothaven
 bun install
 
 # Preview what would be restored
-dotfiles restore reports/backup-* --dry-run
+dothaven restore reports/backup-* --dry-run
 
 # Interactive restore
-dotfiles restore reports/backup-* --pick
+dothaven restore reports/backup-* --pick
 ```
 
 ### Comparing Two Machines
 
 ```bash
 # On machine A:
-dotfiles collect -o /tmp
+dothaven collect -o /tmp
 
 # On machine B:
-dotfiles collect -o /tmp
+dothaven collect -o /tmp
 
-# Compare (copy both .dotf files to same location):
-dotfiles compare machineA.dotf machineB.dotf
+# Compare (copy both .json files to same location):
+dothaven compare machineA.json machineB.json
 ```

@@ -1,4 +1,4 @@
-import { hostname } from "os";
+import { hostname } from "node:os";
 import type { Collector } from "./types";
 import { makeSection } from "./types";
 

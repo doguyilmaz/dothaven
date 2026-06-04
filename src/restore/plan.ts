@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import { backupSources } from "../backup/sources";
 import { REDACTION_MARKER } from "../utils/constants";
 import type { RestoreEntry, RestorePlan, FileStatus } from "./types";
@@ -51,7 +51,7 @@ export async function buildRestorePlan(backupDir: string, home: string): Promise
       category = mapping.category;
     } else {
       for (const [dest, m] of map.entries()) {
-        if (m.type === "dir" && relative.startsWith(dest + "/")) {
+        if (m.type === "dir" && relative.startsWith(`${dest}/`)) {
           const relativeSuffix = relative.slice(dest.length + 1);
           targetPath = join(m.absolutePath, relativeSuffix);
           category = m.category;
@@ -66,7 +66,7 @@ export async function buildRestorePlan(backupDir: string, home: string): Promise
         const baseDest = localMatch[1];
         const baseMapping = map.get(baseDest);
         if (baseMapping && baseMapping.type === "file") {
-          targetPath = baseMapping.absolutePath + ".local";
+          targetPath = `${baseMapping.absolutePath}.local`;
           category = baseMapping.category;
         }
       }

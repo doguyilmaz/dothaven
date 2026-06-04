@@ -165,8 +165,8 @@ Files with no findings are omitted from the report.
 ## Overriding Redaction
 
 ```bash
-dotfiles collect --no-redact    # Include everything
-dotfiles backup --no-redact     # Backup without redaction
+dothaven collect --no-redact    # Include everything
+dothaven backup --no-redact     # Backup without redaction
 ```
 
 ::: danger Use with caution

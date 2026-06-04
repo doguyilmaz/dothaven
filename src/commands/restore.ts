@@ -1,4 +1,4 @@
-import { resolve } from "path";
+import { resolve } from "node:path";
 import { getHome } from "../utils/home";
 import { buildRestorePlan, executeRestore, pickCategories } from "../restore";
 

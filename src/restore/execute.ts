@@ -1,4 +1,4 @@
-import { join, dirname } from "path";
+import { join, dirname } from "node:path";
 import { resolveOutputDir } from "../utils/resolve-output";
 import { generateTimestamp } from "../utils/timestamp";
 import type { RestorePlan, FileStatus } from "./types";

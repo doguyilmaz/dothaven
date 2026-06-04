@@ -1,6 +1,10 @@
 import { collect } from "./commands/collect";
 import { backup } from "./commands/backup";
 import { scan } from "./commands/scan";
+import { security } from "./commands/security";
+import { chezmoiExport } from "./commands/chezmoi";
+import { init } from "./commands/init";
+import { doctor } from "./commands/doctor";
 import { restore } from "./commands/restore";
 import { diff } from "./commands/diff";
 import { status } from "./commands/status";
@@ -19,6 +23,18 @@ switch (command) {
   case "scan":
     await scan(args);
     break;
+  case "security":
+    await security(args);
+    break;
+  case "chezmoi-export":
+    await chezmoiExport(args);
+    break;
+  case "init":
+    await init(args);
+    break;
+  case "doctor":
+    await doctor(args);
+    break;
   case "restore":
     await restore(args);
     break;
@@ -35,16 +51,23 @@ switch (command) {
     await list(args);
     break;
   default:
-    console.log(`Usage: dotfiles <command>
+    console.log(`Usage: dothaven <command>
 
 Commands:
-  collect [--no-redact] [--slim] [-o path]            Collect machine config → .dotf report
+  collect [--no-redact] [--slim] [-o path]            Collect machine config → JSON snapshot
   backup  [--no-redact] [--archive] [--only a,b] [--skip c,d] [-o path]
                                                        Backup config files (--archive for .tar.gz)
-  scan    [path]                                     Scan files for sensitive data
+  scan     [path]                                    Scan files for sensitive data (console)
+  security [path] [-o file]                          Write a Markdown security report (default SECURITY.md)
   restore <path> [--pick] [--dry-run]                Restore config files from backup
   diff    [path] [--section <name>]                  Compare backup against live system
   status                                             Quick summary of backup state
-  compare [file1] [file2]                            Diff two .dotf reports
-  list <section>                                     Print a section from most recent report`);
+  compare [file1] [file2]                            Diff two JSON snapshots
+  list <section>                                     Print a section from most recent report
+  chezmoi-export [--apply] [--pin] [--only a,b] [--skip c,d]
+                                                       Plan/run chezmoi add (--encrypt secrets).
+                                                       --pin keeps captured versions (default: latest);
+                                                       skip e.g. vscode,packages,editor,fonts,cloud
+  init                                               Guided chezmoi + age setup (detects state, runs safe steps)
+  doctor <snapshot.json>                             Check this machine for parity against a snapshot`);
 }

@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
-import { mkdtemp, rm, readdir } from "fs/promises";
-import { tmpdir } from "os";
+import { join } from "node:path";
+import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { backupSources } from "../../src/backup/sources";
 import type { BackupSource } from "../../src/backup/types";
 

@@ -1,17 +1,9 @@
 import type { RestoreEntry, BatchConflictAction } from "./types";
+import { readLine } from "../utils/prompt";
 
-export async function readLine(prompt: string): Promise<string> {
-  process.stdout.write(prompt);
-  for await (const chunk of Bun.stdin.stream()) {
-    return new TextDecoder().decode(chunk).trim();
-  }
-  return "";
-}
+export { readLine };
 
-export async function pickCategories(
-  categories: string[],
-  counts: Record<string, number>,
-): Promise<string[]> {
+export async function pickCategories(categories: string[], counts: Record<string, number>): Promise<string[]> {
   console.log("\nAvailable categories:");
   for (let i = 0; i < categories.length; i++) {
     console.log(`  ${i + 1}) ${categories[i]} (${counts[categories[i]] ?? 0} files)`);

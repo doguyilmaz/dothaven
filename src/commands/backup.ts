@@ -1,12 +1,13 @@
-import { hostname } from 'os';
-import { join, dirname } from 'path';
-import { resolveOutputDir } from '../utils/resolve-output';
-import { getHome } from '../utils/home';
-import { generateTimestamp } from '../utils/timestamp';
-import { backupSources } from '../backup/sources';
-import { scanContent, summarize, formatReport, applyRedactions } from '../scan';
-import type { ScanResult } from '../scan';
-import type { BackupEntry, BackupSource } from '../backup/types';
+import { hostname } from "node:os";
+import { join, dirname } from "node:path";
+import { resolveOutputDir } from "../utils/resolve-output";
+import { getHome } from "../utils/home";
+import { splitList } from "../utils/args";
+import { generateTimestamp } from "../utils/timestamp";
+import { backupSources } from "../backup/sources";
+import { scanContent, summarize, formatReport, applyRedactions } from "../scan";
+import type { ScanResult } from "../scan";
+import type { BackupEntry, BackupSource } from "../backup/types";
 
 function parseArgs(args: string[]) {
   let redact = true;
@@ -16,11 +17,11 @@ function parseArgs(args: string[]) {
   let skip: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--no-redact') redact = false;
-    if (args[i] === '--archive') archive = true;
-    if (args[i] === '-o' && args[i + 1]) outputDir = args[++i];
-    if (args[i] === '--only' && args[i + 1]) only = args[++i].split(',');
-    if (args[i] === '--skip' && args[i + 1]) skip = args[++i].split(',');
+    if (args[i] === "--no-redact") redact = false;
+    if (args[i] === "--archive") archive = true;
+    if (args[i] === "-o" && args[i + 1]) outputDir = args[++i];
+    if (args[i] === "--only" && args[i + 1]) only = splitList(args[++i]);
+    if (args[i] === "--skip" && args[i + 1]) skip = splitList(args[++i]);
   }
 
   return { redact, archive, outputDir, only, skip };
@@ -34,7 +35,7 @@ function filterSources(sources: BackupSource[], only: string[], skip: string[]):
 }
 
 async function copyFile(
-  entry: BackupEntry & { type: 'file' },
+  entry: BackupEntry & { type: "file" },
   destRoot: string,
   redact: boolean,
   scanResults: ScanResult[],
@@ -45,7 +46,7 @@ async function copyFile(
   let content = await file.text();
   const scanResult = scanContent(entry.dest, content);
 
-  if (redact && scanResult.action === 'skip') {
+  if (redact && scanResult.action === "skip") {
     scanResults.push(scanResult);
     return false;
   }
@@ -61,16 +62,31 @@ async function copyFile(
   return true;
 }
 
-async function copyDir(entry: BackupEntry & { type: 'dir' }, destRoot: string): Promise<number> {
-  const glob = new Bun.Glob('**/*');
+export async function copyDir(
+  entry: BackupEntry & { type: "dir" },
+  destRoot: string,
+  redact: boolean,
+  scanResults: ScanResult[],
+): Promise<number> {
+  const glob = new Bun.Glob("**/*");
   let count = 0;
 
   try {
     for await (const relative of glob.scan({ cwd: entry.src, onlyFiles: true, dot: true })) {
       const srcPath = join(entry.src, relative);
+      let content = await Bun.file(srcPath).text();
+
+      // Same gate as copyFile — a dir must not bypass redaction/skip.
+      const scanResult = scanContent(join(entry.dest, relative), content);
+      if (redact && scanResult.action === "skip") {
+        scanResults.push(scanResult);
+        continue; // e.g. a private-key file — never copy to a plaintext backup
+      }
+      if (redact) content = applyRedactions(content, scanResult);
+      scanResults.push(scanResult);
+
       const destPath = join(destRoot, entry.dest, relative);
       await Bun.$`mkdir -p ${dirname(destPath)}`.quiet();
-      const content = await Bun.file(srcPath).text();
       await Bun.write(destPath, content);
       count++;
     }
@@ -98,11 +114,11 @@ export async function backup(args: string[]) {
     let categoryCount = 0;
 
     for (const entry of entries) {
-      if (entry.type === 'file') {
+      if (entry.type === "file") {
         const copied = await copyFile(entry, backupDir, redact, scanResults);
         if (copied) categoryCount++;
       } else {
-        categoryCount += await copyDir(entry, backupDir);
+        categoryCount += await copyDir(entry, backupDir, redact, scanResults);
       }
     }
 
@@ -113,7 +129,7 @@ export async function backup(args: string[]) {
   }
 
   if (totalFiles === 0) {
-    console.log('No files found to backup.');
+    console.log("No files found to backup.");
     return;
   }
 
@@ -123,10 +139,10 @@ export async function backup(args: string[]) {
     await Bun.$`tar czf ${archivePath} -C ${resolvedOutput} ${backupName}`.quiet();
     await Bun.$`rm -rf ${backupDir}`.quiet();
     console.log(`Archive saved to: ${archivePath}`);
-    console.log(`  ${totalFiles} files across: ${backedUpCategories.join(', ')}`);
+    console.log(`  ${totalFiles} files across: ${backedUpCategories.join(", ")}`);
   } else {
     console.log(`Backup saved to: ${backupDir}`);
-    console.log(`  ${totalFiles} files across: ${backedUpCategories.join(', ')}`);
+    console.log(`  ${totalFiles} files across: ${backedUpCategories.join(", ")}`);
   }
 
   if (redact) {

@@ -1,6 +1,20 @@
-import { join } from "path";
-import { parse, stringify } from "@dotformat/core";
-import type { DotfDocument } from "@dotformat/core";
+import { join } from "node:path";
+import { parseSnapshot } from "../snapshot";
+import type { Section } from "../snapshot/types";
+
+/** Human-readable single-section dump for `list` (the only display consumer of the old stringify). */
+function formatSection(name: string, section: Section): string {
+  const lines = [`[${name}]`];
+  for (const [k, v] of Object.entries(section.pairs)) lines.push(`  ${k} = ${v}`);
+  for (const item of section.items) {
+    lines.push(`  ${item.columns.length > 1 ? item.columns.join("  ") : item.raw}`);
+  }
+  if (section.content != null) {
+    lines.push("  ---");
+    for (const line of section.content.split("\n")) lines.push(`  ${line}`);
+  }
+  return lines.join("\n");
+}
 
 function fuzzyMatch(query: string, sectionName: string): boolean {
   const q = query.toLowerCase();
@@ -16,14 +30,14 @@ async function getReportsDir(): Promise<string> {
 export async function list(args: string[]) {
   if (!args.length) {
     console.log("Usage: dotfiles list <section>");
-    console.log('Example: dotfiles list brew');
+    console.log("Example: dotfiles list brew");
     return;
   }
 
   const query = args[0];
   const reportsDir = await getReportsDir();
 
-  const glob = new Bun.Glob("*.dotf");
+  const glob = new Bun.Glob("*.json");
   const entries: { path: string; mtime: number }[] = [];
 
   for await (const path of glob.scan(reportsDir)) {
@@ -34,27 +48,21 @@ export async function list(args: string[]) {
   entries.sort((a, b) => b.mtime - a.mtime);
 
   if (!entries.length) {
-    console.log("No .dotf reports found. Run 'dotfiles collect' first.");
+    console.log("No .json reports found. Run 'dotfiles collect' first.");
     return;
   }
 
-  const content = await Bun.file(entries[0].path).text();
-  const doc = parse(content);
+  const snapshot = parseSnapshot(await Bun.file(entries[0].path).text());
 
-  const matches = Object.keys(doc.sections).filter((name) =>
-    fuzzyMatch(query, name)
-  );
+  const matches = Object.keys(snapshot).filter((name) => fuzzyMatch(query, name));
 
   if (!matches.length) {
     console.log(`No sections matching "${query}".`);
-    console.log("Available sections:", Object.keys(doc.sections).join(", "));
+    console.log("Available sections:", Object.keys(snapshot).join(", "));
     return;
   }
 
   for (const name of matches) {
-    const sectionDoc: DotfDocument = {
-      sections: { [name]: doc.sections[name] },
-    };
-    console.log(stringify(sectionDoc));
+    console.log(formatSection(name, snapshot[name]));
   }
 }

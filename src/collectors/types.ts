@@ -1,11 +1,11 @@
-import type { DotfSection } from "@dotformat/core";
+import type { Section } from "../snapshot/types";
 
 export interface CollectorContext {
   redact: boolean;
   home: string;
 }
 
-export type CollectorResult = Record<string, DotfSection>;
+export type CollectorResult = Record<string, Section>;
 
 export type Collector = (ctx: CollectorContext) => Promise<CollectorResult>;
 
@@ -15,8 +15,8 @@ export function makeSection(
     pairs?: Record<string, string>;
     items?: { raw: string; columns: string[] }[];
     content?: string | null;
-  } = {}
-): DotfSection {
+  } = {},
+): Section {
   return {
     name,
     pairs: opts.pairs ?? {},
@@ -24,3 +24,6 @@ export function makeSection(
     content: opts.content ?? null,
   };
 }
+
+/** Build single-column items from a list of names — the common collector item shape. */
+export const toItems = (names: string[]) => names.map((n) => ({ raw: n, columns: [n] }));

@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
+import { join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { registryCollector } from "../../src/registry/collector";
 import { registryEntries } from "../../src/registry/entries";
 import type { CollectorContext } from "../../src/collectors/types";

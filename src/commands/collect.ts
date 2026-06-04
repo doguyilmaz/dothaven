@@ -1,12 +1,11 @@
-import { hostname } from "os";
-import { join } from "path";
+import { hostname } from "node:os";
+import { join } from "node:path";
 import { generateTimestamp } from "../utils/timestamp";
-import { stringify } from "@dotformat/core";
-import type { DotfDocument } from "@dotformat/core";
+import { serializeSnapshot } from "../snapshot";
 import type { CollectorContext, CollectorResult } from "../collectors/types";
 import { resolveOutputDir } from "../utils/resolve-output";
 import { getHome } from "../utils/home";
-import { scanContent, summarize, formatReport, applyRedactions } from "../scan";
+import { summarize, formatReport, redactSection } from "../scan";
 import type { ScanResult } from "../scan";
 import { registryEntries, registryCollector } from "../registry";
 import { collectMeta } from "../collectors/meta";
@@ -14,6 +13,11 @@ import { collectSsh } from "../collectors/ssh";
 import { collectOllama } from "../collectors/ollama";
 import { collectApps } from "../collectors/apps";
 import { collectHomebrew } from "../collectors/homebrew";
+import { collectPackages } from "../collectors/packages";
+import { collectRuntimes } from "../collectors/runtimes";
+import { collectEditorsExt } from "../collectors/editors-ext";
+import { collectFonts } from "../collectors/fonts";
+import { collectDotfilesSweep } from "../collectors/dotfiles-sweep";
 
 const collectors = [
   collectMeta,
@@ -22,7 +26,22 @@ const collectors = [
   collectOllama,
   collectApps,
   collectHomebrew,
+  collectPackages,
+  collectRuntimes,
+  collectEditorsExt,
+  collectFonts,
+  collectDotfilesSweep,
 ];
+
+/** Run all collectors and merge their sections (no redaction — that happens in collect). */
+export async function runCollectors(ctx: CollectorContext): Promise<CollectorResult> {
+  const results = await Promise.allSettled(collectors.map((c) => c(ctx)));
+  const sections: CollectorResult = {};
+  for (const result of results) {
+    if (result.status === "fulfilled") Object.assign(sections, result.value);
+  }
+  return sections;
+}
 
 function parseArgs(args: string[]) {
   let redact = true;
@@ -45,7 +64,7 @@ function slimSections(sections: CollectorResult) {
     if (!section.content) continue;
     const lines = section.content.split("\n");
     if (lines.length > SLIM_MAX_LINES) {
-      section.content = lines.slice(0, SLIM_MAX_LINES).join("\n") + `\n... (${lines.length - SLIM_MAX_LINES} more lines)`;
+      section.content = `${lines.slice(0, SLIM_MAX_LINES).join("\n")}\n... (${lines.length - SLIM_MAX_LINES} more lines)`;
     }
   }
 }
@@ -61,37 +80,21 @@ export async function collect(args: string[]) {
     home: getHome(),
   };
 
-  const results = await Promise.allSettled(collectors.map((c) => c(ctx)));
-
-  const sections: CollectorResult = {};
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      Object.assign(sections, result.value);
-    }
-  }
+  const sections = await runCollectors(ctx);
 
   const scanResults: ScanResult[] = [];
   if (redact) {
     for (const [name, section] of Object.entries(sections)) {
-      if (section.content) {
-        const result = scanContent(name, section.content);
-        scanResults.push(result);
-        if (result.action === "skip") {
-          delete sections[name];
-        } else if (result.action === "redact") {
-          section.content = applyRedactions(section.content, result);
-        }
-      }
+      if (!redactSection(name, section, scanResults)) delete sections[name];
     }
   }
 
   if (slim) slimSections(sections);
 
-  const doc: DotfDocument = { sections };
-  const output = stringify(doc);
+  const output = serializeSnapshot(sections);
 
   const ts = generateTimestamp();
-  const filename = `${hostname()}-${ts}.dotf`;
+  const filename = `${hostname()}-${ts}.json`;
   const filepath = join(resolvedOutput, filename);
   await Bun.write(filepath, output);
 

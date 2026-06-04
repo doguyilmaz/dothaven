@@ -1,4 +1,4 @@
-import { userInfo } from "os";
+import { userInfo } from "node:os";
 import type { ScanPattern } from "./types";
 
 function getUsername(): string {
@@ -35,10 +35,13 @@ export function getScanPatterns(): ScanPattern[] {
 
     // --- HIGH: Generic secret patterns (env-style) ---
     {
+      // UPPER_SNAKE env-style names ending in a secret word: GITHUB_TOKEN, GH_TOKEN,
+      // NPM_TOKEN, TOKEN, API_TOKEN, MY_SERVICE_KEY, AWS_SECRET_ACCESS_KEY, SECRET, PASSWORD…
+      // Case-sensitive so it won't false-positive on lowercase words like primary_key / monkey.
       id: "generic-secret",
       label: "secret value",
       severity: "HIGH",
-      regex: /(PASSWORD|SECRET_KEY|API_SECRET|PRIVATE_KEY|AUTH_TOKEN|ACCESS_TOKEN|SECRET)\s*[=:]\s*\S+/i,
+      regex: /\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b\s*[=:]\s*\S+/,
       defaultAction: "redact",
     },
     {
@@ -46,6 +49,15 @@ export function getScanPatterns(): ScanPattern[] {
       label: "API key",
       severity: "HIGH",
       regex: /(API_KEY|APIKEY)\s*[=:]\s*\S+/i,
+      defaultAction: "redact",
+    },
+    {
+      // Lowercase-friendly known secret words (no arbitrary prefix → avoids primary_key/monkey).
+      id: "secret-keyword",
+      label: "secret value",
+      severity: "HIGH",
+      regex:
+        /\b(password|passwd|secret|client[_-]?secret|secret[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key)\b\s*[=:]\s*\S+/i,
       defaultAction: "redact",
     },
 
@@ -68,7 +80,8 @@ export function getScanPatterns(): ScanPattern[] {
       id: "github-token",
       label: "GitHub token",
       severity: "HIGH",
-      regex: /\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b/,
+      regex:
+        /\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b/,
       defaultAction: "redact",
     },
     {
@@ -91,7 +104,7 @@ export function getScanPatterns(): ScanPattern[] {
       id: "anthropic-key",
       label: "Anthropic key",
       severity: "HIGH",
-      regex: /\bsk-ant-[A-Za-z0-9\-]{20,}\b/,
+      regex: /\bsk-ant-[A-Za-z0-9-]{20,}\b/,
       defaultAction: "redact",
     },
 
@@ -108,6 +121,14 @@ export function getScanPatterns(): ScanPattern[] {
       label: "AWS secret key",
       severity: "HIGH",
       regex: /aws_secret_access_key\s*=\s*.+/i,
+      defaultAction: "redact",
+    },
+    {
+      // STS temporary credentials — lowercase aws config form (also any *_session_token).
+      id: "aws-session-token",
+      label: "AWS session token",
+      severity: "HIGH",
+      regex: /\b[a-z0-9_]*session[_-]?token\s*=\s*.+/i,
       defaultAction: "redact",
     },
     {
@@ -174,7 +195,7 @@ export function getScanPatterns(): ScanPattern[] {
       id: "slack-token",
       label: "Slack token",
       severity: "HIGH",
-      regex: /\b(xoxb|xoxp|xoxs|xoxa|xoxr)-[A-Za-z0-9\-]+\b/,
+      regex: /\b(xoxb|xoxp|xoxs|xoxa|xoxr)-[A-Za-z0-9-]+\b/,
       defaultAction: "redact",
     },
     {
@@ -191,6 +212,15 @@ export function getScanPatterns(): ScanPattern[] {
       label: "database connection string",
       severity: "HIGH",
       regex: /\b(postgres|postgresql|mysql|mongodb|mongodb\+srv|redis|rediss):\/\/[^\s"']+/i,
+      defaultAction: "redact",
+    },
+    {
+      // Any scheme:// URL carrying inline user:password@ credentials (e.g. a private
+      // Homebrew tap remote https://ci-user:pass@gitlab.example.com/...).
+      id: "url-credentials",
+      label: "URL with inline credentials",
+      severity: "HIGH",
+      regex: /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/]+@/i,
       defaultAction: "redact",
     },
 
