@@ -60,6 +60,7 @@ Commands:
   status                                             Quick summary of backup state
   compare [file1] [file2]                            Diff two .dotf reports
   list <section>                                     Print a section from most recent report
-  chezmoi-export [--apply]                           Plan/run chezmoi add (--encrypt for secrets)
+  chezmoi-export [--apply] [--only a,b] [--skip c,d]  Plan/run chezmoi add (--encrypt secrets);
+                                                       skip e.g. vscode,packages,editor,fonts,cloud
   doctor <snapshot.dotf>                             Check this machine for parity against a snapshot`);
 }

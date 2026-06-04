@@ -137,6 +137,20 @@ export async function gnupgHasSecretKeys(home: string, listDir: (p: string) => P
   return (await listDir(`${home}/.gnupg/private-keys-v1.d`)).some((f) => f.endsWith(".key"));
 }
 
+/**
+ * Drop Brewfile lines whose directive (first token) is in `skip`. `brew bundle dump` embeds
+ * `vscode "ext-id"` entries (and `mas`, `cask`…); `--skip vscode` strips them — handy when
+ * editor extensions are synced elsewhere (e.g. VS Code Settings Sync).
+ */
+export function filterBrewfile(brewfile: string, skip: string[]): string {
+  if (!skip.length) return brewfile;
+  return brewfile
+    .split("\n")
+    .filter((l) => !skip.includes(l.trim().split(/\s/)[0]))
+    .join("\n")
+    .trim();
+}
+
 async function gatherInstallManifest(ctx: CollectorContext): Promise<InstallManifest> {
   const brew = await collectHomebrew(ctx);
   const pkgs = await collectPackages(ctx);
@@ -150,15 +164,38 @@ async function gatherInstallManifest(ctx: CollectorContext): Promise<InstallMani
   };
 }
 
+/** Category selection: skip wins; if `only` is non-empty, the category must be in it. */
+export function isSelected(category: string, only: string[], skip: string[]): boolean {
+  if (skip.includes(category)) return false;
+  return only.length === 0 || only.includes(category);
+}
+
+function parseExportArgs(args: string[]) {
+  let apply = false;
+  let only: string[] = [];
+  let skip: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--apply") apply = true;
+    else if (args[i] === "--only" && args[i + 1]) only = args[++i].split(",");
+    else if (args[i] === "--skip" && args[i + 1]) skip = args[++i].split(",");
+  }
+  return { apply, only, skip };
+}
+
 export async function chezmoiExport(args: string[]) {
-  const apply = args.includes("--apply");
+  const { apply, only, skip } = parseExportArgs(args);
   const home = getHome();
-  const plan = await planChezmoiExport(registryEntries, home, defaultEnv.fileExists, fileHasSecret);
+
+  // Registry entries filtered by their category (--only / --skip).
+  const entries = registryEntries.filter((e) => isSelected(e.category, only, skip));
+  const plan = await planChezmoiExport(entries, home, defaultEnv.fileExists, fileHasSecret);
 
   // SSH private keys aren't a single registry path (filenames vary) — sweep ~/.ssh by content.
-  for (const key of await findSshPrivateKeys(home, defaultEnv.listDir, isSshPrivateKey)) {
-    if (!plan.some((p) => p.src === key)) {
-      plan.push({ id: "ssh.key", src: key, kind: "file", encrypt: true, reason: "ssh private key" });
+  if (isSelected("ssh", only, skip)) {
+    for (const key of await findSshPrivateKeys(home, defaultEnv.listDir, isSshPrivateKey)) {
+      if (!plan.some((p) => p.src === key)) {
+        plan.push({ id: "ssh.key", src: key, kind: "file", encrypt: true, reason: "ssh private key" });
+      }
     }
   }
 
@@ -205,16 +242,28 @@ export async function chezmoiExport(args: string[]) {
     }
   }
 
-  // Generate a run_onchange install script so `chezmoi apply` also reinstalls packages.
-  try {
-    const script = buildPackageInstallScript(await gatherInstallManifest({ redact: false, home }));
-    const sourcePath = (await defaultEnv.run(["chezmoi", "source-path"])).trim();
-    if (sourcePath) {
-      await Bun.write(`${sourcePath}/run_onchange_install-packages.sh`, script);
-      console.log("  ✔ run_onchange_install-packages.sh (brew + node + global packages)");
+  // Generate a run_onchange install script (brew + node + globals), honoring --only/--skip.
+  const wantBrew = isSelected("brew", only, skip);
+  const wantPackages = isSelected("packages", only, skip);
+  if (wantBrew || wantPackages) {
+    try {
+      const manifest = await gatherInstallManifest({ redact: false, home });
+      if (!wantBrew) manifest.brewfile = undefined;
+      else if (manifest.brewfile) manifest.brewfile = filterBrewfile(manifest.brewfile, skip);
+      if (!wantPackages) {
+        manifest.nodeVersions = [];
+        manifest.bunGlobals = [];
+        manifest.npmGlobals = [];
+        manifest.pnpmGlobals = [];
+      }
+      const sourcePath = (await defaultEnv.run(["chezmoi", "source-path"])).trim();
+      if (sourcePath) {
+        await Bun.write(`${sourcePath}/run_onchange_install-packages.sh`, buildPackageInstallScript(manifest));
+        console.log("  ✔ run_onchange_install-packages.sh");
+      }
+    } catch (error) {
+      console.error(`  ✗ install script: ${error}`);
     }
-  } catch (error) {
-    console.error(`  ✗ install script: ${error}`);
   }
 
   console.log("\nDone. Review with `chezmoi diff`, then commit your private chezmoi source repo.");

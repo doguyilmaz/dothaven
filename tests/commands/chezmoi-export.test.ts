@@ -4,6 +4,8 @@ import {
   findSshPrivateKeys,
   buildPackageInstallScript,
   gnupgHasSecretKeys,
+  isSelected,
+  filterBrewfile,
 } from "../../src/commands/chezmoi";
 import type { ConfigEntry } from "../../src/registry/types";
 
@@ -120,5 +122,51 @@ describe("gnupgHasSecretKeys", () => {
   test("false when empty or only non-key files (just cruft)", async () => {
     expect(await gnupgHasSecretKeys("/h", async () => [])).toBe(false);
     expect(await gnupgHasSecretKeys("/h", async () => ["README", "pubring.db"])).toBe(false);
+  });
+});
+
+describe("isSelected (--only / --skip)", () => {
+  test("skip excludes", () => {
+    expect(isSelected("editor", [], ["editor"])).toBe(false);
+  });
+  test("only restricts to listed categories", () => {
+    expect(isSelected("ai", ["ai", "ssh"], [])).toBe(true);
+    expect(isSelected("editor", ["ai", "ssh"], [])).toBe(false);
+  });
+  test("default (no only/skip) includes everything", () => {
+    expect(isSelected("anything", [], [])).toBe(true);
+  });
+  test("skip beats only", () => {
+    expect(isSelected("ai", ["ai"], ["ai"])).toBe(false);
+  });
+});
+
+describe("filterBrewfile", () => {
+  const bf = [
+    'tap "x/y"',
+    'brew "git"',
+    'cask "stats"',
+    'vscode "biomejs.biome"',
+    'vscode "golang.go"',
+    'mas "Xcode", id: 497799835',
+  ].join("\n");
+
+  test("skip vscode strips extension lines, keeps the rest (Settings Sync case)", () => {
+    const out = filterBrewfile(bf, ["vscode"]);
+    expect(out).not.toContain("vscode ");
+    expect(out).toContain('brew "git"');
+    expect(out).toContain('cask "stats"');
+    expect(out).toContain("mas ");
+  });
+
+  test("skip multiple directives", () => {
+    const out = filterBrewfile(bf, ["mas", "cask"]);
+    expect(out).not.toContain("cask ");
+    expect(out).not.toContain("mas ");
+    expect(out).toContain('vscode "biomejs.biome"');
+  });
+
+  test("no skip → unchanged", () => {
+    expect(filterBrewfile(bf, [])).toBe(bf);
   });
 });
