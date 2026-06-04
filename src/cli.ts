@@ -3,6 +3,7 @@ import { backup } from "./commands/backup";
 import { scan } from "./commands/scan";
 import { security } from "./commands/security";
 import { chezmoiExport } from "./commands/chezmoi";
+import { doctor } from "./commands/doctor";
 import { restore } from "./commands/restore";
 import { diff } from "./commands/diff";
 import { status } from "./commands/status";
@@ -26,6 +27,9 @@ switch (command) {
     break;
   case "chezmoi-export":
     await chezmoiExport(args);
+    break;
+  case "doctor":
+    await doctor(args);
     break;
   case "restore":
     await restore(args);
@@ -56,5 +60,6 @@ Commands:
   status                                             Quick summary of backup state
   compare [file1] [file2]                            Diff two .dotf reports
   list <section>                                     Print a section from most recent report
-  chezmoi-export [--apply]                           Plan/run chezmoi add (--encrypt for secrets)`);
+  chezmoi-export [--apply]                           Plan/run chezmoi add (--encrypt for secrets)
+  doctor <snapshot.dotf>                             Check this machine for parity against a snapshot`);
 }

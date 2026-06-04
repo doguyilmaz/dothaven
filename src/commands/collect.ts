@@ -34,6 +34,16 @@ const collectors = [
   collectDotfilesSweep,
 ];
 
+/** Run all collectors and merge their sections (no redaction — that happens in collect). */
+export async function runCollectors(ctx: CollectorContext): Promise<CollectorResult> {
+  const results = await Promise.allSettled(collectors.map((c) => c(ctx)));
+  const sections: CollectorResult = {};
+  for (const result of results) {
+    if (result.status === "fulfilled") Object.assign(sections, result.value);
+  }
+  return sections;
+}
+
 function parseArgs(args: string[]) {
   let redact = true;
   let slim = false;
@@ -71,14 +81,7 @@ export async function collect(args: string[]) {
     home: getHome(),
   };
 
-  const results = await Promise.allSettled(collectors.map((c) => c(ctx)));
-
-  const sections: CollectorResult = {};
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      Object.assign(sections, result.value);
-    }
-  }
+  const sections = await runCollectors(ctx);
 
   const scanResults: ScanResult[] = [];
   if (redact) {
