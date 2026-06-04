@@ -3,6 +3,7 @@ import {
   planChezmoiExport,
   findSshPrivateKeys,
   buildPackageInstallScript,
+  crossManagerDuplicates,
   gnupgHasSecretKeys,
   isSelected,
   filterBrewfile,
@@ -106,9 +107,9 @@ describe("buildPackageInstallScript", () => {
     const script = buildPackageInstallScript({
       brewfile: 'tap "x/y"\nbrew "git"',
       nodeVersions: ["v20.20.2", "v24.16.0", "system"],
-      bunGlobals: ["eas-cli@16.19.2"],
-      npmGlobals: ["typescript@5.4.0"],
-      cargoCrates: ["ripgrep@14.1.0", "fd-find@10.2.0"],
+      bunGlobals: ["eas-cli", "@scope/tool"],
+      npmGlobals: ["typescript"],
+      cargoCrates: ["ripgrep", "fd-find"],
       denoBins: ["deployctl"],
     })!;
     expect(script).not.toBeNull();
@@ -116,13 +117,16 @@ describe("buildPackageInstallScript", () => {
     expect(script).toContain("if command -v brew >/dev/null 2>&1; then");
     expect(script).toContain("brew bundle --file=/dev/stdin <<'BREWFILE' || true"); // failing cask won't abort apply
     expect(script).toContain('brew "git"');
-    expect(script).toContain("fnm install v20.20.2 || true");
+    expect(script).toContain("fnm install v20.20.2 || true"); // runtimes keep their exact version
     expect(script).toContain("fnm install v24.16.0 || true");
     expect(script).not.toContain("fnm install system");
-    expect(script).toContain("bun add -g eas-cli@16.19.2 || true");
-    expect(script).toContain("npm install -g typescript@5.4.0 || true");
-    expect(script).toContain("cargo install ripgrep@14.1.0 || true"); // version-pinned, replayable
-    expect(script).toContain("cargo install fd-find@10.2.0 || true");
+    // globals install latest (no version pin), one per line for readability + per-install resilience
+    expect(script).toContain("bun add -g eas-cli || true");
+    expect(script).toContain("bun add -g @scope/tool || true");
+    expect(script).toContain("npm install -g typescript || true");
+    expect(script).not.toMatch(/bun add -g \S+ \S+ \|\| true/); // never two packages on one line
+    expect(script).toContain("cargo install ripgrep || true"); // latest, one per line
+    expect(script).toContain("cargo install fd-find || true");
     expect(script).toContain("# deno global bins"); // recorded, not executed
     expect(script).toContain("#   deployctl");
     expect(script).not.toContain("deno install deployctl"); // never a broken command
@@ -135,6 +139,30 @@ describe("buildPackageInstallScript", () => {
 
   test("deno bins alone → null (nothing executable to reinstall)", () => {
     expect(buildPackageInstallScript({ denoBins: ["deployctl"] })).toBeNull();
+  });
+});
+
+describe("crossManagerDuplicates", () => {
+  test("flags names installed by more than one JS global manager", () => {
+    expect(
+      crossManagerDuplicates({
+        bunGlobals: ["argent", "eas-cli"],
+        npmGlobals: ["argent", "typescript"],
+        pnpmGlobals: ["typescript"],
+      }),
+    ).toEqual(["argent", "typescript"]);
+  });
+
+  test("no overlap → []", () => {
+    expect(crossManagerDuplicates({ bunGlobals: ["a"], npmGlobals: ["b"] })).toEqual([]);
+  });
+
+  test("same manager listing twice is not a cross-manager dup", () => {
+    expect(crossManagerDuplicates({ bunGlobals: ["a", "a"] })).toEqual([]);
+  });
+
+  test("empty manifest → []", () => {
+    expect(crossManagerDuplicates({})).toEqual([]);
   });
 });
 

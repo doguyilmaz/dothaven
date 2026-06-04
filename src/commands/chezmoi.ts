@@ -125,14 +125,15 @@ export function buildPackageInstallScript(m: InstallManifest): string | null {
     blocks.push(guarded("fnm", ...versions.map((v) => `  fnm install ${v} || true`)).join("\n"));
   }
 
+  // One install per line (readable, and one failure can't block the rest). Names only — no version
+  // pin — so a fresh machine gets the current release of each global CLI.
   const globalBlock = (tool: string, add: string, pkgs?: string[]) => {
-    if (pkgs?.length) blocks.push(guarded(tool, `  ${add} ${pkgs.join(" ")} || true`).join("\n"));
+    if (pkgs?.length) blocks.push(guarded(tool, ...pkgs.map((p) => `  ${add} ${p} || true`)).join("\n"));
   };
   globalBlock("bun", "bun add -g", m.bunGlobals);
   globalBlock("pnpm", "pnpm add -g", m.pnpmGlobals);
   globalBlock("npm", "npm install -g", m.npmGlobals);
 
-  // cargo crates carry an exact name@version, so each is replayable one-by-one.
   if (m.cargoCrates?.length) {
     blocks.push(guarded("cargo", ...m.cargoCrates.map((c) => `  cargo install ${c} || true`)).join("\n"));
   }
@@ -159,6 +160,22 @@ export function buildPackageInstallScript(m: InstallManifest): string | null {
   return `${header}\n\n${blocks.join("\n\n")}\n\nexit 0\n`;
 }
 
+/**
+ * Names installed by more than one JS global manager (e.g. `argent` via both bun and npm). We still
+ * include them in every manager's block — they're not removed — but the caller warns so the user can
+ * decide whether the duplication (and PATH shadowing) is intended.
+ */
+export function crossManagerDuplicates(m: InstallManifest): string[] {
+  const count = new Map<string, number>();
+  for (const list of [m.bunGlobals, m.npmGlobals, m.pnpmGlobals]) {
+    for (const name of new Set(list ?? [])) count.set(name, (count.get(name) ?? 0) + 1);
+  }
+  return [...count.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([name]) => name)
+    .sort();
+}
+
 /** gnupg is worth carrying only if it holds real secret keys (private-keys-v1.d/*.key); otherwise
  * `chezmoi add ~/.gnupg` just captures lock-file/runtime cruft. */
 export async function gnupgHasSecretKeys(home: string, listDir: (p: string) => Promise<string[]>): Promise<boolean> {
@@ -183,18 +200,21 @@ async function gatherInstallManifest(ctx: CollectorContext): Promise<InstallMani
   const brew = await collectHomebrew(ctx);
   const pkgs = await collectPackages(ctx);
   const runtimes = await collectRuntimes(ctx);
-  const raws = (src: CollectorResult, id: string) => (src[id]?.items ?? []).map((i) => i.raw);
+  // Install with the bare NAME (columns[0]), not the captured name@version, so a fresh machine gets
+  // the current release of each global tool. Node runtimes are the exception — those keep their exact
+  // version (you want the specific node, not "latest").
+  const names = (src: CollectorResult, id: string) => (src[id]?.items ?? []).map((i) => i.columns[0]).filter(Boolean);
   // The Brewfile is embedded verbatim into an UNENCRYPTED run_onchange script — redact any inline
   // credentials (e.g. a private tap's https://user:pass@host remote) before it can land there.
   const rawBrewfile = brew["apps.brew.bundle"]?.content;
   return {
     brewfile: rawBrewfile ? applyRedactions(rawBrewfile, scanContent("Brewfile", rawBrewfile)) : undefined,
     nodeVersions: (pkgs["packages.node.fnm"]?.items ?? []).map((i) => i.columns[0]),
-    bunGlobals: raws(pkgs, "packages.bun.global"),
-    npmGlobals: raws(pkgs, "packages.npm.global"),
-    pnpmGlobals: raws(pkgs, "packages.pnpm.global"),
-    cargoCrates: raws(runtimes, "runtimes.rust.crates"),
-    denoBins: raws(pkgs, "packages.deno.bin"),
+    bunGlobals: names(pkgs, "packages.bun.global"),
+    npmGlobals: names(pkgs, "packages.npm.global"),
+    pnpmGlobals: names(pkgs, "packages.pnpm.global"),
+    cargoCrates: names(runtimes, "runtimes.rust.crates"),
+    denoBins: names(pkgs, "packages.deno.bin"),
   };
 }
 
@@ -282,6 +302,12 @@ export async function chezmoiExport(args: string[]) {
   if (wantBrew || wantPackages) {
     try {
       const manifest = await gatherInstallManifest({ redact: false, home });
+      const dupes = crossManagerDuplicates(manifest);
+      if (dupes.length) {
+        console.warn(
+          `  ⚠ installed by multiple managers (kept in each — review for PATH shadowing): ${dupes.join(", ")}`,
+        );
+      }
       if (!wantBrew) manifest.brewfile = undefined;
       else if (manifest.brewfile) manifest.brewfile = filterBrewfile(manifest.brewfile, skip);
       if (!wantPackages) {
