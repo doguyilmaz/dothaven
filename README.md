@@ -11,6 +11,8 @@ Collect, backup, restore, and diff machine configs across machines. Built on [Bu
 | **Platforms** | macOS, Linux, Windows |
 | **Backbone** | [chezmoi](https://chezmoi.io) — optional, for `chezmoi-export` (storage + age encryption + apply) |
 
+> **Renamed from `@dotformat/cli`.** The old npm package is being deprecated with a pointer here; install the successor as `dothaven` (publish pending). The `.dotf` format was retired for plain JSON — the CLI now has zero runtime dependencies.
+
 ---
 
 ## What It Does
