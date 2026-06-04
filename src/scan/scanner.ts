@@ -50,17 +50,23 @@ export function summarize(results: ScanResult[]): ScanSummary {
   };
 }
 
-/** Recursively scan a directory, skipping node_modules/.git and files larger than 1MB. */
+/** Recursively scan a directory, skipping node_modules/.git and files larger than 1MB.
+ * A path that isn't a readable directory (a regular file, missing, ENOTDIR) yields [] rather than
+ * throwing — callers can pass any path defensively. */
 export async function scanDirectory(dirPath: string): Promise<ScanResult[]> {
   const results: ScanResult[] = [];
   const glob = new Bun.Glob("**/*");
 
-  for await (const relative of glob.scan({ cwd: dirPath, onlyFiles: true, dot: true })) {
-    if (relative.includes("node_modules/") || relative.includes(".git/")) continue;
-    const fullPath = resolve(dirPath, relative);
-    if (Bun.file(fullPath).size > MAX_FILE_SIZE) continue;
-    const result = await scanFile(fullPath);
-    if (result) results.push(result);
+  try {
+    for await (const relative of glob.scan({ cwd: dirPath, onlyFiles: true, dot: true })) {
+      if (relative.includes("node_modules/") || relative.includes(".git/")) continue;
+      const fullPath = resolve(dirPath, relative);
+      if (Bun.file(fullPath).size > MAX_FILE_SIZE) continue;
+      const result = await scanFile(fullPath);
+      if (result) results.push(result);
+    }
+  } catch {
+    // Not a directory / unreadable — return whatever was collected (often nothing).
   }
 
   return results;

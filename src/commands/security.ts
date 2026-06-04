@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { stat } from "node:fs/promises";
 import { scanFile, scanDirectory, formatSecurityReport } from "../scan";
 import type { ScanResult } from "../scan";
 
@@ -14,8 +15,17 @@ function parseArgs(args: string[]) {
 
 export async function security(args: string[]) {
   const { target, out } = parseArgs(args);
-  const file = Bun.file(target);
-  const isFile = (await file.exists()) && file.size > 0;
+
+  // stat() decides file vs dir — NOT file size. A 0-byte file is still a file; the old `size > 0`
+  // check misrouted empty files into scanDirectory, which then threw ENOTDIR on a non-directory.
+  let isFile: boolean;
+  try {
+    isFile = (await stat(target)).isFile();
+  } catch {
+    console.error(`Path not found: ${target}`);
+    process.exitCode = 1;
+    return;
+  }
 
   let results: ScanResult[];
   if (isFile) {
