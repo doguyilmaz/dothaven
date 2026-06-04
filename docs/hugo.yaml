@@ -1,0 +1,51 @@
+# Hugo site config for the dothaven docs (Hextra theme, GitHub Pages).
+# Build:  cd docs && hugo --minify     Serve:  cd docs && hugo server
+baseURL: "https://doguyilmaz.github.io/dothaven/"
+title: dothaven
+
+enableRobotsTXT: true
+enableGitInfo: true
+enableInlineShortcodes: true
+
+module:
+  imports:
+    - path: github.com/imfing/hextra
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    noClasses: false
+
+menu:
+  main:
+    - name: Docs
+      pageRef: /docs
+      weight: 1
+    - name: Search
+      weight: 2
+      params:
+        type: search
+    - name: GitHub
+      weight: 3
+      url: "https://github.com/doguyilmaz/dothaven"
+      params:
+        icon: github
+
+params:
+  description: "Discover, back up, and migrate your machine's dev config — feeding chezmoi with age-encrypted secrets."
+  navbar:
+    displayTitle: true
+    displayLogo: false
+  footer:
+    enable: true
+    displayCopyright: false
+    displayPoweredBy: true
+  page:
+    width: normal
+  theme:
+    default: system
+    displayToggle: true
+  editURL:
+    enable: false
