@@ -103,6 +103,9 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 		Short: "Plan (or apply) adding configs to chezmoi, encrypting secrets",
 		Long:  "Builds a chezmoi-add plan — plain for configs, --encrypt for secrets — plus a\nrun_onchange install script. Dry-run by default; --apply executes (needs chezmoi + age).",
 		Args:  cobra.NoArgs,
+		// A partial-apply failure returns a message-less ExitError after printing
+		// its own diagnostics; don't let cobra also print an "Error:" line.
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home := env.Home()
 			ctx := cmd.Context()
@@ -174,6 +177,28 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 			sourcePath, _ := runShell(ctx, "chezmoi", "source-path")
 
+			// Preflight: if the plan encrypts anything, age must be configured —
+			// otherwise the very first `add --encrypt` fails. Abort early with a
+			// clear message instead of a confusing per-file error.
+			hasEncrypt := false
+			for _, p := range plan {
+				if p.Encrypt {
+					hasEncrypt = true
+					break
+				}
+			}
+			if hasEncrypt {
+				configured := false
+				if b, err := os.ReadFile(home + "/.config/chezmoi/chezmoi.toml"); err == nil {
+					configured = ageEncryptionRe.Match(b)
+				}
+				if !configured {
+					fmt.Fprintln(os.Stderr, "\n✗ This plan encrypts secrets, but age encryption is not configured in chezmoi.toml.")
+					fmt.Fprintln(os.Stderr, "  Run `dothaven init`, configure your age key, then re-run with --apply.")
+					return ExitError{Code: 1}
+				}
+			}
+
 			if sourcePath != "" && planHasID(plan, "secrets.gnupg") {
 				ignorePath := sourcePath + "/.chezmoiignore"
 				existing := ""
@@ -187,13 +212,18 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 
 			fmt.Println("")
+			var failed, failedEncrypted int
 			for _, p := range plan {
 				addArgs := []string{"add", p.Src}
 				if p.Encrypt {
 					addArgs = []string{"add", "--encrypt", p.Src}
 				}
-				if _, err := runShell(ctx, "chezmoi", addArgs...); err != nil {
-					fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", p.Src, err)
+				if out, err := runShell(ctx, "chezmoi", addArgs...); err != nil {
+					fmt.Fprintf(os.Stderr, "  ✗ %s: %v %s\n", p.Src, err, out)
+					failed++
+					if p.Encrypt {
+						failedEncrypted++
+					}
 					continue
 				}
 				prefix := ""
@@ -220,10 +250,21 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				if script, ok := chezmoi.BuildPackageInstallScript(manifest); ok && sourcePath != "" {
 					if err := os.WriteFile(sourcePath+"/run_onchange_install-packages.sh", []byte(script), 0o755); err != nil {
 						fmt.Fprintf(os.Stderr, "  ✗ install script: %v\n", err)
+						failed++
 					} else {
 						fmt.Println("  ✔ run_onchange_install-packages.sh")
 					}
 				}
+			}
+
+			if failed > 0 {
+				if failedEncrypted > 0 {
+					fmt.Fprintf(os.Stderr, "\n✗ %d operation(s) failed — %d were encrypted secrets that were NOT carried.\n", failed, failedEncrypted)
+				} else {
+					fmt.Fprintf(os.Stderr, "\n✗ %d operation(s) failed.\n", failed)
+				}
+				fmt.Fprintln(os.Stderr, "Fix the errors above, then re-run `dothaven chezmoi-export --apply`.")
+				return ExitError{Code: 1}
 			}
 
 			fmt.Println("\nDone. Review with `chezmoi diff`, then commit your private chezmoi source repo.")
