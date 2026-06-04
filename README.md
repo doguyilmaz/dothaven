@@ -153,6 +153,14 @@ dotfiles doctor <snapshot.json>
 
 Re-collects the current machine and lists what the snapshot has that's missing here (packages, toolchains, brew, fonts, editor extensions). Non-zero exit if anything is missing — confidence that a fresh machine got everything.
 
+### `init` — Guided bootstrap
+
+```bash
+dotfiles init
+```
+
+Detects your chezmoi + age setup state and prints a tailored checklist (✓ done / → next command), offering to run the safe steps on confirmation. The age-key step is guided only (never auto-run). See [docs/commands](./docs/commands.md#init).
+
 ---
 
 ## Config Registry

@@ -28,16 +28,16 @@
 
 ## Next Up
 
-### `dotfiles init` — GitHub Template Flow
+### `dotfiles init` — guided bootstrap
 
-Guided onboarding for new users:
+**Shipped:** `dotfiles init` detects the chezmoi + age setup state and walks you through the rest (✓ done / → next command), running the safe steps on confirmation; the age-key step is guided only. See [commands](/commands#init).
+
+**Future enhancements** (not yet shipped):
 
 ```bash
-bunx dothaven init
-# → "Create a private GitHub repo? (y/n)"
-# → gh repo create my-dotfiles --private --template dotformat/template
-# → cd my-dotfiles && dotfiles backup
-# → git add . && git commit -m "initial backup" && git push
+# Offer to create the private repo from a template, then seed it:
+# → gh repo create dotfiles --private --template <template>
+# → first chezmoi-export + push
 ```
 
 **New machine flow:**

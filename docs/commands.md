@@ -17,6 +17,7 @@ bun bin/dotfiles.ts <command>
 | `scan` | Standalone sensitivity scan | path argument |
 | `security` | Markdown security report → file | path argument, `-o` |
 | `chezmoi-export` | Plan/run `chezmoi add` (encrypt secrets) + install script | `--apply`, `--pin`, `--only`, `--skip` |
+| `init` | Guided chezmoi + age bootstrap | — |
 | `doctor` | New-machine parity check vs a snapshot | `<snapshot.json>` |
 | `restore` | Restore backup → live locations | `--pick`, `--dry-run` |
 | `diff` | Backup vs live system | `--section` |
@@ -638,6 +639,38 @@ $ dotfiles chezmoi-export --apply --pin --skip editor
 ::: warning
 `--apply` requires `chezmoi` installed and an `age` key configured. The age private key is **never** added to the source repo — keep it in a password manager; losing it means encrypted files can't be decrypted. See [encryption](/encryption).
 :::
+
+---
+
+## `init`
+
+Guided first-time bootstrap of the chezmoi + age setup. Detects what's already in place and walks you through the rest — the easiest way to get from a fresh machine to a working `chezmoi-export`.
+
+```bash
+dotfiles init
+```
+
+### Behavior
+
+Probes three prerequisites and prints a tailored checklist (✓ done / → todo with the exact command):
+
+1. **chezmoi installed** — `brew install chezmoi`
+2. **age key configured** — detected from `~/.config/chezmoi/chezmoi.toml` (`encryption = "age"`)
+3. **chezmoi source initialized** — your private `dotfiles` repo (`chezmoi init git@github.com:<you>/dotfiles.git`; the URL defaults to your `gh` username)
+
+On a TTY it offers to run the **safe** steps on confirmation (install chezmoi; `chezmoi init <url>`). The **age-key step is guided only** — never auto-run — because generating key material and writing encryption config is too sensitive to automate; it prints the command and the "back it up or lose decryption" warning. When every step is ✓, it points you to `dotfiles chezmoi-export`. Non-interactive runs (piped/CI) just print the guidance.
+
+### Example
+
+```bash
+$ dotfiles init
+dothaven init — chezmoi + age bootstrap
+
+  ✓ chezmoi installed
+  ✓ age encryption key configured
+  → chezmoi source (private dotfiles repo) initialized
+      chezmoi init git@github.com:you/dotfiles.git
+```
 
 ---
 
