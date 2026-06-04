@@ -61,16 +61,31 @@ async function copyFile(
   return true;
 }
 
-async function copyDir(entry: BackupEntry & { type: "dir" }, destRoot: string): Promise<number> {
+export async function copyDir(
+  entry: BackupEntry & { type: "dir" },
+  destRoot: string,
+  redact: boolean,
+  scanResults: ScanResult[],
+): Promise<number> {
   const glob = new Bun.Glob("**/*");
   let count = 0;
 
   try {
     for await (const relative of glob.scan({ cwd: entry.src, onlyFiles: true, dot: true })) {
       const srcPath = join(entry.src, relative);
+      let content = await Bun.file(srcPath).text();
+
+      // Same gate as copyFile — a dir must not bypass redaction/skip.
+      const scanResult = scanContent(join(entry.dest, relative), content);
+      if (redact && scanResult.action === "skip") {
+        scanResults.push(scanResult);
+        continue; // e.g. a private-key file — never copy to a plaintext backup
+      }
+      if (redact) content = applyRedactions(content, scanResult);
+      scanResults.push(scanResult);
+
       const destPath = join(destRoot, entry.dest, relative);
       await Bun.$`mkdir -p ${dirname(destPath)}`.quiet();
-      const content = await Bun.file(srcPath).text();
       await Bun.write(destPath, content);
       count++;
     }
@@ -102,7 +117,7 @@ export async function backup(args: string[]) {
         const copied = await copyFile(entry, backupDir, redact, scanResults);
         if (copied) categoryCount++;
       } else {
-        categoryCount += await copyDir(entry, backupDir);
+        categoryCount += await copyDir(entry, backupDir, redact, scanResults);
       }
     }
 
