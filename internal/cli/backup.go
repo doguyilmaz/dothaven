@@ -69,6 +69,14 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("Backup saved to: %s\n  %d files across: %s\n", backupDir, res.TotalFiles, summary)
 			}
 
+			if len(res.SkippedSensitive) > 0 {
+				fmt.Printf("\n⚠ %d high-sensitivity path(s) excluded from this plaintext backup:\n", len(res.SkippedSensitive))
+				for _, d := range res.SkippedSensitive {
+					fmt.Printf("    %s\n", d)
+				}
+				fmt.Println("  Carry these with: dothaven chezmoi-export --apply  (age-encrypted)")
+			}
+
 			if redact {
 				if report := scan.FormatReport(scan.Summarize(res.ScanResults)); strings.TrimSpace(report) != "" {
 					fmt.Println(report)

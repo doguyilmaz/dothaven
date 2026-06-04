@@ -25,6 +25,10 @@ type Result struct {
 	TotalFiles  int
 	PerCategory map[string]int
 	ScanResults []scan.Result
+	// SkippedSensitive lists dests excluded because they are high-sensitivity
+	// with no guaranteed redactor — they belong in the encrypted export, not a
+	// plaintext backup.
+	SkippedSensitive []string
 }
 
 func contains(list []string, s string) bool {
@@ -51,6 +55,17 @@ func Run(targets []registry.BackupTarget, destRoot string, opts Options) (Result
 	res := Result{PerCategory: map[string]int{}}
 	for _, t := range targets {
 		if !selected(t.Category, opts.Only, opts.Skip) {
+			continue
+		}
+		// A plaintext backup must never hold an unredactable secret. A
+		// high-sensitivity entry with no guaranteed redactor (e.g. ~/.gnupg,
+		// cloud credentials) is excluded from a redacting backup — content
+		// scanning is best-effort and misses binary key material. The encrypted
+		// `chezmoi-export` path handles these instead.
+		if opts.Redact && t.Sensitivity == registry.High && t.Redact == nil {
+			if _, err := os.Stat(t.Src); err == nil {
+				res.SkippedSensitive = append(res.SkippedSensitive, t.Dest)
+			}
 			continue
 		}
 		var n int

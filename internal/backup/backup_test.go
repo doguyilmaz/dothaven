@@ -71,6 +71,37 @@ func TestRunRedactsAndGates(t *testing.T) {
 	}
 }
 
+func TestRunSkipsHighSensitiveWithoutRedactor(t *testing.T) {
+	home := t.TempDir()
+	dest := t.TempDir()
+	// gnupg-like: high sensitivity, no redactor, binary key material.
+	mustWrite(t, filepath.Join(home, ".gnupg", "private-keys-v1.d", "ABCD.key"), "(21:protected-private-key(3:rsa(1:n))")
+
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".gnupg"), Dest: "secrets/gnupg", Category: "secrets", IsDir: true, Sensitivity: registry.High},
+	}
+
+	res, err := Run(targets, dest, Options{Redact: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TotalFiles != 0 {
+		t.Errorf("high-sensitivity entry must not be copied to a plaintext backup, got %d files", res.TotalFiles)
+	}
+	if len(res.SkippedSensitive) != 1 || res.SkippedSensitive[0] != "secrets/gnupg" {
+		t.Errorf("SkippedSensitive = %v, want [secrets/gnupg]", res.SkippedSensitive)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "secrets/gnupg")); !os.IsNotExist(err) {
+		t.Error("nothing should be written for a skipped high-sensitivity entry")
+	}
+
+	// --no-redact deliberately includes it (power-user escape hatch).
+	res2, _ := Run(targets, t.TempDir(), Options{Redact: false})
+	if res2.TotalFiles != 1 {
+		t.Errorf("--no-redact should include the entry, got %d files", res2.TotalFiles)
+	}
+}
+
 func TestRunNoRedactKeepsRaw(t *testing.T) {
 	home := t.TempDir()
 	dest := t.TempDir()

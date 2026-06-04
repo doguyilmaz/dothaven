@@ -27,6 +27,9 @@ func build() {
 		// HIGH — private keys & certs (skip whole file)
 		mk("private-key-pem", "private key", High, Skip, `-----BEGIN.*PRIVATE KEY-----`),
 		mk("pgp-private-key", "PGP private key", High, Skip, `-----BEGIN PGP PRIVATE KEY BLOCK-----`),
+		// GnuPG agent key material is a binary Libgcrypt s-expression, not PEM —
+		// e.g. "(21:protected-private-key" — so the PEM rule above misses it.
+		mk("gpg-sexp-private-key", "GnuPG private key", High, Skip, `\(\d{1,3}:(protected-|shadowed-)?private-key`),
 
 		// HIGH — generic env-style secrets
 		mk("generic-secret", "secret value", High, Redact, `\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b\s*[=:]\s*\S+`),

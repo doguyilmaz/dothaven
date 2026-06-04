@@ -3,11 +3,12 @@ package registry
 // BackupTarget is a registry entry projected onto a backup source→destination
 // for the current platform. Redact is the entry's optional content scrubber.
 type BackupTarget struct {
-	Src      string
-	Dest     string
-	Category string
-	IsDir    bool
-	Redact   func(string) string
+	Src         string
+	Dest        string
+	Category    string
+	IsDir       bool
+	Redact      func(string) string
+	Sensitivity Sensitivity
 }
 
 // BackupTargets resolves every entry with a path on this platform into a backup
@@ -21,11 +22,12 @@ func BackupTargets(home string, entries []Entry) []BackupTarget {
 			continue
 		}
 		out = append(out, BackupTarget{
-			Src:      src,
-			Dest:     e.BackupDest,
-			Category: e.Category,
-			IsDir:    e.Kind == Dir,
-			Redact:   e.Redact,
+			Src:         src,
+			Dest:        e.BackupDest,
+			Category:    e.Category,
+			IsDir:       e.Kind == Dir,
+			Redact:      e.Redact,
+			Sensitivity: e.Sensitivity,
 		})
 	}
 	return out
