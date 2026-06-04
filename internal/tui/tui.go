@@ -38,7 +38,10 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 	}
 	opts := make([]huh.Option[string], len(groups))
 	for i, g := range groups {
-		label := fmt.Sprintf("%-9s %2d", g.Name, g.Count)
+		label := fmt.Sprintf("%-10s", g.Name)
+		if g.Count > 0 {
+			label = fmt.Sprintf("%-10s %2d", g.Name, g.Count)
+		}
 		if g.Encrypted {
 			label += "  🔒 encrypted"
 		}

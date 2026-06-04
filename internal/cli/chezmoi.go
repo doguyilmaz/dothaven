@@ -13,6 +13,7 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/scan"
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/doguyilmaz/dothaven/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -109,6 +110,22 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home := env.Home()
 			ctx := cmd.Context()
+
+			// Interactive picker on a terminal with no explicit filter. The
+			// install groups (brew, packages) sit alongside config categories.
+			if len(only) == 0 && len(skip) == 0 && tui.Interactive() {
+				groups := backupGroups(registry.BackupTargets(home, registry.Entries))
+				groups = append(groups, tui.Group{Name: "brew"}, tui.Group{Name: "packages"})
+				chosen, err := tui.SelectCategories("What to export to chezmoi", groups)
+				if err != nil {
+					return err
+				}
+				if len(chosen) == 0 {
+					fmt.Println("Nothing selected.")
+					return nil
+				}
+				only = chosen
+			}
 
 			wantBrew := chezmoi.IsSelected("brew", only, skip)
 			wantPackages := chezmoi.IsSelected("packages", only, skip)
