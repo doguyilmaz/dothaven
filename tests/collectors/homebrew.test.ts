@@ -25,6 +25,20 @@ describe("parseBrewfile", () => {
     expect(parseBrewfile(`\n# Core lib\nbrew "glib"\n\n`)).toBe(`# Core lib\nbrew "glib"`);
   });
 
+  test("preserves non-brew directives (go/npm/cargo/whalebrew) — regression for allowlist data loss", () => {
+    const raw = [
+      'tap "facebook/fb"',
+      'brew "glib"',
+      'go "github.com/go-delve/delve/cmd/dlv"',
+      'npm "@swmansion/argent"',
+      'cargo "ripgrep"',
+      'whalebrew "whalebrew/whalesay"',
+      'cask "stats"',
+      'vscode "anthropic.claude-code"',
+    ].join("\n");
+    expect(parseBrewfile(raw)).toBe(raw);
+  });
+
   test("empty → ''", () => {
     expect(parseBrewfile("")).toBe("");
   });

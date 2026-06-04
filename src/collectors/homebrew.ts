@@ -12,14 +12,16 @@ export function parseBrewList(text: string): string[] {
     .sort();
 }
 
-// Valid Brewfile directives + comments + blank separators (drops progress noise).
-const BREWFILE_LINE = /^(#|tap |brew |cask |mas |vscode |whisky |$)/;
+// Progress/noise lines `brew bundle dump` may emit (denylist). Everything else is kept,
+// so first-class directives (go/npm/cargo/uv/whalebrew/vscode/mas/…) survive — an
+// allowlist silently dropped go/npm and produced an incomplete "restorable" Brewfile.
+const BREWFILE_NOISE = /^\s*(✔|✓|✗|⚠|ℹ|==>|Warning:|Error:)|JSON API/;
 
-/** Clean `brew bundle dump` stdout into a restorable Brewfile. */
+/** Clean `brew bundle dump` stdout into a restorable Brewfile (drop noise, keep every directive). */
 export function parseBrewfile(text: string): string {
   return text
     .split("\n")
-    .filter((l) => BREWFILE_LINE.test(l))
+    .filter((l) => !BREWFILE_NOISE.test(l))
     .join("\n")
     .trim();
 }
