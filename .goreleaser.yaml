@@ -47,22 +47,30 @@ changelog:
       - "^test:"
       - "^chore:"
 
-# Homebrew formula pushed to a separate tap repo (create doguyilmaz/homebrew-tap).
-# Install with: brew install doguyilmaz/tap/dothaven
-brews:
+# Homebrew cask pushed to a separate tap repo (create doguyilmaz/homebrew-tap).
+#   Install:  brew install doguyilmaz/tap/dothaven
+#         or  brew tap doguyilmaz/tap && brew install dothaven
+# Casks distribute pre-built binaries (the modern replacement for the deprecated
+# `brews`). Casks are macOS-only; Linux users use `go install` or the release binary.
+homebrew_casks:
   - name: dothaven
+    binaries:
+      - dothaven
+    homepage: "https://github.com/doguyilmaz/dothaven"
+    description: "Discover, back up, and migrate your machine's dev config (chezmoi + age)"
     repository:
       owner: doguyilmaz
       name: homebrew-tap
-      # A PAT with write access to the tap repo (GITHUB_TOKEN can't push cross-repo).
+      # A PAT with contents:write on the tap repo (the default GITHUB_TOKEN can't push cross-repo).
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: "https://github.com/doguyilmaz/dothaven"
-    description: "Discover, back up, and migrate your machine's dev config (chezmoi + age)"
-    license: "MIT"
-    install: |
-      bin.install "dothaven"
-    test: |
-      system "#{bin}/dothaven", "--version"
+    # The released binary is unsigned — strip the Gatekeeper quarantine flag on
+    # install so macOS doesn't block it. (Signing/notarization would remove this.)
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/dothaven"]
+          end
 
 release:
   draft: false
