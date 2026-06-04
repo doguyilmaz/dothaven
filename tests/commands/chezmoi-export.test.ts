@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { planChezmoiExport, findSshPrivateKeys } from "../../src/commands/chezmoi";
+import { planChezmoiExport, findSshPrivateKeys, buildPackageInstallScript } from "../../src/commands/chezmoi";
 import type { ConfigEntry } from "../../src/registry/types";
 
 function entry(
@@ -75,5 +75,33 @@ describe("findSshPrivateKeys", () => {
   test("no private keys → []", async () => {
     const listDir = async () => ["config", "known_hosts"];
     expect(await findSshPrivateKeys("/h", listDir, async () => false)).toEqual([]);
+  });
+});
+
+describe("buildPackageInstallScript", () => {
+  test("emits brew bundle, fnm installs (skipping 'system'), and guarded global installs", () => {
+    const script = buildPackageInstallScript({
+      brewfile: 'tap "x/y"\nbrew "git"',
+      nodeVersions: ["v20.20.2", "v24.16.0", "system"],
+      bunGlobals: ["eas-cli@16.19.2"],
+      npmGlobals: ["typescript@5.4.0"],
+    });
+    expect(script.startsWith("#!/bin/bash")).toBe(true);
+    expect(script).toContain("if command -v brew >/dev/null 2>&1; then");
+    expect(script).toContain("brew bundle --file=/dev/stdin");
+    expect(script).toContain('brew "git"');
+    expect(script).toContain("fnm install v20.20.2 || true");
+    expect(script).toContain("fnm install v24.16.0 || true");
+    expect(script).not.toContain("fnm install system");
+    expect(script).toContain("bun add -g eas-cli@16.19.2 || true");
+    expect(script).toContain("npm install -g typescript@5.4.0 || true");
+  });
+
+  test("empty manifest → header only, no tool blocks", () => {
+    const script = buildPackageInstallScript({});
+    expect(script).toContain("#!/bin/bash");
+    expect(script).not.toContain("brew bundle");
+    expect(script).not.toContain("fnm install");
+    expect(script).not.toContain("add -g");
   });
 });
