@@ -12,8 +12,40 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/scan"
 	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/doguyilmaz/dothaven/internal/tui"
 	"github.com/spf13/cobra"
 )
+
+// backupGroups aggregates backup targets into selectable category groups
+// (count per category, and whether any entry in it is high-sensitivity).
+func backupGroups(targets []registry.BackupTarget) []tui.Group {
+	type agg struct {
+		count int
+		enc   bool
+	}
+	m := map[string]*agg{}
+	for _, t := range targets {
+		a := m[t.Category]
+		if a == nil {
+			a = &agg{}
+			m[t.Category] = a
+		}
+		a.count++
+		if t.Sensitivity == registry.High {
+			a.enc = true
+		}
+	}
+	cats := make([]string, 0, len(m))
+	for c := range m {
+		cats = append(cats, c)
+	}
+	sort.Strings(cats)
+	groups := make([]tui.Group, 0, len(cats))
+	for _, c := range cats {
+		groups = append(groups, tui.Group{Name: c, Count: m[c].count, Encrypted: m[c].enc})
+	}
+	return groups
+}
 
 // formatCategories renders a per-category count map as "shell (3), git (2)".
 func formatCategories(perCat map[string]int) string {
@@ -39,6 +71,21 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			redact := !noRedact
+
+			// Interactive category picker: only on a terminal, and only when the
+			// user hasn't already constrained the set with --only/--skip.
+			if len(only) == 0 && len(skip) == 0 && tui.Interactive() {
+				chosen, err := tui.SelectCategories("What to back up", backupGroups(registry.BackupTargets(env.Home(), registry.Entries)))
+				if err != nil {
+					return err
+				}
+				if len(chosen) == 0 {
+					fmt.Println("Nothing selected.")
+					return nil
+				}
+				only = chosen
+			}
+
 			dir := env.ResolveOutputDir(output)
 			host, _ := os.Hostname()
 			if host == "" {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/chezmoi"
+	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
 
@@ -46,6 +47,25 @@ func TestFormatSection(t *testing.T) {
 	withContent := formatSection("shell.zshrc", snapshot.Section{Content: &content})
 	if !strings.Contains(withContent, "alias ll") || !strings.Contains(withContent, "---") {
 		t.Errorf("formatSection content render: %s", withContent)
+	}
+}
+
+func TestBackupGroups(t *testing.T) {
+	targets := []registry.BackupTarget{
+		{Category: "shell"}, {Category: "shell"}, {Category: "git"},
+		{Category: "cloud", Sensitivity: registry.High},
+		{Category: "cloud"},
+	}
+	got := backupGroups(targets)
+	// sorted by category: cloud, git, shell
+	if len(got) != 3 {
+		t.Fatalf("groups = %d, want 3", len(got))
+	}
+	if got[0].Name != "cloud" || got[0].Count != 2 || !got[0].Encrypted {
+		t.Errorf("cloud group = %+v (want count 2, encrypted)", got[0])
+	}
+	if got[2].Name != "shell" || got[2].Count != 2 || got[2].Encrypted {
+		t.Errorf("shell group = %+v (want count 2, not encrypted)", got[2])
 	}
 }
 
