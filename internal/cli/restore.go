@@ -10,11 +10,27 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/restore"
 	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/doguyilmaz/dothaven/internal/tui"
 	"github.com/spf13/cobra"
 )
 
 func targetsFor(env *sys.OS) []registry.BackupTarget {
 	return registry.BackupTargets(env.Home(), registry.Entries)
+}
+
+// conflictAction maps a TUI choice onto the restore engine's action enum, keeping
+// the tui and restore packages decoupled (cli is the adapter).
+func conflictAction(c tui.ConflictChoice) restore.ConflictAction {
+	switch c {
+	case tui.ChoiceOverwrite:
+		return restore.ActionOverwrite
+	case tui.ChoiceOverwriteAll:
+		return restore.ActionOverwriteAll
+	case tui.ChoiceSkipAll:
+		return restore.ActionSkipAll
+	default:
+		return restore.ActionSkip
+	}
 }
 
 func newRestoreCmd(env *sys.OS) *cobra.Command {
@@ -41,11 +57,25 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 				return nil
 			}
 
+			// Interactive per-conflict resolution on a terminal (unless --force,
+			// which overwrites all). Piped/CI runs stay at the safe default: skip
+			// conflicts.
+			interactive := !force && tui.Interactive()
 			snapDir := ""
-			if force {
+			if force || interactive {
 				snapDir = filepath.Join(env.ResolveOutputDir(""), "pre-restore-"+sys.Timestamp(time.Now()))
 			}
-			res, err := restore.Execute(plan, restore.ExecuteOptions{Force: force, SnapshotDir: snapDir})
+			opts := restore.ExecuteOptions{Force: force, SnapshotDir: snapDir}
+			if interactive {
+				opts.Resolve = func(e restore.Entry, backup, live string) restore.ConflictAction {
+					choice, err := tui.ResolveConflict(e.TargetPath, backup, live)
+					if err != nil {
+						return restore.ActionSkip
+					}
+					return conflictAction(choice)
+				}
+			}
+			res, err := restore.Execute(plan, opts)
 			if err != nil {
 				return err
 			}

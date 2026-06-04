@@ -188,10 +188,24 @@ func Tally(entries []Entry) Counts {
 	return c
 }
 
+// ConflictAction is a per-file decision when a backup differs from the live file.
+type ConflictAction int
+
+const (
+	ActionSkip         ConflictAction = iota // leave the live file
+	ActionOverwrite                          // write the backup over it
+	ActionOverwriteAll                       // and every remaining conflict
+	ActionSkipAll                            // skip every remaining conflict
+)
+
 // ExecuteOptions controls how a plan is applied.
 type ExecuteOptions struct {
-	Force       bool   // overwrite conflicts (default: skip them)
-	SnapshotDir string // where to copy conflicts before overwriting ("" = no snapshot)
+	Force       bool   // overwrite all conflicts (default: skip them)
+	SnapshotDir string // where to copy conflicts before overwriting ("" = none)
+	// Resolve, when set, is asked per conflict (interactive mode). It receives
+	// the entry plus the backup and live contents. nil → non-interactive: skip
+	// conflicts unless Force.
+	Resolve func(e Entry, backupContent, liveContent string) ConflictAction
 }
 
 // ExecuteResult summarizes an applied restore.
@@ -203,28 +217,12 @@ type ExecuteResult struct {
 }
 
 // Execute applies the plan to the filesystem. New files are always written;
-// conflicts are skipped unless Force is set (in which case the prior content is
-// snapshotted first). same/redacted entries are never written.
+// same/redacted entries never are. A conflict is overwritten when Force is set,
+// when Resolve approves it, or once the user chose "overwrite all"; otherwise it
+// is skipped. Any overwritten file is snapshotted (owner-only) first.
 func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 	res := ExecuteResult{PerCategory: map[string]int{}}
-
-	if opts.Force && opts.SnapshotDir != "" {
-		for _, e := range plan.Entries {
-			if e.Status != StatusConflict {
-				continue
-			}
-			raw, err := os.ReadFile(e.TargetPath)
-			if err != nil {
-				continue
-			}
-			// The snapshot captures the user's CURRENT (unredacted) files before
-			// overwrite — owner-only so it can't leak a secret.
-			if err := sys.WriteFileSecure(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
-				return res, err
-			}
-			res.SnapshotDir = opts.SnapshotDir
-		}
-	}
+	overwriteAll, skipAll := opts.Force, false
 
 	for _, e := range plan.Entries {
 		switch e.Status {
@@ -232,9 +230,31 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			res.Skipped++
 			continue
 		case StatusConflict:
-			if !opts.Force {
+			overwrite := overwriteAll
+			if !overwrite && !skipAll && opts.Resolve != nil {
+				backup, _ := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))
+				live, _ := os.ReadFile(e.TargetPath)
+				switch opts.Resolve(e, string(backup), string(live)) {
+				case ActionOverwrite:
+					overwrite = true
+				case ActionOverwriteAll:
+					overwrite, overwriteAll = true, true
+				case ActionSkipAll:
+					skipAll = true
+				}
+			}
+			if !overwrite {
 				res.Skipped++
 				continue
+			}
+			if opts.SnapshotDir != "" {
+				if raw, err := os.ReadFile(e.TargetPath); err == nil {
+					// Capture the live (unredacted) file before overwrite, owner-only.
+					if err := sys.WriteFileSecure(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
+						return res, err
+					}
+					res.SnapshotDir = opts.SnapshotDir
+				}
 			}
 		}
 		raw, err := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))

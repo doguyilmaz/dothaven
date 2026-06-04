@@ -141,6 +141,44 @@ func TestBuildPlanAndExecute(t *testing.T) {
 	}
 }
 
+func TestExecuteInteractiveResolver(t *testing.T) {
+	home := t.TempDir()
+	backup := t.TempDir()
+	write(t, filepath.Join(backup, "git/.gitconfig"), "backup\n")
+	write(t, filepath.Join(backup, "editor/.vimrc"), "backup\n")
+	write(t, filepath.Join(home, ".gitconfig"), "live\n")
+	write(t, filepath.Join(home, ".vimrc"), "live\n")
+
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".gitconfig"), Dest: "git/.gitconfig", Category: "git"},
+		{Src: filepath.Join(home, ".vimrc"), Dest: "editor/.vimrc", Category: "editor"},
+	}
+	plan, _ := BuildPlan(backup, home, targets)
+
+	// Resolver overwrites the first conflict it sees, then skips-all.
+	calls := 0
+	res, err := Execute(plan, ExecuteOptions{
+		SnapshotDir: filepath.Join(t.TempDir(), "snap"),
+		Resolve: func(e Entry, b, l string) ConflictAction {
+			calls++
+			if calls == 1 {
+				return ActionOverwrite
+			}
+			return ActionSkipAll
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Restored != 1 {
+		t.Errorf("restored = %d, want 1 (one overwrite)", res.Restored)
+	}
+	// After SkipAll, the resolver must not be called again for later conflicts.
+	if calls != 2 {
+		t.Errorf("resolver calls = %d, want 2 (skip-all stops further prompts)", calls)
+	}
+}
+
 func write(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
