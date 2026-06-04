@@ -34,7 +34,7 @@ func TestSlimSections(t *testing.T) {
 }
 
 func TestDefaultCollectorsWired(t *testing.T) {
-	if got := len(defaultCollectors()); got != 11 {
-		t.Errorf("defaultCollectors length = %d, want 11 (meta + registry + 9 command collectors)", got)
+	if got := len(defaultCollectors()); got != 12 {
+		t.Errorf("defaultCollectors length = %d, want 12 (meta + registry + 10 command collectors)", got)
 	}
 }

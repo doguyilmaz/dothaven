@@ -132,6 +132,24 @@ func ParseFnmList(text string) []NodeVersion {
 	return out
 }
 
+// ParsePipxList parses `pipx list --short` ("black 24.10.0" per line).
+func ParsePipxList(text string) []PkgItem {
+	out := []PkgItem{}
+	for _, line := range strings.Split(text, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		p := PkgItem{Name: f[0]}
+		if len(f) > 1 {
+			p.Version = f[1]
+		}
+		out = append(out, p)
+	}
+	pkgSortByName(out)
+	return out
+}
+
 func pkgItems(pkgs []PkgItem) []snapshot.Item {
 	out := make([]snapshot.Item, 0, len(pkgs))
 	for _, p := range pkgs {
@@ -187,6 +205,19 @@ func PackagesCollector(c Ctx) snapshot.Snapshot {
 		sorted := append([]string(nil), bins...)
 		sort.Strings(sorted)
 		out["packages.deno.bin"] = snapshot.Section{Items: toItems(sorted)}
+	}
+
+	if s, _ := c.Env.Run(c.Context, "pipx", "list", "--short"); true {
+		if p := ParsePipxList(s); len(p) > 0 {
+			out["packages.pipx"] = snapshot.Section{Items: pkgItems(p)}
+		}
+	}
+
+	// `go install`ed binaries — user tools with no config file to reproduce them.
+	if bins, err := c.Env.ListDir(c.Home + "/go/bin"); err == nil && len(bins) > 0 {
+		sorted := append([]string(nil), bins...)
+		sort.Strings(sorted)
+		out["packages.go.bin"] = snapshot.Section{Items: toItems(sorted)}
 	}
 
 	return out

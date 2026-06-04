@@ -15,6 +15,7 @@ import (
 func isInstallable(id string) bool {
 	return strings.HasPrefix(id, "packages.") ||
 		strings.HasPrefix(id, "runtimes.") ||
+		strings.HasPrefix(id, "vm.") ||
 		strings.HasPrefix(id, "apps.brew.") ||
 		id == "apps.macos" ||
 		strings.HasPrefix(id, "fonts.") ||
