@@ -23,3 +23,6 @@ node_modules/
 # VitePress build/cache output
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+# Go build artifacts
+/dothaven
+dist/
