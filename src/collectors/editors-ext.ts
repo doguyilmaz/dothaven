@@ -1,5 +1,5 @@
 import type { Collector, CollectorResult } from "./types";
-import { makeSection } from "./types";
+import { makeSection, toItems } from "./types";
 import { type CommandEnv, defaultEnv } from "./env";
 
 /** Parse `code --list-extensions` / `cursor --list-extensions` (one id per line). */
@@ -12,20 +12,18 @@ export function parseExtensions(text: string): string[] {
     .sort();
 }
 
-const items = (exts: string[]) => exts.map((e) => ({ raw: e, columns: [e] }));
-
 export function makeEditorsExtCollector(env: CommandEnv = defaultEnv): Collector {
   return async () => {
     const result: CollectorResult = {};
 
     try {
       const code = parseExtensions(await env.run(["code", "--list-extensions"]));
-      if (code.length) result["editor.vscode.extensions"] = makeSection("editor.vscode.extensions", { items: items(code) });
+      if (code.length) result["editor.vscode.extensions"] = makeSection("editor.vscode.extensions", { items: toItems(code) });
     } catch {}
 
     try {
       const cursor = parseExtensions(await env.run(["cursor", "--list-extensions"]));
-      if (cursor.length) result["editor.cursor.extensions"] = makeSection("editor.cursor.extensions", { items: items(cursor) });
+      if (cursor.length) result["editor.cursor.extensions"] = makeSection("editor.cursor.extensions", { items: toItems(cursor) });
     } catch {}
 
     return result;

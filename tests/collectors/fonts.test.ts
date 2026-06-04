@@ -39,6 +39,19 @@ describe("makeFontsCollector", () => {
     ]);
   });
 
+  test("collects Linux user fonts (~/.local/share/fonts) and dedupes across dirs", async () => {
+    const collect = makeFontsCollector(
+      fakeEnv({
+        dirs: {
+          "/fake/home/Library/Fonts": ["Shared.ttf"],
+          "/fake/home/.local/share/fonts": ["JetBrainsMono.ttf", "Shared.ttf"],
+        },
+      }),
+    );
+    const r = await collect(ctx);
+    expect(r["fonts.user"]?.items.map((i) => i.raw)).toEqual(["JetBrainsMono.ttf", "Shared.ttf"]);
+  });
+
   test("no font directories → {}", async () => {
     expect(await makeFontsCollector(fakeEnv())(ctx)).toEqual({});
   });

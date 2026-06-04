@@ -24,3 +24,6 @@ export function makeSection(
     content: opts.content ?? null,
   };
 }
+
+/** Build single-column items from a list of names — the common collector item shape. */
+export const toItems = (names: string[]) => names.map((n) => ({ raw: n, columns: [n] }));

@@ -1,6 +1,6 @@
 import { join } from "path";
 import { REDACTION_MARKER } from "../utils/constants";
-import type { Collector, CollectorResult } from "./types";
+import type { Collector } from "./types";
 import { makeSection } from "./types";
 
 interface SshHost {
@@ -41,12 +41,12 @@ export const collectSsh: Collector = async (ctx) => {
   const configPath = join(ctx.home, ".ssh/config");
   const file = Bun.file(configPath);
 
-  if (!(await file.exists())) return {} as CollectorResult;
+  if (!(await file.exists())) return {};
 
   const content = await file.text();
   const hosts = parseSshConfig(content);
 
-  if (!hosts.length) return {} as CollectorResult;
+  if (!hosts.length) return {};
 
   const items = hosts.map((h) => {
     const hn = ctx.redact ? REDACTION_MARKER : h.hostname;

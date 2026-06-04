@@ -1,5 +1,5 @@
 import type { Collector, CollectorResult } from "./types";
-import { makeSection } from "./types";
+import { makeSection, toItems } from "./types";
 import { type CommandEnv, defaultEnv } from "./env";
 
 /** Parse `brew list --formula` / `--cask` (one name per line). */
@@ -26,20 +26,18 @@ export function parseBrewfile(text: string): string {
     .trim();
 }
 
-const items = (names: string[]) => names.map((n) => ({ raw: n, columns: [n] }));
-
 export function makeHomebrewCollector(env: CommandEnv = defaultEnv): Collector {
   return async () => {
     const result: CollectorResult = {};
 
     try {
       const formulae = parseBrewList(await env.run(["brew", "list", "--formula"]));
-      if (formulae.length) result["apps.brew.formulae"] = makeSection("apps.brew.formulae", { items: items(formulae) });
+      if (formulae.length) result["apps.brew.formulae"] = makeSection("apps.brew.formulae", { items: toItems(formulae) });
     } catch {}
 
     try {
       const casks = parseBrewList(await env.run(["brew", "list", "--cask"]));
-      if (casks.length) result["apps.brew.casks"] = makeSection("apps.brew.casks", { items: items(casks) });
+      if (casks.length) result["apps.brew.casks"] = makeSection("apps.brew.casks", { items: toItems(casks) });
     } catch {}
 
     // A restorable Brewfile (taps + brews + casks + mas) — superset used by `brew bundle`.

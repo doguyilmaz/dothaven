@@ -1,5 +1,5 @@
 import type { Collector, CollectorResult } from "./types";
-import { makeSection } from "./types";
+import { makeSection, toItems } from "./types";
 import { type CommandEnv, defaultEnv } from "./env";
 import { registryEntries } from "../registry/entries";
 import type { ConfigEntry } from "../registry/types";
@@ -53,8 +53,6 @@ export function classifyDotfiles(entries: string[], managed: Set<string>, noise:
   return result;
 }
 
-const items = (names: string[]) => names.map((n) => ({ raw: n, columns: [n] }));
-
 export function makeDotfilesSweepCollector(env: CommandEnv = defaultEnv): Collector {
   return async (ctx) => {
     let entries: string[];
@@ -67,8 +65,8 @@ export function makeDotfilesSweepCollector(env: CommandEnv = defaultEnv): Collec
 
     const { managed, review } = classifyDotfiles(entries, managedDotNames(registryEntries), NOISE);
     const result: CollectorResult = {};
-    if (review.length) result["home.dotfiles.review"] = makeSection("home.dotfiles.review", { items: items(review) });
-    if (managed.length) result["home.dotfiles.managed"] = makeSection("home.dotfiles.managed", { items: items(managed) });
+    if (review.length) result["home.dotfiles.review"] = makeSection("home.dotfiles.review", { items: toItems(review) });
+    if (managed.length) result["home.dotfiles.managed"] = makeSection("home.dotfiles.managed", { items: toItems(managed) });
     return result;
   };
 }

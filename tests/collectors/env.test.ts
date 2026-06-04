@@ -14,6 +14,7 @@ describe("defaultEnv (real IO)", () => {
     dir = await mkdtemp(join(tmpdir(), "dotfiles-env-test-"));
     await Bun.write(join(dir, "alpha"), "a");
     await Bun.write(join(dir, "beta"), "b");
+    await Bun.write(join(dir, ".hidden"), "h");
     await mkdir(join(dir, "subdir"));
   });
 
@@ -29,8 +30,8 @@ describe("defaultEnv (real IO)", () => {
     expect((await defaultEnv.run(["sh", "-c", "echo out; exit 3"])).trim()).toBe("out");
   });
 
-  test("listDir lists files and directories", async () => {
-    expect((await defaultEnv.listDir(dir)).sort()).toEqual(["alpha", "beta", "subdir"]);
+  test("listDir lists files, directories, and dotfiles", async () => {
+    expect((await defaultEnv.listDir(dir)).sort()).toEqual([".hidden", "alpha", "beta", "subdir"]);
   });
 
   test("listDir on a missing directory → []", async () => {

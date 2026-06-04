@@ -46,6 +46,13 @@ describe("parseRustupToolchains", () => {
       { name: "nightly-aarch64-apple-darwin", flags: "" },
     ]);
   });
+  test("ignores prose status lines (no default toolchain set)", () => {
+    expect(parseRustupToolchains("no installed toolchains")).toEqual([]);
+    expect(
+      parseRustupToolchains("stable-aarch64-apple-darwin (default)\nerror: rustup could not choose a version"),
+    ).toEqual([{ name: "stable-aarch64-apple-darwin", flags: "default" }]);
+  });
+
   test("empty → []", () => {
     expect(parseRustupToolchains("")).toEqual([]);
   });

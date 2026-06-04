@@ -1,5 +1,5 @@
 import type { Collector, CollectorResult } from "./types";
-import { makeSection } from "./types";
+import { makeSection, toItems } from "./types";
 import { type CommandEnv, defaultEnv } from "./env";
 
 export interface GoInfo {
@@ -85,8 +85,6 @@ export function parseAdbVersion(text: string): string {
   return m ? m[1] : "";
 }
 
-const listItems = (names: string[]) => names.map((n) => ({ raw: n, columns: [n] }));
-
 export function makeRuntimesCollector(env: CommandEnv = defaultEnv): Collector {
   return async (ctx) => {
     const result: CollectorResult = {};
@@ -159,10 +157,10 @@ export function makeRuntimesCollector(env: CommandEnv = defaultEnv): Collector {
         result["runtimes.android"] = makeSection("runtimes.android", { pairs });
 
         const buildTools = [...(await env.listDir(`${sdk}/build-tools`))].sort();
-        if (buildTools.length) result["runtimes.android.buildTools"] = makeSection("runtimes.android.buildTools", { items: listItems(buildTools) });
+        if (buildTools.length) result["runtimes.android.buildTools"] = makeSection("runtimes.android.buildTools", { items: toItems(buildTools) });
 
         const platforms = [...(await env.listDir(`${sdk}/platforms`))].sort();
-        if (platforms.length) result["runtimes.android.platforms"] = makeSection("runtimes.android.platforms", { items: listItems(platforms) });
+        if (platforms.length) result["runtimes.android.platforms"] = makeSection("runtimes.android.platforms", { items: toItems(platforms) });
       }
     } catch {}
 

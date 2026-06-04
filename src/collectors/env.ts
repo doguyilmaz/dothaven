@@ -23,7 +23,7 @@ export const defaultEnv: CommandEnv = {
   listDir: async (path) => {
     const entries: string[] = [];
     try {
-      for await (const name of new Bun.Glob("*").scan({ cwd: path, onlyFiles: false })) entries.push(name);
+      for await (const name of new Bun.Glob("*").scan({ cwd: path, onlyFiles: false, dot: true })) entries.push(name);
     } catch {}
     return entries;
   },

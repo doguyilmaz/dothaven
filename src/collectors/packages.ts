@@ -1,5 +1,5 @@
 import type { Collector, CollectorResult } from "./types";
-import { makeSection } from "./types";
+import { makeSection, toItems } from "./types";
 import { type CommandEnv, defaultEnv } from "./env";
 
 export interface PkgItem {
@@ -115,7 +115,7 @@ export function makePackagesCollector(env: CommandEnv = defaultEnv): Collector {
     try {
       const bins = await env.listDir(`${ctx.home}/.deno/bin`);
       if (bins.length) {
-        const items = [...bins].sort((a, b) => a.localeCompare(b)).map((n) => ({ raw: n, columns: [n] }));
+        const items = toItems([...bins].sort());
         result["packages.deno.bin"] = makeSection("packages.deno.bin", { items });
       }
     } catch {}

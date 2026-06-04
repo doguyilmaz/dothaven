@@ -60,14 +60,16 @@ describe("classifyDotfiles", () => {
 
 describe("makeDotfilesSweepCollector", () => {
   test("classifies home dotfiles against the real registry", async () => {
+    // Use names guaranteed never to be in the registry, so this stays green even as
+    // managed entries grow (e.g. .aws is added by the cloud-config coverage work).
     const collect = makeDotfilesSweepCollector(
-      fakeEnv({ run: () => ".zshrc\n.app-store\n.DS_Store\n.aws\nDocuments" }),
+      fakeEnv({ run: () => ".zshrc\n.app-store\n.DS_Store\n.totally-custom-xyz\nDocuments" }),
     );
     const r = await collect(ctx);
     expect(r["home.dotfiles.managed"]?.items.map((i) => i.raw)).toContain(".zshrc");
     const review = r["home.dotfiles.review"]?.items.map((i) => i.raw) ?? [];
     expect(review).toContain(".app-store");
-    expect(review).toContain(".aws");
+    expect(review).toContain(".totally-custom-xyz");
     expect(review).not.toContain(".DS_Store");
     expect(review).not.toContain("Documents");
   });

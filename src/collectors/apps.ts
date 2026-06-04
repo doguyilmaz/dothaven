@@ -1,5 +1,5 @@
 import type { Collector, CollectorResult } from "./types";
-import { makeSection } from "./types";
+import { makeSection, toItems } from "./types";
 import { type CommandEnv, defaultEnv } from "./env";
 
 const RAYCAST_PLIST = "/Applications/Raycast.app/Contents/Info.plist";
@@ -40,7 +40,7 @@ export function makeAppsCollector(env: CommandEnv = defaultEnv): Collector {
       const apps = parseAppList(await env.run(["ls", "/Applications"]));
       if (apps.length) {
         result["apps.macos"] = makeSection("apps.macos", {
-          items: apps.map((a) => ({ raw: a, columns: [a] })),
+          items: toItems(apps),
         });
       }
     } catch {}
