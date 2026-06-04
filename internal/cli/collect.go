@@ -38,10 +38,11 @@ func defaultCollectors() []collect.Collector {
 	}
 }
 
-// gatherSnapshot runs the full collector pipeline against the live machine.
-func gatherSnapshot(env *sys.OS, redact bool) snapshot.Snapshot {
+// gatherSnapshot runs the full collector pipeline against the live machine. The
+// context (from the command, signal-aware) bounds and cancels the run.
+func gatherSnapshot(ctx context.Context, env *sys.OS, redact bool) snapshot.Snapshot {
 	return collect.RunCollectors(collect.Ctx{
-		Context: context.Background(),
+		Context: ctx,
 		Env:     env,
 		Home:    env.Home(),
 		Redact:  redact,
@@ -77,7 +78,7 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			redact := !noRedact
-			snap := gatherSnapshot(env, redact)
+			snap := gatherSnapshot(cmd.Context(), env, redact)
 
 			var scanResults []scan.Result
 			if redact {

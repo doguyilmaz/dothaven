@@ -33,10 +33,17 @@ func Real() *OS {
 	return &OS{home: h}
 }
 
+// CommandTimeout bounds a single external command so one hung tool (an
+// unreachable registry, a wedged daemon, a first-run license prompt) can't
+// block the whole run. CommandContext SIGKILLs the child when it fires.
+const CommandTimeout = 30 * time.Second
+
 func (o *OS) Run(ctx context.Context, args ...string) (string, error) {
 	if len(args) == 0 {
 		return "", errors.New("empty command")
 	}
+	ctx, cancel := context.WithTimeout(ctx, CommandTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	var out bytes.Buffer
 	cmd.Stdout = &out

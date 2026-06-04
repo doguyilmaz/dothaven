@@ -68,7 +68,7 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			missing := findMissing(want, gatherSnapshot(env, false))
+			missing := findMissing(want, gatherSnapshot(cmd.Context(), env, false))
 
 			ids := make([]string, 0, len(missing))
 			for id := range missing {

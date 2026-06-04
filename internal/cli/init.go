@@ -13,8 +13,7 @@ import (
 
 var ageEncryptionRe = regexp.MustCompile(`encryption\s*=\s*"age"`)
 
-func probeInitState(env *sys.OS) chezmoi.InitState {
-	ctx := context.Background()
+func probeInitState(ctx context.Context, env *sys.OS) chezmoi.InitState {
 	nonEmpty := func(name string, args ...string) bool {
 		out, err := runShell(ctx, name, args...)
 		return err == nil && out != ""
@@ -54,7 +53,7 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 		Short: "Check the chezmoi + age prerequisites for export",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			steps := chezmoi.PlanInit(probeInitState(env))
+			steps := chezmoi.PlanInit(probeInitState(cmd.Context(), env))
 
 			fmt.Print("dothaven init — chezmoi + age bootstrap\n\n")
 			for _, s := range steps {

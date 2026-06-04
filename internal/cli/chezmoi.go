@@ -18,7 +18,10 @@ import (
 
 // runShell executes a command surfacing its exit status (unlike sys.Env.Run,
 // which tolerates non-zero exit for collectors). Used only on the --apply path.
+// A per-command timeout keeps a hung/prompting chezmoi from blocking forever.
 func runShell(ctx context.Context, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*sys.CommandTimeout)
+	defer cancel()
 	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
@@ -51,11 +54,11 @@ func removeByID(plan []chezmoi.PlanItem, id string) []chezmoi.PlanItem {
 	return out
 }
 
-func gatherInstallManifest(env *sys.OS, pin bool) chezmoi.Manifest {
-	ctx := collect.Ctx{Context: context.Background(), Env: env, Home: env.Home(), Redact: false}
-	brew := collect.HomebrewCollector(ctx)
-	pkgs := collect.PackagesCollector(ctx)
-	runtimes := collect.RuntimesCollector(ctx)
+func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.Manifest {
+	cctx := collect.Ctx{Context: ctx, Env: env, Home: env.Home(), Redact: false}
+	brew := collect.HomebrewCollector(cctx)
+	pkgs := collect.PackagesCollector(cctx)
+	runtimes := collect.RuntimesCollector(cctx)
 
 	specs := func(snap snapshot.Snapshot, id string) []string {
 		var out []string
@@ -102,7 +105,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home := env.Home()
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			wantBrew := chezmoi.IsSelected("brew", only, skip)
 			wantPackages := chezmoi.IsSelected("packages", only, skip)
@@ -201,7 +204,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if wantInstallScript {
-				manifest := gatherInstallManifest(env, pin)
+				manifest := gatherInstallManifest(ctx, env, pin)
 				if dupes := chezmoi.CrossManagerDuplicates(manifest); len(dupes) > 0 {
 					fmt.Fprintf(os.Stderr, "  ⚠ installed by multiple managers (review for PATH shadowing): %s\n", strings.Join(dupes, ", "))
 				}
