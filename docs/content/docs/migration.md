@@ -1,6 +1,6 @@
 ---
 title: Migration runbook
-weight: 11
+weight: 12
 ---
 
 This is the end-to-end procedure for moving a development setup to a new machine.

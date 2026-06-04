@@ -1,6 +1,6 @@
 ---
 title: Security & redaction
-weight: 8
+weight: 9
 ---
 
 dothaven audits dotfiles for secrets before they ever leave your machine. Every file and snapshot section is run through a built-in scanner that classifies what it finds, then either masks the value, drops the file entirely, or keeps it with a warning. This page describes how the scanner decides, what it detects, and how that protection wires into backups and exports.

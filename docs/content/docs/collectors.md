@@ -1,6 +1,6 @@
 ---
 title: Collectors
-weight: 5
+weight: 6
 ---
 
 A **collector** is a small unit that inventories one area of your machine and

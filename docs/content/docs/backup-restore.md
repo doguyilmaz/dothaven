@@ -1,6 +1,6 @@
 ---
 title: "Backup & restore"
-weight: 10
+weight: 11
 ---
 
 `dothaven backup` copies your tracked config files into a timestamped tree, applying the

@@ -1,6 +1,6 @@
 ---
 title: Commands
-weight: 4
+weight: 5
 ---
 
 dothaven is a single static Go binary built on [Cobra](https://github.com/spf13/cobra). It ships eleven commands plus Cobra's auto-generated `help` and `completion`. This page is the complete reference: purpose, synopsis, every flag with its default, argument rules, and an example for each.

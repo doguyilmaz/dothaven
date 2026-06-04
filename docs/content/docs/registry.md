@@ -1,6 +1,6 @@
 ---
 title: Registry
-weight: 6
+weight: 7
 ---
 
 The registry is dothaven's single declarative source of truth for the config files

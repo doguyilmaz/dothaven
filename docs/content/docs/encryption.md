@@ -1,6 +1,6 @@
 ---
 title: Encryption & chezmoi
-weight: 9
+weight: 10
 ---
 
 dothaven never encrypts or stores anything itself. It does **discovery, audit, and export** — finding your configs, classifying which ones hold secrets, and building a plan. [chezmoi](https://www.chezmoi.io/) does **storage, age-encryption, and apply** on the target machine. The two halves meet in one command: `dothaven chezmoi-export` translates the plan into `chezmoi add` and `chezmoi add --encrypt` calls, plus a `run_onchange` install script that rebuilds your packages on `chezmoi apply`.

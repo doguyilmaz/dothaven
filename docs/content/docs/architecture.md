@@ -1,6 +1,6 @@
 ---
 title: Architecture
-weight: 12
+weight: 13
 ---
 
 dothaven is a single static Go binary built on [Cobra](https://github.com/spf13/cobra). There is no runtime dependency — no interpreter, no Node, no package manager to ship alongside it. The module path is `github.com/doguyilmaz/dothaven` and the binary is built from `./cmd/dothaven`.

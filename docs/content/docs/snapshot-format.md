@@ -1,6 +1,6 @@
 ---
 title: Snapshot format
-weight: 7
+weight: 8
 ---
 
 A snapshot is dothaven's machine inventory: a single JSON file produced by
