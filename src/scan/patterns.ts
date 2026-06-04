@@ -57,7 +57,7 @@ export function getScanPatterns(): ScanPattern[] {
       label: "secret value",
       severity: "HIGH",
       regex:
-        /\b(password|passwd|secret|client[_-]?secret|secret[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|refresh[_-]?token|private[_-]?key)\b\s*[=:]\s*\S+/i,
+        /\b(password|passwd|secret|client[_-]?secret|secret[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key)\b\s*[=:]\s*\S+/i,
       defaultAction: "redact",
     },
 
@@ -121,6 +121,14 @@ export function getScanPatterns(): ScanPattern[] {
       label: "AWS secret key",
       severity: "HIGH",
       regex: /aws_secret_access_key\s*=\s*.+/i,
+      defaultAction: "redact",
+    },
+    {
+      // STS temporary credentials — lowercase aws config form (also any *_session_token).
+      id: "aws-session-token",
+      label: "AWS session token",
+      severity: "HIGH",
+      regex: /\b[a-z0-9_]*session[_-]?token\s*=\s*.+/i,
       defaultAction: "redact",
     },
     {

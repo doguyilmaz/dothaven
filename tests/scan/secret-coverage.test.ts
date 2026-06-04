@@ -22,6 +22,8 @@ describe("shell secret export coverage (was leaking)", () => {
     "export MY_SERVICE_KEY=supersecretvalue123456",
     "password=hunter2supersecret",
     "client_secret: abcdef0123456789",
+    "aws_session_token = FwoGZXIvYXdzSuperSecretSessionTokenValue123",
+    "session_token=sessiontokensecretvalue0123456789",
   ];
 
   for (const line of leaky) {
