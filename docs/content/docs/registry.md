@@ -83,11 +83,12 @@ exporting to chezmoi for age-encryption.
 | `high` | Holds credentials or private key material | `~/.npmrc`, AWS `credentials`, `kubeconfig`, Docker config, GnuPG home |
 
 {{< callout type="warning" >}}
-Sensitivity is a label, not an automatic guard. Only entries that also define a
-`Redact` rule have their content scrubbed during `collect`/`backup`. A
-`high`-sensitivity entry with no redactor (for example the AWS `credentials`
-file) is copied verbatim — route those through chezmoi so age encrypts them at
-rest.
+Sensitivity drives real behavior, not just labeling. Entries with a `Redact` rule
+have their content scrubbed during `collect`/`backup`. A `high`-sensitivity entry
+with **no** redactor (e.g. AWS `credentials`, the GnuPG home) is **excluded from a
+plaintext backup** — content scanning can't be trusted to catch every secret
+(binary key material has no signature). Carry those with `chezmoi-export`, which
+age-encrypts them at rest.
 {{< /callout >}}
 
 ## Paths and `~` expansion
@@ -133,11 +134,21 @@ still reads as a valid config, only the secret value is masked.
 
 ## Registered entries
 
-The list below is the full registry, grouped by category. The path shown is the
-macOS/Linux (`~`-relative) template; Windows templates differ where defined and
-some entries are macOS/Linux-only.
+The registry currently declares around 84 entries across 17 categories. The lists
+below are grouped by category; large categories show the notable entries and end
+with "and more." The path shown is the macOS/Linux (`~`-relative) template;
+Windows templates differ where defined and some entries are macOS/Linux-only.
+
+{{< callout type="warning" >}}
+Every credential-bearing entry is classified `high`. On a chezmoi export those are
+age-encrypted at rest, and because they carry no `Redact` rule they are excluded
+from a plaintext backup entirely.
+{{< /callout >}}
 
 ### ai
+
+AI assistant configs, skills, and project-memory files for Claude, Cursor, Gemini,
+and Windsurf.
 
 | ID | Name | Path | Kind | Sensitivity |
 | --- | --- | --- | --- | --- |
@@ -145,12 +156,11 @@ some entries are macOS/Linux-only.
 | `ai.claude.skills` | Claude Skills | `~/.claude/skills` | Dir | low |
 | `ai.claude.md` | CLAUDE.md | `~/.claude/CLAUDE.md` | File | low |
 | `ai.cursor.mcp` | Cursor MCP Config | `~/.cursor/mcp.json` | File | low |
-| `ai.cursor.skills` | Cursor Skills | `~/.cursor/skills` | Dir | low |
 | `ai.gemini.settings` | Gemini Settings | `~/.gemini/settings.json` | JSONExtract | low |
-| `ai.gemini.skills` | Gemini Skills | `~/.gemini/skills` | Dir | low |
 | `ai.gemini.md` | GEMINI.md | `~/.gemini/GEMINI.md` | File | low |
 | `ai.windsurf.mcp` | Windsurf MCP Config | `~/.codeium/windsurf/mcp_config.json` | File | low |
-| `ai.windsurf.skills` | Windsurf Skills | `~/.codeium/windsurf/skills` | Dir | low |
+
+…and the matching skills directories for Cursor, Gemini, and Windsurf.
 
 The Claude settings entry extracts only the `permissions` and `enabledPlugins`
 fields; the Gemini settings entry extracts all top-level keys.
@@ -163,9 +173,12 @@ macOS/Linux only.
 | --- | --- | --- | --- | --- |
 | `shell.zshrc` | .zshrc | `~/.zshrc` | File | low |
 | `shell.zprofile` | .zprofile | `~/.zprofile` | File | low |
-| `shell.zshenv` | .zshenv | `~/.zshenv` | File | low |
-| `shell.bash_profile` | .bash_profile | `~/.bash_profile` | File | low |
 | `shell.bashrc` | .bashrc | `~/.bashrc` | File | low |
+| `shell.profile` | .profile | `~/.profile` | File | low |
+| `shell.fish` | Fish Config | `~/.config/fish` | Dir | low |
+| `shell.nushell` | Nushell Config | `~/.config/nushell` | Dir | low |
+
+…and `shell.zshenv`, `shell.bash_profile`, and `shell.inputrc`.
 
 ### git
 
@@ -173,6 +186,7 @@ macOS/Linux only.
 | --- | --- | --- | --- | --- |
 | `git.config` | .gitconfig | `~/.gitconfig` | File | low |
 | `git.ignore` | .gitignore_global | `~/.gitignore_global` | File | low |
+| `git.attributes` | .gitattributes_global | `~/.gitattributes_global` | File | low |
 | `gh.config` | GitHub CLI Config | `~/.config/gh/config.yml` | File | low |
 
 ### editor
@@ -181,8 +195,12 @@ macOS/Linux only.
 | --- | --- | --- | --- | --- |
 | `editor.zed` | Zed Settings | `~/.config/zed/settings.json` | File | low |
 | `editor.cursor` | Cursor Settings | `~/Library/Application Support/Cursor/User/settings.json` | File | low |
-| `editor.nvim` | Neovim Config | `~/.config/nvim/init.lua` | File | low |
-| `editor.vimrc` | .vimrc | `~/.vimrc` | File | low |
+| `editor.nvim` | Neovim Config | `~/.config/nvim` | Dir | low |
+| `editor.vscode.settings` | VS Code Settings | `~/Library/Application Support/Code/User/settings.json` | File | low |
+| `editor.helix` | Helix Config | `~/.config/helix` | Dir | low |
+| `editor.editorconfig` | .editorconfig | `~/.editorconfig` | File | low |
+
+…and `editor.vimrc`, VS Code keybindings/snippets, Doom Emacs, and Sublime Text.
 
 The Cursor settings path differs by OS: `~/.config/Cursor/User/settings.json` on
 Linux and `%APPDATA%/Cursor/User/settings.json` on Windows.
@@ -195,6 +213,10 @@ macOS/Linux only.
 | --- | --- | --- | --- | --- |
 | `terminal.p10k` | .p10k.zsh | `~/.p10k.zsh` | FileMetadata | low |
 | `terminal.tmux` | .tmux.conf | `~/.tmux.conf` | File | low |
+| `terminal.starship` | Starship prompt | `~/.config/starship.toml` | File | low |
+| `terminal.ghostty` | Ghostty | `~/.config/ghostty/config` | File | low |
+
+…and Alacritty, Kitty, and WezTerm.
 
 `.p10k.zsh` is recorded as metadata only (`exists` + `lines`), not content.
 
@@ -210,6 +232,9 @@ macOS/Linux only.
 | --- | --- | --- | --- | --- | --- |
 | `npm.config` | .npmrc | `~/.npmrc` | File | high | `RedactNpmTokens` |
 
+`.npmrc` is the one `high` entry with a redactor: its `_authToken` value is masked
+in plaintext output, so it is the exception that can be backed up scrubbed.
+
 ### bun
 
 | ID | Name | Path | Kind | Sensitivity |
@@ -218,6 +243,10 @@ macOS/Linux only.
 
 ### cloud
 
+Cloud and PaaS CLI configs. The `config`-style files are `medium`; anything that
+stores auth tokens or keys is `high` (age-encrypted on export, never in a
+plaintext backup).
+
 | ID | Name | Path | Kind | Sensitivity |
 | --- | --- | --- | --- | --- |
 | `cloud.aws.config` | AWS CLI config | `~/.aws/config` | File | medium |
@@ -225,15 +254,91 @@ macOS/Linux only.
 | `cloud.gcloud.configurations` | gcloud configurations | `~/.config/gcloud/configurations` | Dir | medium |
 | `cloud.kube.config` | kubeconfig | `~/.kube/config` | File | high |
 | `cloud.docker.config` | Docker config | `~/.docker/config.json` | File | high |
+| `cloud.vercel` | Vercel CLI | `~/Library/Application Support/com.vercel.cli/auth.json` | File | high |
+| `cloud.stripe` | Stripe CLI | `~/.config/stripe/config.toml` | File | high |
 
-gcloud configurations is macOS/Linux only.
+…and Azure, OCI, DigitalOcean, Fly.io, Linode, Hetzner, Netlify, Supabase,
+Railway, Terraform Cloud, Pulumi, and Cloudflared — all `high`.
 
-### secrets
+gcloud configurations and most token-bearing entries are macOS/Linux only.
+
+### devops
+
+| ID | Name | Path | Kind | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `devops.helm` | Helm repositories | `~/.config/helm/repositories.yaml` | File | medium |
+| `devops.k9s` | k9s config | `~/.config/k9s/config.yaml` | File | low |
+| `devops.colima` | Colima config | `~/.colima/default/colima.yaml` | File | low |
+| `devops.podman` | Podman config | `~/.config/containers` | Dir | medium |
+
+macOS/Linux only.
+
+### build
+
+Build tools that may hold repository credentials, so both are `high`.
+
+| ID | Name | Path | Kind | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `build.maven` | Maven settings | `~/.m2/settings.xml` | File | high |
+| `build.gradle` | Gradle properties | `~/.gradle/gradle.properties` | File | high |
+
+### db
+
+| ID | Name | Path | Kind | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `db.pgpass` | .pgpass | `~/.pgpass` | File | high |
+| `db.mycnf` | .my.cnf | `~/.my.cnf` | File | high |
+| `db.psqlrc` | .psqlrc | `~/.psqlrc` | File | low |
+| `db.sqliterc` | .sqliterc | `~/.sqliterc` | File | low |
+
+`.pgpass` and `.my.cnf` carry DB passwords, so both are `high`.
+
+### net
 
 macOS/Linux only.
 
 | ID | Name | Path | Kind | Sensitivity |
 | --- | --- | --- | --- | --- |
+| `net.curlrc` | .curlrc | `~/.curlrc` | File | medium |
+| `net.wgetrc` | .wgetrc | `~/.wgetrc` | File | medium |
+
+### dev
+
+| ID | Name | Path | Kind | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `dev.direnv` | direnv | `~/.config/direnv` | Dir | low |
+
+macOS/Linux only.
+
+### apps
+
+| ID | Name | Path | Kind | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `apps.karabiner` | Karabiner | `~/.config/karabiner/karabiner.json` | File | low |
+
+macOS only.
+
+### vm
+
+Version-manager declarative config (live installed versions come from collectors).
+macOS/Linux only.
+
+| ID | Name | Path | Kind | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `vm.tool-versions` | .tool-versions | `~/.tool-versions` | File | low |
+| `vm.nvmrc` | .nvmrc | `~/.nvmrc` | File | low |
+| `vm.mise` | mise config | `~/.config/mise/config.toml` | File | low |
+| `vm.asdfrc` | .asdfrc | `~/.asdfrc` | File | low |
+
+### secrets
+
+Bare credential stores. All `high`: age-encrypted on chezmoi export and never
+written to a plaintext backup. macOS/Linux only.
+
+| ID | Name | Path | Kind | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `secrets.netrc` | .netrc | `~/.netrc` | File | high |
+| `secrets.vault` | Vault token | `~/.vault-token` | File | high |
 | `secrets.gnupg` | GnuPG home | `~/.gnupg` | Dir | high |
 
 The GnuPG entry is declarative: it is a no-op until `~/.gnupg` holds real keys.

@@ -56,10 +56,11 @@ The canonical order, from `defaultCollectors()` in
 5. `AppsCollector`
 6. `HomebrewCollector`
 7. `PackagesCollector`
-8. `RuntimesCollector`
-9. `EditorsExtCollector`
-10. `FontsCollector`
-11. `DotfilesSweepCollector`
+8. `VersionManagersCollector`
+9. `RuntimesCollector`
+10. `EditorsExtCollector`
+11. `FontsCollector`
+12. `DotfilesSweepCollector`
 
 Meta runs first because it labels the snapshot with host and OS. The registry
 collector is part of the same pipeline; it is declarative (a list of entries)
@@ -78,7 +79,8 @@ The command-backed collectors and the sections they produce:
 | Ollama | `ai.ollama.models` | `ollama` | name / size / modified per model |
 | Apps | `apps.raycast`, `apps.alttab`, `apps.macos` | `ls`, `defaults` | macOS app inventory |
 | Homebrew | `apps.brew.formulae`, `apps.brew.casks`, `apps.brew.bundle` | `brew` | installed formulae, casks, and a restorable Brewfile |
-| Packages | `packages.npm.global`, `packages.bun.global`, `packages.pnpm.global`, `packages.node.fnm`, `packages.deno.bin` | `npm`, `bun`, `pnpm`, `fnm` (reads `~/.deno/bin`) | global package managers + node versions |
+| Packages | `packages.npm.global`, `packages.bun.global`, `packages.pnpm.global`, `packages.node.fnm`, `packages.deno.bin`, `packages.pipx`, `packages.go.bin` | `npm`, `bun`, `pnpm`, `fnm`, `pipx` (reads `~/.deno/bin`, `~/go/bin`) | global package managers, node versions, pipx + `go install` binaries |
+| VersionManagers | `vm.asdf.versions`, `vm.pyenv.versions`, `vm.rbenv.versions` | `asdf`, `pyenv`, `rbenv` | versions installed via each version manager |
 | Runtimes | `runtimes.go`, `runtimes.rust`, `runtimes.rust.toolchains`, `runtimes.rust.crates`, `runtimes.swift`, `runtimes.zig`, `runtimes.xcode`, `runtimes.android`, `runtimes.android.buildTools`, `runtimes.android.platforms` | `go`, `rustc`, `cargo`, `rustup`, `swift`, `zig`, `xcodebuild`, `xcode-select`, `adb` | language / SDK toolchains |
 | EditorsExt | `editor.vscode.extensions`, `editor.cursor.extensions` | `code`, `cursor` | installed editor extensions |
 | Fonts | `fonts.user`, `fonts.system` | none (reads font directories) | user + system installed font files |
@@ -156,9 +158,28 @@ when non-empty:
 | `packages.pnpm.global` | `pnpm ls -g --depth=0 --json` |
 | `packages.node.fnm` | `fnm ls` (node versions; the default is flagged) |
 | `packages.deno.bin` | the names in `~/.deno/bin` (directory read, no command) |
+| `packages.pipx` | `pipx list --short` (Python apps; name + version) |
+| `packages.go.bin` | the names in `~/go/bin` (directory read, no command) — `go install`ed binaries |
 
 Package items carry name and version columns; the default fnm node version is
-marked `(default)`.
+marked `(default)`. `packages.go.bin` captures user tools installed via
+`go install` that otherwise have no config file to reproduce them.
+
+### VersionManagers
+
+Inventories the versions actually installed under each runtime version manager —
+complementing the declarative configs (`.tool-versions`, mise config) that live in
+the [registry](../registry), so you can check installed-vs-declared parity. Each
+section is emitted only when the tool is present and reports at least one version:
+
+| Section | Source |
+|---------|--------|
+| `vm.asdf.versions` | `asdf list` (parsed as tool → versions; the current `*` marker is stripped) |
+| `vm.pyenv.versions` | `pyenv versions --bare` (one version per line; `*`, `(set by …)`, and `system` dropped) |
+| `vm.rbenv.versions` | `rbenv versions --bare` (same parsing as pyenv) |
+
+`vm.asdf.versions` items carry `[tool, version]` columns; the pyenv / rbenv
+sections are plain version lists.
 
 ### Runtimes
 
