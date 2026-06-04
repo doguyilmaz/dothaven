@@ -6,7 +6,7 @@ import type { DotfDocument } from "@dotformat/core";
 import type { CollectorContext, CollectorResult } from "../collectors/types";
 import { resolveOutputDir } from "../utils/resolve-output";
 import { getHome } from "../utils/home";
-import { scanContent, summarize, formatReport, applyRedactions } from "../scan";
+import { summarize, formatReport, redactSection } from "../scan";
 import type { ScanResult } from "../scan";
 import { registryEntries, registryCollector } from "../registry";
 import { collectMeta } from "../collectors/meta";
@@ -86,15 +86,7 @@ export async function collect(args: string[]) {
   const scanResults: ScanResult[] = [];
   if (redact) {
     for (const [name, section] of Object.entries(sections)) {
-      if (section.content) {
-        const result = scanContent(name, section.content);
-        scanResults.push(result);
-        if (result.action === "skip") {
-          delete sections[name];
-        } else if (result.action === "redact") {
-          section.content = applyRedactions(section.content, result);
-        }
-      }
+      if (!redactSection(name, section, scanResults)) delete sections[name];
     }
   }
 
