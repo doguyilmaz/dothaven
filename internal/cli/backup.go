@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,7 +59,16 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 			summary := formatCategories(res.PerCategory)
 			if archive {
 				archivePath := backupDir + ".tar.gz"
-				if _, err := env.Run(context.Background(), "tar", "czf", archivePath, "-C", dir, filepath.Base(backupDir)); err != nil {
+				tmp := archivePath + ".tmp"
+				// runShell surfaces tar's exit code — env.Run tolerates non-zero
+				// exit, which would let a partial archive pass and then delete the
+				// only good copy. Write to a temp file, rename on success, and only
+				// remove the source once a complete archive exists.
+				if out, err := runShell(cmd.Context(), "tar", "czf", tmp, "-C", dir, filepath.Base(backupDir)); err != nil {
+					_ = os.Remove(tmp)
+					return fmt.Errorf("tar failed (backup kept at %s): %v: %s", backupDir, err, out)
+				}
+				if err := os.Rename(tmp, archivePath); err != nil {
 					return err
 				}
 				_ = os.RemoveAll(backupDir)
