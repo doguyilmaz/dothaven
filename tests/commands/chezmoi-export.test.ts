@@ -102,30 +102,39 @@ describe("findSshPrivateKeys", () => {
 });
 
 describe("buildPackageInstallScript", () => {
-  test("emits brew bundle, fnm installs (skipping 'system'), and guarded global installs", () => {
+  test("brew (|| true), fnm/global installs, cargo, deno comment, trailing exit 0", () => {
     const script = buildPackageInstallScript({
       brewfile: 'tap "x/y"\nbrew "git"',
       nodeVersions: ["v20.20.2", "v24.16.0", "system"],
       bunGlobals: ["eas-cli@16.19.2"],
       npmGlobals: ["typescript@5.4.0"],
-    });
+      cargoCrates: ["ripgrep@14.1.0", "fd-find@10.2.0"],
+      denoBins: ["deployctl"],
+    })!;
+    expect(script).not.toBeNull();
     expect(script.startsWith("#!/bin/bash")).toBe(true);
     expect(script).toContain("if command -v brew >/dev/null 2>&1; then");
-    expect(script).toContain("brew bundle --file=/dev/stdin");
+    expect(script).toContain("brew bundle --file=/dev/stdin <<'BREWFILE' || true"); // failing cask won't abort apply
     expect(script).toContain('brew "git"');
     expect(script).toContain("fnm install v20.20.2 || true");
     expect(script).toContain("fnm install v24.16.0 || true");
     expect(script).not.toContain("fnm install system");
     expect(script).toContain("bun add -g eas-cli@16.19.2 || true");
     expect(script).toContain("npm install -g typescript@5.4.0 || true");
+    expect(script).toContain("cargo install ripgrep@14.1.0 || true"); // version-pinned, replayable
+    expect(script).toContain("cargo install fd-find@10.2.0 || true");
+    expect(script).toContain("# deno global bins"); // recorded, not executed
+    expect(script).toContain("#   deployctl");
+    expect(script).not.toContain("deno install deployctl"); // never a broken command
+    expect(script.trimEnd().endsWith("exit 0")).toBe(true); // last line can't fail the apply
   });
 
-  test("empty manifest → header only, no tool blocks", () => {
-    const script = buildPackageInstallScript({});
-    expect(script).toContain("#!/bin/bash");
-    expect(script).not.toContain("brew bundle");
-    expect(script).not.toContain("fnm install");
-    expect(script).not.toContain("add -g");
+  test("empty manifest → null (no header-only no-op script written)", () => {
+    expect(buildPackageInstallScript({})).toBeNull();
+  });
+
+  test("deno bins alone → null (nothing executable to reinstall)", () => {
+    expect(buildPackageInstallScript({ denoBins: ["deployctl"] })).toBeNull();
   });
 });
 
