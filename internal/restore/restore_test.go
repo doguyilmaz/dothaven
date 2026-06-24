@@ -39,9 +39,10 @@ func TestMatchTarget(t *testing.T) {
 		{"ai/claude/skills/nested/a.md", "/home/u/.claude/skills/nested/a.md", "ai"},
 		{"shell/.zshrc.local", "/home/u/.zshrc.local", "shell"},
 		{"unknown/file", "", ""},
+		{"ai/claude/skills/../../../../etc/evil", "", ""}, // path escape is refused
 	}
 	for _, c := range cases {
-		gt, gc := matchTarget(c.rel, m)
+		gt, gc, _ := matchTarget(c.rel, m)
 		if gt != c.wantTarget || gc != c.wantCategory {
 			t.Errorf("matchTarget(%q) = (%q,%q), want (%q,%q)", c.rel, gt, gc, c.wantTarget, c.wantCategory)
 		}
@@ -176,6 +177,60 @@ func TestExecuteInteractiveResolver(t *testing.T) {
 	// After SkipAll, the resolver must not be called again for later conflicts.
 	if calls != 2 {
 		t.Errorf("resolver calls = %d, want 2 (skip-all stops further prompts)", calls)
+	}
+}
+
+func TestExecuteSkipsSymlinkTargets(t *testing.T) {
+	home := t.TempDir()
+	backup := t.TempDir()
+	write(t, filepath.Join(backup, "shell/.zshrc"), "from backup\n")
+
+	// The live target is a symlink to a file outside the home tree.
+	outside := filepath.Join(t.TempDir(), "real.txt")
+	write(t, outside, "original\n")
+	link := filepath.Join(home, ".zshrc")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+
+	targets := []registry.BackupTarget{{Src: link, Dest: "shell/.zshrc", Category: "shell"}}
+	plan, _ := BuildPlan(backup, home, targets)
+
+	res, err := Execute(plan, ExecuteOptions{Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SkippedSymlink != 1 || res.Restored != 0 {
+		t.Errorf("symlinked target should be skipped, got %+v", res)
+	}
+	if c := readF(t, outside); c != "original\n" {
+		t.Errorf("write followed the symlink: %q", c)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Error("the symlink itself was replaced or removed")
+	}
+}
+
+func TestExecutePreservesSecretPerms(t *testing.T) {
+	home := t.TempDir()
+	backup := t.TempDir()
+	write(t, filepath.Join(backup, "npm/.npmrc"), "registry=https://example\n")
+	write(t, filepath.Join(backup, "shell/.zshrc"), "alias x=y\n")
+
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".npmrc"), Dest: "npm/.npmrc", Category: "npm", Sensitivity: registry.High},
+		{Src: filepath.Join(home, ".zshrc"), Dest: "shell/.zshrc", Category: "shell", Sensitivity: registry.Low},
+	}
+	plan, _ := BuildPlan(backup, home, targets)
+	if _, err := Execute(plan, ExecuteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if fi, err := os.Stat(filepath.Join(home, ".npmrc")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("secret file restored with %v, want 0600", fi.Mode().Perm())
+	}
+	if fi, err := os.Stat(filepath.Join(home, ".zshrc")); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("normal file restored with %v, want 0644", fi.Mode().Perm())
 	}
 }
 
