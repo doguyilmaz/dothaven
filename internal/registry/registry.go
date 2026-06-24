@@ -230,6 +230,27 @@ var Entries = []Entry{
 	{ID: "git.jj", Name: "Jujutsu config", Category: "git", Kind: File, BackupDest: "git/jj/config.toml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/jj/config.toml", "linux": "~/.config/jj/config.toml"}},
 	{ID: "git.gitui", Name: "gitui", Category: "git", Kind: Dir, BackupDest: "git/gitui", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/gitui", "linux": "~/.config/gitui"}},
 	{ID: "git.tig", Name: ".tigrc", Category: "git", Kind: File, BackupDest: "git/.tigrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.tigrc", "linux": "~/.tigrc"}},
+
+	// Database clients.
+	{ID: "db.pg_service", Name: ".pg_service.conf", Category: "db", Kind: File, BackupDest: "db/.pg_service.conf", Sensitivity: High, Paths: map[string]string{"darwin": "~/.pg_service.conf", "linux": "~/.pg_service.conf"}},
+	{ID: "db.pgcli", Name: "pgcli config", Category: "db", Kind: File, BackupDest: "db/pgcli/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/pgcli/config", "linux": "~/.config/pgcli/config"}},
+	{ID: "db.mycli", Name: ".myclirc", Category: "db", Kind: File, BackupDest: "db/.myclirc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.myclirc", "linux": "~/.myclirc"}},
+	{ID: "db.litecli", Name: "litecli config", Category: "db", Kind: File, BackupDest: "db/litecli/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/litecli/config", "linux": "~/.config/litecli/config"}},
+	{ID: "db.mongosh", Name: ".mongoshrc.js", Category: "db", Kind: File, BackupDest: "db/.mongoshrc.js", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.mongoshrc.js", "linux": "~/.mongoshrc.js"}},
+
+	// Editors (more) — IdeaVim (the portable JetBrains config; full IDE settings
+	// are version/product-specific and out of scope here).
+	{ID: "editor.ideavim", Name: ".ideavimrc", Category: "editor", Kind: File, BackupDest: "editor/.ideavimrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.ideavimrc", "linux": "~/.ideavimrc", "windows": "%USERPROFILE%/.ideavimrc"}},
+
+	// Shell frameworks & plugin manifests.
+	{ID: "shell.ohmyzsh.custom", Name: "oh-my-zsh custom", Category: "shell", Kind: Dir, BackupDest: "shell/oh-my-zsh-custom", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.oh-my-zsh/custom", "linux": "~/.oh-my-zsh/custom"}},
+	{ID: "shell.sheldon", Name: "sheldon plugins", Category: "shell", Kind: File, BackupDest: "shell/sheldon/plugins.toml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/sheldon/plugins.toml", "linux": "~/.config/sheldon/plugins.toml"}},
+	{ID: "shell.antidote", Name: "antidote plugins", Category: "shell", Kind: File, BackupDest: "shell/.zsh_plugins.txt", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.zsh_plugins.txt", "linux": "~/.zsh_plugins.txt"}},
+	{ID: "shell.powershell", Name: "PowerShell profile", Category: "shell", Kind: File, BackupDest: "shell/powershell/profile.ps1", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/powershell/Microsoft.PowerShell_profile.ps1", "linux": "~/.config/powershell/Microsoft.PowerShell_profile.ps1"}},
+
+	// Terminals & multiplexers (more).
+	{ID: "terminal.zellij", Name: "Zellij", Category: "terminal", Kind: Dir, BackupDest: "terminal/zellij", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/zellij", "linux": "~/.config/zellij"}},
+	{ID: "terminal.screen", Name: ".screenrc", Category: "terminal", Kind: File, BackupDest: "terminal/.screenrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.screenrc", "linux": "~/.screenrc"}},
 }
 
 // ResolvePath expands an entry's path template for the current OS ("" if the
