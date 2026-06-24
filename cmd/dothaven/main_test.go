@@ -17,7 +17,29 @@ func TestMain(m *testing.M) {
 	testscript.Main(m, map[string]func(){
 		"dothaven": main,
 		"chezmoi":  fakeChezmoi,
+		"defaults": fakeDefaults,
 	})
+}
+
+// fakeDefaults stands in for the macOS `defaults` tool so the defaults
+// export/import round-trip can be tested on any CI OS. Only com.googlecode.iterm2
+// reports keys; every other domain exports an empty dict (skipped on export).
+func fakeDefaults() {
+	args := os.Args[1:]
+	if len(args) < 2 {
+		os.Exit(0)
+	}
+	switch args[0] {
+	case "export":
+		if args[1] == "com.googlecode.iterm2" {
+			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Theme</key><string>Dark</string></dict></plist>`)
+		} else {
+			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>`)
+		}
+	case "import":
+		fmt.Println("imported")
+	}
+	os.Exit(0)
 }
 
 // fakeChezmoi stands in for the real chezmoi binary in --apply e2e scripts. It
