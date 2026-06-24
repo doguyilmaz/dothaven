@@ -152,11 +152,14 @@ func TestBuildPackageInstallScript(t *testing.T) {
 	}
 
 	script, ok := BuildPackageInstallScript(Manifest{
-		Brewfile:     "brew \"ripgrep\"",
-		NodeVersions: []string{"v20.0.0", "system"},
-		BunGlobals:   []string{"argent"},
-		CargoCrates:  []string{"ripgrep"},
-		DenoBins:     []string{"deployctl"},
+		Brewfile:         "brew \"ripgrep\"",
+		NodeVersions:     []string{"v20.0.0", "system"},
+		BunGlobals:       []string{"argent"},
+		CargoCrates:      []string{"ripgrep"},
+		DenoBins:         []string{"deployctl"},
+		PipxPackages:     []string{"poetry"},
+		CursorExtensions: []string{"anthropic.claude-code"},
+		RustToolchains:   []string{"stable"},
 	})
 	if !ok {
 		t.Fatal("expected a script")
@@ -167,6 +170,9 @@ func TestBuildPackageInstallScript(t *testing.T) {
 		"command -v fnm", "fnm install v20.0.0 || true",
 		"command -v bun", "bun add -g argent || true",
 		"command -v cargo", "cargo install ripgrep || true",
+		"command -v pipx", "pipx install poetry || true",
+		"command -v rustup", "rustup toolchain install stable || true",
+		"command -v cursor", "cursor --install-extension anthropic.claude-code || true",
 		"# deno global bins", "#   deployctl",
 		"exit 0",
 	} {
@@ -176,6 +182,10 @@ func TestBuildPackageInstallScript(t *testing.T) {
 	}
 	if strings.Contains(script, "fnm install system") {
 		t.Error("`system` node version must be filtered out")
+	}
+	// pipx/rustup/cursor inventory alone (no brew/node) still yields a script.
+	if _, ok := BuildPackageInstallScript(Manifest{PipxPackages: []string{"poetry"}}); !ok {
+		t.Error("pipx-only manifest should produce a script")
 	}
 }
 

@@ -81,6 +81,7 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	brew := collect.HomebrewCollector(cctx)
 	pkgs := collect.PackagesCollector(cctx)
 	runtimes := collect.RuntimesCollector(cctx)
+	exts := collect.EditorsExtCollector(cctx)
 
 	specs := func(snap snapshot.Snapshot, id string) []string {
 		var out []string
@@ -107,13 +108,16 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	}
 
 	return chezmoi.Manifest{
-		Brewfile:     brewfile,
-		NodeVersions: nodeVersions,
-		BunGlobals:   specs(pkgs, "packages.bun.global"),
-		NpmGlobals:   specs(pkgs, "packages.npm.global"),
-		PnpmGlobals:  specs(pkgs, "packages.pnpm.global"),
-		CargoCrates:  specs(runtimes, "runtimes.rust.crates"),
-		DenoBins:     specs(pkgs, "packages.deno.bin"),
+		Brewfile:         brewfile,
+		NodeVersions:     nodeVersions,
+		BunGlobals:       specs(pkgs, "packages.bun.global"),
+		NpmGlobals:       specs(pkgs, "packages.npm.global"),
+		PnpmGlobals:      specs(pkgs, "packages.pnpm.global"),
+		CargoCrates:      specs(runtimes, "runtimes.rust.crates"),
+		DenoBins:         specs(pkgs, "packages.deno.bin"),
+		PipxPackages:     specs(pkgs, "packages.pipx"),
+		CursorExtensions: specs(exts, "editor.cursor.extensions"),
+		RustToolchains:   specs(runtimes, "runtimes.rust.toolchains"),
 	}
 }
 
@@ -316,6 +320,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				if !wantPackages {
 					manifest.NodeVersions, manifest.BunGlobals, manifest.NpmGlobals = nil, nil, nil
 					manifest.PnpmGlobals, manifest.CargoCrates, manifest.DenoBins = nil, nil, nil
+					manifest.PipxPackages, manifest.CursorExtensions, manifest.RustToolchains = nil, nil, nil
 				}
 				if script, ok := chezmoi.BuildPackageInstallScript(manifest); ok && sourcePath != "" {
 					if err := os.WriteFile(sourcePath+"/run_onchange_install-packages.sh", []byte(script), 0o755); err != nil {

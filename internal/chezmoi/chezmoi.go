@@ -224,13 +224,16 @@ func PickInstallSpec(it snapshot.Item, pin bool) string {
 
 // Manifest is the set of reinstallable packages captured for the install script.
 type Manifest struct {
-	Brewfile     string
-	NodeVersions []string
-	BunGlobals   []string
-	NpmGlobals   []string
-	PnpmGlobals  []string
-	CargoCrates  []string
-	DenoBins     []string
+	Brewfile         string
+	NodeVersions     []string
+	BunGlobals       []string
+	NpmGlobals       []string
+	PnpmGlobals      []string
+	CargoCrates      []string
+	DenoBins         []string
+	PipxPackages     []string
+	CursorExtensions []string // VS Code extensions ride in the Brewfile; Cursor's don't
+	RustToolchains   []string
 }
 
 // CrossManagerDuplicates are names installed by more than one JS global manager
@@ -316,6 +319,19 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 			body[i] = fmt.Sprintf("  cargo install %s || true", c)
 		}
 		blocks = append(blocks, guarded("cargo", body...))
+	}
+
+	// Inventory that collect captures but the script used to drop. Each is
+	// command-guarded and idempotent, so re-running apply is safe. VS Code
+	// extensions are intentionally absent — they ride in the Brewfile already.
+	if b, ok := installBlock("pipx", "pipx install", m.PipxPackages); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("rustup", "rustup toolchain install", m.RustToolchains); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("cursor", "cursor --install-extension", m.CursorExtensions); ok {
+		blocks = append(blocks, b)
 	}
 
 	if len(blocks) == 0 {
