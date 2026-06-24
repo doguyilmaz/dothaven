@@ -56,6 +56,43 @@ func findMissing(want, have snapshot.Snapshot) map[string][]string {
 	return missing
 }
 
+// remediationCommand maps a snapshot section id to the command that reinstalls
+// its items, so doctor reports how to fix drift, not just what's missing.
+// Empty when there's no single obvious reinstall command (the user decides).
+func remediationCommand(id string) string {
+	switch id {
+	case "apps.brew.formulae", "apps.brew.casks":
+		return "brew install"
+	case "packages.npm.global":
+		return "npm install -g"
+	case "packages.pnpm.global":
+		return "pnpm add -g"
+	case "packages.bun.global":
+		return "bun add -g"
+	case "packages.pipx":
+		return "pipx install"
+	case "runtimes.rust.crates":
+		return "cargo install"
+	case "runtimes.rust.toolchains":
+		return "rustup toolchain install"
+	case "editor.vscode.extensions":
+		return "code --install-extension"
+	case "editor.cursor.extensions":
+		return "cursor --install-extension"
+	default:
+		return ""
+	}
+}
+
+// firstToken is the package name from an item's reported form ("name version" →
+// "name"), so a remediation command lists installable names, not version noise.
+func firstToken(s string) string {
+	if i := strings.IndexAny(s, " \t"); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
 func newDoctorCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "doctor <snapshot.json>",
@@ -91,6 +128,13 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("  %s (%d)\n", id, len(items))
 				for _, it := range items {
 					fmt.Printf("    - %s\n", it)
+				}
+				if cmd := remediationCommand(id); cmd != "" {
+					names := make([]string, len(items))
+					for i, it := range items {
+						names[i] = firstToken(it)
+					}
+					fmt.Printf("    fix: %s %s\n", cmd, strings.Join(names, " "))
 				}
 			}
 			fmt.Printf("\n%d item(s) missing across %d section(s).\n", total, len(ids))

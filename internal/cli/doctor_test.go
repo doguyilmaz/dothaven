@@ -7,6 +7,32 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
 
+func TestRemediationCommand(t *testing.T) {
+	cases := map[string]string{
+		"apps.brew.formulae":       "brew install",
+		"packages.npm.global":      "npm install -g",
+		"packages.pipx":            "pipx install",
+		"editor.cursor.extensions": "cursor --install-extension",
+		"runtimes.rust.toolchains": "rustup toolchain install",
+		"shell.zshrc":              "", // no single reinstall command
+		"runtimes.go":              "", // go bins aren't reliably reinstallable
+	}
+	for id, want := range cases {
+		if got := remediationCommand(id); got != want {
+			t.Errorf("remediationCommand(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
+func TestFirstToken(t *testing.T) {
+	if got := firstToken("typescript 5.4.0"); got != "typescript" {
+		t.Errorf("firstToken = %q, want typescript", got)
+	}
+	if got := firstToken("anthropic.claude-code"); got != "anthropic.claude-code" {
+		t.Errorf("firstToken should pass through a token with no space: %q", got)
+	}
+}
+
 func TestIsInstallable(t *testing.T) {
 	yes := []string{"packages.npm.global", "runtimes.go", "apps.brew.formulae", "apps.macos", "fonts.user", "editor.vscode.extensions"}
 	no := []string{"meta", "shell.zshrc", "apps.raycast", "ssh.hosts", "home.dotfiles.review"}
