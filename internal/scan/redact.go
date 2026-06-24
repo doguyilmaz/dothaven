@@ -85,15 +85,19 @@ func sortedMapKeys(m map[string]string) []string {
 // --- Targeted, structure-preserving redactors (used by registry entries) ---
 
 var (
-	ipRe        = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
-	authTokenRe = regexp.MustCompile(`(_authToken=).+`)
-	sshHostRe   = regexp.MustCompile(`(HostName\s+).+`)
-	sshIDRe     = regexp.MustCompile(`(IdentityFile\s+).+`)
+	ipRe = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+	// npm auth lines: _authToken=, plus the legacy _auth= / _password= (base64)
+	// forms, with or without a //registry:-scoped prefix. Per line, any case.
+	npmAuthRe = regexp.MustCompile(`(?im)^(.*?(?:_authToken|_auth|_password)\s*=\s*).+$`)
+	// ssh_config keywords are case-insensitive, so the lowercase forms are valid
+	// syntax and must redact too. ${1} preserves the user's original casing.
+	sshHostRe = regexp.MustCompile(`(?i)(HostName\s+).+`)
+	sshIDRe   = regexp.MustCompile(`(?i)(IdentityFile\s+).+`)
 )
 
 func RedactIPs(text string) string { return ipRe.ReplaceAllString(text, Marker) }
 
-func RedactNpmTokens(text string) string { return authTokenRe.ReplaceAllString(text, "${1}"+Marker) }
+func RedactNpmTokens(text string) string { return npmAuthRe.ReplaceAllString(text, "${1}"+Marker) }
 
 func RedactSSHConfig(text string) string {
 	text = sshHostRe.ReplaceAllString(text, "${1}"+Marker)

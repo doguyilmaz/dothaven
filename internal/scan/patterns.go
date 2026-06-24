@@ -37,7 +37,7 @@ func build() {
 		mk("secret-keyword", "secret value", High, Redact, `(?i)\b(password|passwd|secret|client[_-]?secret|secret[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key)\b\s*[=:]\s*\S+`),
 
 		// HIGH — auth tokens & prefixed keys
-		mk("auth-token-npm", "npm auth token", High, Redact, `_authToken=.+`),
+		mk("auth-token-npm", "npm auth token", High, Redact, `(?i)\b_(authToken|auth|password)\s*=\s*\S+`),
 		mk("bearer-token", "bearer token", High, Redact, `Bearer\s+[A-Za-z0-9\-._~+/]+=*`),
 		mk("github-token", "GitHub token", High, Redact, `\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b`),
 		mk("npm-token", "npm token", High, Redact, `\bnpm_[A-Za-z0-9]{36,}\b`),

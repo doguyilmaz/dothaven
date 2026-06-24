@@ -125,6 +125,42 @@ func TestTargetedRedactors(t *testing.T) {
 	}
 }
 
+func TestRedactSSHConfigCaseInsensitive(t *testing.T) {
+	// ssh_config keywords are case-insensitive; the lowercase forms are valid
+	// syntax and must redact too (regression: they used to leak verbatim).
+	in := "Host work\n  hostname secret.example.com\n  identityfile ~/.ssh/id_corp"
+	got := RedactSSHConfig(in)
+	if strings.Contains(got, "secret.example.com") || strings.Contains(got, "id_corp") {
+		t.Errorf("lowercase ssh keywords leaked: %q", got)
+	}
+}
+
+func TestRedactNpmLegacyAuth(t *testing.T) {
+	// Legacy _auth= / _password= (base64) lines, not just _authToken=, must scrub.
+	cases := map[string]string{
+		"_auth=aGVsbG86d29ybGQ=":                                "aGVsbG86d29ybGQ=",
+		"_password=c3VwZXJzZWNyZXQ=":                            "c3VwZXJzZWNyZXQ=",
+		"//registry.npmjs.org/:_authToken=npm_tokenvalue123abc": "npm_tokenvalue123abc",
+	}
+	for line, secret := range cases {
+		got := RedactNpmTokens(line)
+		if strings.Contains(got, secret) {
+			t.Errorf("npm auth value leaked: %q", got)
+		}
+		if !strings.Contains(got, Marker) {
+			t.Errorf("expected marker in %q", got)
+		}
+	}
+}
+
+func TestScanDetectsLegacyNpmAuth(t *testing.T) {
+	for _, line := range []string{"_auth=YWxpY2U6c2VjcmV0", "_password=c2VjcmV0dmFsdWU="} {
+		if r := ScanContent("npmrc", line); r.Action != Redact {
+			t.Errorf("%q: action=%s, want redact", line, r.Action)
+		}
+	}
+}
+
 func TestFormatSecurityReport(t *testing.T) {
 	clean := FormatSecurityReport([]Result{ScanContent("a", "theme = dark")})
 	if !strings.Contains(clean, "No sensitive data found") || !strings.Contains(clean, "1 file(s) scanned") {
