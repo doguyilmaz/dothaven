@@ -1,0 +1,16 @@
+# services export captures $(brew --prefix)/etc config; import writes it into a
+# new machine's prefix. Both prefixes are driven through a fake `brew`.
+env BREW_PREFIX=$WORK/brew
+exec dothaven services export -o $WORK/out
+stdout 'nginx/nginx.conf'
+stdout 'Exported 1 service'
+exists $WORK/out/services/nginx/nginx.conf
+exists $WORK/out/services/.brew-prefix
+
+env BREW_PREFIX=$WORK/brew2
+exec dothaven services import $WORK/out
+stdout 'nginx/nginx.conf'
+exists $WORK/brew2/etc/nginx/nginx.conf
+
+-- brew/etc/nginx/nginx.conf --
+worker_processes auto;

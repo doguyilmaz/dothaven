@@ -18,7 +18,21 @@ func TestMain(m *testing.M) {
 		"dothaven": main,
 		"chezmoi":  fakeChezmoi,
 		"defaults": fakeDefaults,
+		"brew":     fakeBrew,
 	})
+}
+
+// fakeBrew stands in for Homebrew so the services export/import round-trip is
+// testable on any OS. `brew --prefix` echoes $BREW_PREFIX (default /opt/homebrew).
+func fakeBrew() {
+	if args := os.Args[1:]; len(args) >= 1 && args[0] == "--prefix" {
+		if p := os.Getenv("BREW_PREFIX"); p != "" {
+			fmt.Println(p)
+		} else {
+			fmt.Println("/opt/homebrew")
+		}
+	}
+	os.Exit(0)
 }
 
 // fakeDefaults stands in for the macOS `defaults` tool so the defaults
