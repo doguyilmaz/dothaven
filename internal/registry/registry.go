@@ -214,7 +214,11 @@ func Collect(env sys.Env, home string, redact bool, entries []Entry) snapshot.Sn
 			if err != nil {
 				continue
 			}
-			lines := strings.Count(string(b), "\n") + 1
+			content := string(b)
+			lines := strings.Count(content, "\n")
+			if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+				lines++ // a final line with no trailing newline still counts
+			}
 			out[e.ID] = snapshot.Section{Pairs: map[string]string{"exists": "true", "lines": strconv.Itoa(lines)}}
 
 		case File:
@@ -264,6 +268,7 @@ func extractFields(data map[string]any, fields []string) map[string]string {
 		for k := range data {
 			keys = append(keys, k)
 		}
+		sort.Strings(keys) // empty Fields = all keys; sort so output is deterministic
 	}
 	pairs := map[string]string{}
 	for _, f := range keys {
@@ -271,15 +276,28 @@ func extractFields(data map[string]any, fields []string) map[string]string {
 		if !ok {
 			continue
 		}
+		// Flatten one level, namespacing children as parent.child. A bare child
+		// key would let two sibling objects (or a scalar) collide, and the winner
+		// was decided by random map-iteration order — breaking the deterministic
+		// snapshot guarantee. Namespacing makes it both collision-free and stable.
 		if obj, ok := v.(map[string]any); ok {
-			for k, vv := range obj {
-				pairs[k] = jsString(vv)
+			for _, k := range sortedAnyKeys(obj) {
+				pairs[f+"."+k] = jsString(obj[k])
 			}
 		} else {
 			pairs[f] = jsString(v)
 		}
 	}
 	return pairs
+}
+
+func sortedAnyKeys(m map[string]any) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 // jsString mimics JS String(v) for scalars; arrays/objects fall back to JSON.

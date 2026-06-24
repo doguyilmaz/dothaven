@@ -85,7 +85,7 @@ func sortedMapKeys(m map[string]string) []string {
 // --- Targeted, structure-preserving redactors (used by registry entries) ---
 
 var (
-	ipRe = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+	ipRe = regexp.MustCompile(`\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`)
 	// npm auth lines: _authToken=, plus the legacy _auth= / _password= (base64)
 	// forms, with or without a //registry:-scoped prefix. Per line, any case.
 	npmAuthRe = regexp.MustCompile(`(?im)^(.*?(?:_authToken|_auth|_password)\s*=\s*).+$`)

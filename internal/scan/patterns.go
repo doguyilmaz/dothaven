@@ -38,7 +38,7 @@ func build() {
 
 		// HIGH — auth tokens & prefixed keys
 		mk("auth-token-npm", "npm auth token", High, Redact, `(?i)\b_(authToken|auth|password)\s*=\s*\S+`),
-		mk("bearer-token", "bearer token", High, Redact, `Bearer\s+[A-Za-z0-9\-._~+/]+=*`),
+		mk("bearer-token", "bearer token", High, Redact, `Bearer\s+[A-Za-z0-9\-._~+/]{20,}=*`),
 		mk("github-token", "GitHub token", High, Redact, `\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b`),
 		mk("npm-token", "npm token", High, Redact, `\bnpm_[A-Za-z0-9]{36,}\b`),
 
@@ -80,11 +80,13 @@ func build() {
 		mk("pulumi-token", "Pulumi token", High, Redact, `\bpul-[a-f0-9]{40}\b`),
 		mk("flyio-token", "Fly.io token", High, Redact, `\bfm[12]_[A-Za-z0-9+/=_-]{20,}\b`),
 		mk("azure-sas", "Azure SAS token", High, Redact, `(?i)\bsig=[A-Za-z0-9%]{40,}`),
-		// .pgpass line: host:port:db:user:password (5 colon-separated fields)
-		mk("pgpass-line", "pgpass credentials", High, Redact, `^[^:#]*:[^:]*:[^:]*:[^:]*:.+$`),
+		// .pgpass line: host:port:db:user:password. (?m) so it matches per line
+		// during a whole-file redact too; the digit/* port field keeps PATH
+		// exports, IPv6, and /etc/passwd-style lines from false-matching.
+		mk("pgpass-line", "pgpass credentials", High, Redact, `(?m)^[^:#\s]+:(?:\d+|\*):[^:]*:[^:]*:.+$`),
 
 		// MEDIUM
-		mk("ip-address", "IP address", Medium, Redact, `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`),
+		mk("ip-address", "IP address", Medium, Redact, `\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`),
 		mk("email-address", "email address", Medium, Include, `\b[\w.+-]+@[\w-]+\.[\w.]+\b`),
 	}
 

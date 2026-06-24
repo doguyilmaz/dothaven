@@ -81,8 +81,9 @@ func TestCollect(t *testing.T) {
 	if c := snap["npm.config"].Content; c == nil || strings.Contains(*c, "npm_supersecret123") || !strings.Contains(*c, "[REDACTED]") {
 		t.Errorf("npm.config not redacted: %v", snap["npm.config"].Content)
 	}
-	// JSON-extract (fields=[]) → flattens all keys incl. nested object
-	if g := snap["ai.gemini.settings"].Pairs; g["theme"] != "dark" || g["argent"] != "true" {
+	// JSON-extract (fields=[]) → flattens all keys; nested objects are
+	// namespaced parent.child so siblings can't collide.
+	if g := snap["ai.gemini.settings"].Pairs; g["theme"] != "dark" || g["mcpServers.argent"] != "true" {
 		t.Errorf("gemini pairs: %v", g)
 	}
 	// FileMetadata → exists + line count (no content)
@@ -100,5 +101,37 @@ func TestCollect(t *testing.T) {
 	// Missing entries are simply absent
 	if _, ok := snap["cloud.aws.credentials"]; ok {
 		t.Error("entry not on disk should be absent")
+	}
+}
+
+func TestExtractFieldsDeterministicNamespaced(t *testing.T) {
+	// A scalar and a sibling object that share a child name must not collide,
+	// and the result must be identical across runs (map iteration is random).
+	data := map[string]any{
+		"theme": "dark",
+		"ui":    map[string]any{"theme": "light"},
+	}
+	first := extractFields(data, nil)
+	for i := 0; i < 50; i++ {
+		got := extractFields(data, nil)
+		if got["theme"] != first["theme"] || got["ui.theme"] != first["ui.theme"] {
+			t.Fatalf("non-deterministic extract: %v vs %v", got, first)
+		}
+	}
+	if first["theme"] != "dark" || first["ui.theme"] != "light" {
+		t.Errorf("namespacing collision: %v", first)
+	}
+}
+
+func TestFileMetadataLineCount(t *testing.T) {
+	home := "/h"
+	cases := map[string]string{"a\nb\n": "2", "a\nb": "2", "x": "1"}
+	for content, want := range cases {
+		env := &sys.Fake{HomeDir: home, Files: map[string]string{home + "/.p10k.zsh": content}}
+		e := []Entry{{ID: "terminal.p10k", BackupDest: "x", Kind: FileMetadata, Paths: map[string]string{runtime.GOOS: "~/.p10k.zsh"}}}
+		snap := Collect(env, home, false, e)
+		if got := snap["terminal.p10k"].Pairs["lines"]; got != want {
+			t.Errorf("content %q: lines=%q, want %q", content, got, want)
+		}
 	}
 }

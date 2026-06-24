@@ -161,6 +161,62 @@ func TestScanDetectsLegacyNpmAuth(t *testing.T) {
 	}
 }
 
+func hasFinding(r Result, id string) bool {
+	for _, f := range r.Findings {
+		if f.Pattern.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestPgpassMultilineRedaction(t *testing.T) {
+	// (?m) regression: per-line detect AND whole-text redact must both fire.
+	in := "localhost:5432:db:alice:secretA\nprod:5432:db:bob:secretB"
+	r := ScanContent("pgpass", in)
+	if r.Action != Redact {
+		t.Fatalf("action=%s, want redact", r.Action)
+	}
+	if out := ApplyRedactions(in, r); strings.Contains(out, "secretA") || strings.Contains(out, "secretB") {
+		t.Errorf("pgpass credentials leaked: %q", out)
+	}
+}
+
+func TestPgpassIgnoresBenignColonLines(t *testing.T) {
+	for _, line := range []string{
+		"export PATH=/a:/b:/c:/d:/e/bin",
+		"PATH=/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin",
+		"fe80::1ff:fe23:4567:890a",
+		"root:x:0:0:root:/root:/bin/bash",
+	} {
+		if hasFinding(ScanContent("rc", line), "pgpass-line") {
+			t.Errorf("benign colon line flagged as pgpass: %q", line)
+		}
+	}
+	// a genuine pgpass line still matches
+	if !hasFinding(ScanContent("pgpass", "db.host:5432:app:user:pw"), "pgpass-line") {
+		t.Error("real pgpass line not detected")
+	}
+}
+
+func TestBearerTokenNoProseFalsePositive(t *testing.T) {
+	if hasFinding(ScanContent("readme", "Use the Bearer token scheme in your header."), "bearer-token") {
+		t.Error("prose 'Bearer token' falsely flagged as a bearer token")
+	}
+	if !hasFinding(ScanContent("h", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789"), "bearer-token") {
+		t.Error("real bearer token not detected")
+	}
+}
+
+func TestIPAddressBoundsOctets(t *testing.T) {
+	if got := RedactIPs("build 1.2.3.400 done"); got != "build 1.2.3.400 done" {
+		t.Errorf("out-of-range octet should not be treated as an IP: %q", got)
+	}
+	if got := RedactIPs("host 10.0.0.1"); strings.Contains(got, "10.0.0.1") {
+		t.Errorf("valid IP not redacted: %q", got)
+	}
+}
+
 func TestFormatSecurityReport(t *testing.T) {
 	clean := FormatSecurityReport([]Result{ScanContent("a", "theme = dark")})
 	if !strings.Contains(clean, "No sensitive data found") || !strings.Contains(clean, "1 file(s) scanned") {
