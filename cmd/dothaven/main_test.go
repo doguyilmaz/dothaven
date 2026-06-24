@@ -33,6 +33,9 @@ func fakeChezmoi() {
 	switch args[0] {
 	case "--version":
 		fmt.Println("chezmoi version v2.0.0 (fake)")
+	case "apply":
+		// no-op success; the real one would write $HOME and run scripts.
+		fmt.Println("applied")
 	case "source-path":
 		// `source-path <target>` → that file's .tmpl source; bare → the root.
 		if len(args) >= 2 {

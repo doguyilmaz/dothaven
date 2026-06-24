@@ -1,0 +1,4 @@
+# migrate refuses (non-zero) when no chezmoi source repo is initialized
+! exec dothaven migrate
+stderr 'No chezmoi source'
+! stdout 'Applied'
