@@ -3,7 +3,37 @@ package collect
 import (
 	"reflect"
 	"testing"
+
+	"github.com/doguyilmaz/dothaven/internal/sys"
 )
+
+func TestNestedVersions(t *testing.T) {
+	env := &sys.Fake{Dirs: map[string][]string{
+		"/h/.sdkman/candidates":        {"java", "kotlin", ".meta"},
+		"/h/.sdkman/candidates/java":   {"17.0.1-tem", "21.0.2-tem", "current"},
+		"/h/.sdkman/candidates/kotlin": {"1.9.0"},
+	}}
+	got := nestedVersions(env, "/h/.sdkman/candidates")
+	want := []ToolVersion{{"java", "17.0.1-tem"}, {"java", "21.0.2-tem"}, {"kotlin", "1.9.0"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("nestedVersions = %v, want %v", got, want)
+	}
+	if nestedVersions(env, "/h/.nope") != nil {
+		t.Error("missing base should yield nil")
+	}
+}
+
+func TestFlatVersions(t *testing.T) {
+	env := &sys.Fake{Dirs: map[string][]string{
+		"/h/.fvm/versions": {"stable", "3.19.0", "current", ".cache"},
+	}}
+	if got := flatVersions(env, "/h/.fvm/versions"); !reflect.DeepEqual(got, []string{"3.19.0", "stable"}) {
+		t.Errorf("flatVersions = %v, want [3.19.0 stable]", got)
+	}
+	if flatVersions(env, "/h/.nope") != nil {
+		t.Error("missing dir should yield nil")
+	}
+}
 
 func TestParseAsdfList(t *testing.T) {
 	in := "nodejs\n  18.20.0\n *20.11.0\npython\n  3.12.1\n"

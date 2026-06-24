@@ -188,6 +188,69 @@ var Entries = []Entry{
 
 	// Secrets (carried encrypted) — declarative: a no-op until ~/.gnupg has real keys.
 	{ID: "secrets.gnupg", Name: "GnuPG home", Category: "secrets", Kind: Dir, BackupDest: "secrets/gnupg", Sensitivity: High, Paths: map[string]string{"darwin": "~/.gnupg", "linux": "~/.gnupg"}},
+
+	// Language & toolchain config (lang). Files that hold tokens by design are
+	// High (encrypted on export, excluded from a plaintext backup).
+	{ID: "lang.gemrc", Name: ".gemrc", Category: "lang", Kind: File, BackupDest: "lang/ruby/.gemrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.gemrc", "linux": "~/.gemrc"}},
+	{ID: "lang.bundle", Name: "Bundler config", Category: "lang", Kind: File, BackupDest: "lang/ruby/bundle-config", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.bundle/config", "linux": "~/.bundle/config"}},
+	{ID: "lang.irbrc", Name: ".irbrc", Category: "lang", Kind: File, BackupDest: "lang/ruby/.irbrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.irbrc", "linux": "~/.irbrc"}},
+	{ID: "lang.pip", Name: "pip config", Category: "lang", Kind: File, BackupDest: "lang/python/pip.conf", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/Library/Application Support/pip/pip.conf", "linux": "~/.config/pip/pip.conf"}},
+	{ID: "lang.condarc", Name: ".condarc", Category: "lang", Kind: File, BackupDest: "lang/python/.condarc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.condarc", "linux": "~/.condarc"}},
+	{ID: "lang.poetry.auth", Name: "Poetry auth", Category: "lang", Kind: File, BackupDest: "lang/python/poetry-auth.toml", Sensitivity: High, Paths: map[string]string{"darwin": "~/Library/Application Support/pypoetry/auth.toml", "linux": "~/.config/pypoetry/auth.toml"}},
+	{ID: "lang.go.env", Name: "go env", Category: "lang", Kind: File, BackupDest: "lang/go/env", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/go/env", "linux": "~/.config/go/env"}},
+	{ID: "lang.cargo.config", Name: "Cargo config", Category: "lang", Kind: File, BackupDest: "lang/rust/config.toml", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.cargo/config.toml", "linux": "~/.cargo/config.toml"}},
+	{ID: "lang.cargo.credentials", Name: "Cargo credentials", Category: "lang", Kind: File, BackupDest: "lang/rust/credentials.toml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.cargo/credentials.toml", "linux": "~/.cargo/credentials.toml"}},
+	{ID: "lang.composer", Name: "Composer config", Category: "lang", Kind: File, BackupDest: "lang/php/composer.json", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.composer/composer.json", "linux": "~/.config/composer/composer.json"}},
+	{ID: "lang.composer.auth", Name: "Composer auth", Category: "lang", Kind: File, BackupDest: "lang/php/auth.json", Sensitivity: High, Paths: map[string]string{"darwin": "~/.composer/auth.json", "linux": "~/.config/composer/auth.json"}},
+	{ID: "lang.nuget", Name: "NuGet config", Category: "lang", Kind: File, BackupDest: "lang/dotnet/NuGet.Config", Sensitivity: High, Paths: map[string]string{"darwin": "~/.nuget/NuGet/NuGet.Config", "linux": "~/.nuget/NuGet/NuGet.Config", "windows": "%APPDATA%/NuGet/NuGet.Config"}},
+	{ID: "lang.yarnrc", Name: ".yarnrc.yml", Category: "lang", Kind: File, BackupDest: "lang/js/.yarnrc.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.yarnrc.yml", "linux": "~/.yarnrc.yml"}},
+	{ID: "lang.iex", Name: ".iex.exs", Category: "lang", Kind: File, BackupDest: "lang/elixir/.iex.exs", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.iex.exs", "linux": "~/.iex.exs"}},
+	{ID: "lang.julia", Name: "Julia startup", Category: "lang", Kind: File, BackupDest: "lang/julia/startup.jl", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.julia/config/startup.jl", "linux": "~/.julia/config/startup.jl"}},
+
+	// More cloud / devops / git-CLI coverage. Credential-bearing entries are High.
+	{ID: "git.gh.hosts", Name: "GitHub CLI hosts", Category: "git", Kind: File, BackupDest: "git/gh/hosts.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/gh/hosts.yml", "linux": "~/.config/gh/hosts.yml", "windows": "%APPDATA%/GitHub CLI/hosts.yml"}},
+	{ID: "git.glab", Name: "GitLab CLI", Category: "git", Kind: File, BackupDest: "git/glab/config.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/glab-cli/config.yml", "linux": "~/.config/glab-cli/config.yml"}},
+	{ID: "cloud.teleport", Name: "Teleport (tsh)", Category: "cloud", Kind: Dir, BackupDest: "cloud/tsh", Sensitivity: High, Paths: map[string]string{"darwin": "~/.tsh", "linux": "~/.tsh"}},
+	{ID: "cloud.ngrok", Name: "ngrok", Category: "cloud", Kind: File, BackupDest: "cloud/ngrok/ngrok.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/Library/Application Support/ngrok/ngrok.yml", "linux": "~/.config/ngrok/ngrok.yml"}},
+	{ID: "cloud.scaleway", Name: "Scaleway CLI", Category: "cloud", Kind: File, BackupDest: "cloud/scw/config.yaml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/scw/config.yaml", "linux": "~/.config/scw/config.yaml"}},
+	{ID: "cloud.argocd", Name: "Argo CD", Category: "cloud", Kind: File, BackupDest: "cloud/argocd/config", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/argocd/config", "linux": "~/.config/argocd/config"}},
+	{ID: "cloud.onepassword", Name: "1Password CLI", Category: "cloud", Kind: File, BackupDest: "cloud/op/config.json", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.config/op/config", "linux": "~/.config/op/config"}},
+	{ID: "devops.ansible", Name: "Ansible config", Category: "devops", Kind: File, BackupDest: "devops/ansible.cfg", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.ansible.cfg", "linux": "~/.ansible.cfg"}},
+	{ID: "devops.terraformrc", Name: "Terraform CLI config", Category: "devops", Kind: File, BackupDest: "devops/terraform/.terraformrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.terraformrc", "linux": "~/.terraformrc"}},
+	{ID: "devops.packer", Name: "Packer config", Category: "devops", Kind: File, BackupDest: "devops/.packerconfig", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.packerconfig", "linux": "~/.packerconfig"}},
+	{ID: "devops.skaffold", Name: "Skaffold config", Category: "devops", Kind: File, BackupDest: "devops/skaffold/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.skaffold/config", "linux": "~/.skaffold/config"}},
+
+	// Git ecosystem: XDG config, SSH-signing allowlist, global hooks, companions.
+	{ID: "git.xdg.config", Name: "XDG git config", Category: "git", Kind: File, BackupDest: "git/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/config", "linux": "~/.config/git/config"}},
+	{ID: "git.xdg.ignore", Name: "XDG git ignore", Category: "git", Kind: File, BackupDest: "git/ignore", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/ignore", "linux": "~/.config/git/ignore"}},
+	{ID: "git.xdg.attributes", Name: "XDG git attributes", Category: "git", Kind: File, BackupDest: "git/attributes", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/attributes", "linux": "~/.config/git/attributes"}},
+	{ID: "git.allowed_signers", Name: "git allowed_signers", Category: "git", Kind: File, BackupDest: "git/allowed_signers", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/allowed_signers", "linux": "~/.config/git/allowed_signers"}},
+	{ID: "git.hooks", Name: "Global git hooks", Category: "git", Kind: Dir, BackupDest: "git/hooks", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/hooks", "linux": "~/.config/git/hooks"}},
+	{ID: "git.lazygit", Name: "lazygit", Category: "git", Kind: File, BackupDest: "git/lazygit/config.yml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/Library/Application Support/lazygit/config.yml", "linux": "~/.config/lazygit/config.yml"}},
+	{ID: "git.jj", Name: "Jujutsu config", Category: "git", Kind: File, BackupDest: "git/jj/config.toml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/jj/config.toml", "linux": "~/.config/jj/config.toml"}},
+	{ID: "git.gitui", Name: "gitui", Category: "git", Kind: Dir, BackupDest: "git/gitui", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/gitui", "linux": "~/.config/gitui"}},
+	{ID: "git.tig", Name: ".tigrc", Category: "git", Kind: File, BackupDest: "git/.tigrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.tigrc", "linux": "~/.tigrc"}},
+
+	// Database clients.
+	{ID: "db.pg_service", Name: ".pg_service.conf", Category: "db", Kind: File, BackupDest: "db/.pg_service.conf", Sensitivity: High, Paths: map[string]string{"darwin": "~/.pg_service.conf", "linux": "~/.pg_service.conf"}},
+	{ID: "db.pgcli", Name: "pgcli config", Category: "db", Kind: File, BackupDest: "db/pgcli/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/pgcli/config", "linux": "~/.config/pgcli/config"}},
+	{ID: "db.mycli", Name: ".myclirc", Category: "db", Kind: File, BackupDest: "db/.myclirc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.myclirc", "linux": "~/.myclirc"}},
+	{ID: "db.litecli", Name: "litecli config", Category: "db", Kind: File, BackupDest: "db/litecli/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/litecli/config", "linux": "~/.config/litecli/config"}},
+	{ID: "db.mongosh", Name: ".mongoshrc.js", Category: "db", Kind: File, BackupDest: "db/.mongoshrc.js", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.mongoshrc.js", "linux": "~/.mongoshrc.js"}},
+
+	// Editors (more) — IdeaVim (the portable JetBrains config; full IDE settings
+	// are version/product-specific and out of scope here).
+	{ID: "editor.ideavim", Name: ".ideavimrc", Category: "editor", Kind: File, BackupDest: "editor/.ideavimrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.ideavimrc", "linux": "~/.ideavimrc", "windows": "%USERPROFILE%/.ideavimrc"}},
+
+	// Shell frameworks & plugin manifests.
+	{ID: "shell.ohmyzsh.custom", Name: "oh-my-zsh custom", Category: "shell", Kind: Dir, BackupDest: "shell/oh-my-zsh-custom", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.oh-my-zsh/custom", "linux": "~/.oh-my-zsh/custom"}},
+	{ID: "shell.sheldon", Name: "sheldon plugins", Category: "shell", Kind: File, BackupDest: "shell/sheldon/plugins.toml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/sheldon/plugins.toml", "linux": "~/.config/sheldon/plugins.toml"}},
+	{ID: "shell.antidote", Name: "antidote plugins", Category: "shell", Kind: File, BackupDest: "shell/.zsh_plugins.txt", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.zsh_plugins.txt", "linux": "~/.zsh_plugins.txt"}},
+	{ID: "shell.powershell", Name: "PowerShell profile", Category: "shell", Kind: File, BackupDest: "shell/powershell/profile.ps1", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/powershell/Microsoft.PowerShell_profile.ps1", "linux": "~/.config/powershell/Microsoft.PowerShell_profile.ps1"}},
+
+	// Terminals & multiplexers (more).
+	{ID: "terminal.zellij", Name: "Zellij", Category: "terminal", Kind: Dir, BackupDest: "terminal/zellij", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/zellij", "linux": "~/.config/zellij"}},
+	{ID: "terminal.screen", Name: ".screenrc", Category: "terminal", Kind: File, BackupDest: "terminal/.screenrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.screenrc", "linux": "~/.screenrc"}},
 }
 
 // ResolvePath expands an entry's path template for the current OS ("" if the

@@ -178,6 +178,13 @@ func TestBuildPackageInstallScript(t *testing.T) {
 		PipxPackages:     []string{"poetry"},
 		CursorExtensions: []string{"anthropic.claude-code"},
 		RustToolchains:   []string{"stable"},
+		UvTools:          []string{"ruff"},
+		ComposerGlobals:  []string{"laravel/installer"},
+		PubGlobals:       []string{"melos"},
+		DotnetTools:      []string{"dotnetsay"},
+		AptPackages:      []string{"ripgrep"},
+		SnapPackages:     []string{"code"},
+		FlatpakPackages:  []string{"org.gimp.GIMP"},
 	})
 	if !ok {
 		t.Fatal("expected a script")
@@ -191,6 +198,13 @@ func TestBuildPackageInstallScript(t *testing.T) {
 		"command -v pipx", "pipx install poetry || true",
 		"command -v rustup", "rustup toolchain install stable || true",
 		"command -v cursor", "cursor --install-extension anthropic.claude-code || true",
+		"command -v uv", "uv tool install ruff || true",
+		"command -v composer", "composer global require laravel/installer || true",
+		"command -v dart", "dart pub global activate melos || true",
+		"command -v dotnet", "dotnet tool install --global dotnetsay || true",
+		"command -v apt-get", "sudo apt-get install -y ripgrep || true",
+		"command -v snap", "sudo snap install code || true",
+		"command -v flatpak", "flatpak install -y flathub org.gimp.GIMP || true",
 		"# deno global bins", "#   deployctl",
 		"exit 0",
 	} {

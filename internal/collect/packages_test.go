@@ -5,6 +5,45 @@ import (
 	"testing"
 )
 
+func TestParseUvTool(t *testing.T) {
+	in := "ruff v0.4.0\n- ruff\nblack v24.10.0\n- black\n- blackd\n"
+	got := ParseUvTool(in)
+	want := []PkgItem{{"black", "24.10.0"}, {"ruff", "0.4.0"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ParseUvTool = %v, want %v", got, want)
+	}
+}
+
+func TestParseComposerGlobal(t *testing.T) {
+	in := `{"installed":[{"name":"laravel/installer","version":"v5.0.1"},{"name":"friendsofphp/php-cs-fixer","version":"3.0.0"}]}`
+	got := ParseComposerGlobal(in)
+	want := []PkgItem{{"friendsofphp/php-cs-fixer", "3.0.0"}, {"laravel/installer", "5.0.1"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ParseComposerGlobal = %v, want %v", got, want)
+	}
+	if len(ParseComposerGlobal("not json")) != 0 {
+		t.Error("invalid JSON should yield no packages")
+	}
+}
+
+func TestParsePubGlobal(t *testing.T) {
+	in := "melos 6.0.0\nmason_cli 0.1.0 from path /x\n"
+	got := ParsePubGlobal(in)
+	want := []PkgItem{{"mason_cli", "0.1.0"}, {"melos", "6.0.0"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ParsePubGlobal = %v, want %v", got, want)
+	}
+}
+
+func TestParseDotnetTool(t *testing.T) {
+	in := "Package Id      Version      Commands\n-------------------------------------\ndotnetsay       2.1.4        dotnetsay\ncsharprepl      0.6.0        csharprepl\n"
+	got := ParseDotnetTool(in)
+	want := []PkgItem{{"csharprepl", "0.6.0"}, {"dotnetsay", "2.1.4"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ParseDotnetTool = %v, want %v", got, want)
+	}
+}
+
 func TestParseNpmGlobal(t *testing.T) {
 	real := `{"name":"lib","dependencies":{"@swmansion/argent":{"version":"0.9.0","overridden":false},"corepack":{"version":"0.35.0","overridden":false},"npm":{"version":"11.13.0","overridden":false}}}`
 
