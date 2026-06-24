@@ -253,6 +253,10 @@ type Manifest struct {
 	PipxPackages     []string
 	CursorExtensions []string // VS Code extensions ride in the Brewfile; Cursor's don't
 	RustToolchains   []string
+	UvTools          []string
+	ComposerGlobals  []string
+	PubGlobals       []string
+	DotnetTools      []string
 }
 
 // CrossManagerDuplicates are names installed by more than one JS global manager
@@ -350,6 +354,18 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 		blocks = append(blocks, b)
 	}
 	if b, ok := installBlock("cursor", "cursor --install-extension", m.CursorExtensions); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("uv", "uv tool install", m.UvTools); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("composer", "composer global require", m.ComposerGlobals); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("dart", "dart pub global activate", m.PubGlobals); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("dotnet", "dotnet tool install --global", m.DotnetTools); ok {
 		blocks = append(blocks, b)
 	}
 

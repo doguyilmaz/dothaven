@@ -150,6 +150,82 @@ func ParsePipxList(text string) []PkgItem {
 	return out
 }
 
+// ParseUvTool parses `uv tool list`: a non-indented "name vX.Y.Z" line per tool,
+// with indented "- entrypoint" lines beneath that are ignored.
+func ParseUvTool(text string) []PkgItem {
+	out := []PkgItem{}
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '-' {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		p := PkgItem{Name: f[0]}
+		if len(f) > 1 {
+			p.Version = strings.TrimPrefix(f[1], "v")
+		}
+		out = append(out, p)
+	}
+	pkgSortByName(out)
+	return out
+}
+
+// ParseComposerGlobal parses `composer global show --format=json`.
+func ParseComposerGlobal(jsonText string) []PkgItem {
+	var data struct {
+		Installed []struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		} `json:"installed"`
+	}
+	if err := json.Unmarshal([]byte(jsonText), &data); err != nil {
+		return []PkgItem{}
+	}
+	out := make([]PkgItem, 0, len(data.Installed))
+	for _, p := range data.Installed {
+		if p.Name != "" {
+			out = append(out, PkgItem{Name: p.Name, Version: strings.TrimPrefix(p.Version, "v")})
+		}
+	}
+	pkgSortByName(out)
+	return out
+}
+
+// ParsePubGlobal parses `dart pub global list`: "pkg 1.2.3" (or "… from <path>").
+func ParsePubGlobal(text string) []PkgItem {
+	out := []PkgItem{}
+	for _, line := range strings.Split(text, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		p := PkgItem{Name: f[0]}
+		if len(f) > 1 {
+			p.Version = f[1]
+		}
+		out = append(out, p)
+	}
+	pkgSortByName(out)
+	return out
+}
+
+// ParseDotnetTool parses `dotnet tool list --global`: a header + dashed separator
+// then "PackageId  Version  Commands" rows.
+func ParseDotnetTool(text string) []PkgItem {
+	out := []PkgItem{}
+	for _, line := range strings.Split(text, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || f[0] == "Package" || strings.HasPrefix(f[0], "---") {
+			continue
+		}
+		out = append(out, PkgItem{Name: f[0], Version: f[1]})
+	}
+	pkgSortByName(out)
+	return out
+}
+
 func pkgItems(pkgs []PkgItem) []snapshot.Item {
 	out := make([]snapshot.Item, 0, len(pkgs))
 	for _, p := range pkgs {
@@ -218,6 +294,27 @@ func PackagesCollector(c Ctx) snapshot.Snapshot {
 		sorted := append([]string(nil), bins...)
 		sort.Strings(sorted)
 		out["packages.go.bin"] = snapshot.Section{Items: toItems(sorted)}
+	}
+
+	if s, _ := c.Env.Run(c.Context, "uv", "tool", "list"); true {
+		if p := ParseUvTool(s); len(p) > 0 {
+			out["packages.uv"] = snapshot.Section{Items: pkgItems(p)}
+		}
+	}
+	if s, _ := c.Env.Run(c.Context, "composer", "global", "show", "--format=json"); true {
+		if p := ParseComposerGlobal(s); len(p) > 0 {
+			out["packages.composer"] = snapshot.Section{Items: pkgItems(p)}
+		}
+	}
+	if s, _ := c.Env.Run(c.Context, "dart", "pub", "global", "list"); true {
+		if p := ParsePubGlobal(s); len(p) > 0 {
+			out["packages.pub"] = snapshot.Section{Items: pkgItems(p)}
+		}
+	}
+	if s, _ := c.Env.Run(c.Context, "dotnet", "tool", "list", "--global"); true {
+		if p := ParseDotnetTool(s); len(p) > 0 {
+			out["packages.dotnet"] = snapshot.Section{Items: pkgItems(p)}
+		}
 	}
 
 	return out

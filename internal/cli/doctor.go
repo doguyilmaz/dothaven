@@ -71,6 +71,14 @@ func remediationCommand(id string) string {
 		return "bun add -g"
 	case "packages.pipx":
 		return "pipx install"
+	case "packages.uv":
+		return "uv tool install"
+	case "packages.composer":
+		return "composer global require"
+	case "packages.pub":
+		return "dart pub global activate"
+	case "packages.dotnet":
+		return "dotnet tool install --global"
 	case "runtimes.rust.crates":
 		return "cargo install"
 	case "runtimes.rust.toolchains":
