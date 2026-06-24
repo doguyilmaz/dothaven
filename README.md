@@ -73,6 +73,18 @@ dothaven aims to be a **superset** of what chezmoi covers — every cloud CLI, v
 
 **→ [Request a config / tool](https://github.com/doguyilmaz/dothaven/issues/new?template=config-request.yml)** (just the tool name + its config path).
 
+## What's out of scope
+
+dothaven captures **configuration**, not data or system state. By design it does **not** carry:
+
+- **Data** — databases (Postgres/MySQL data dirs, `~/.docker` images & volumes), anything you'd `dump`/`restore`. Reinstall the engine; re-import the data.
+- **System & service-daemon config** in `/etc` (e.g. `/etc/nginx`) — needs root and is machine-specific. (Homebrew-prefix service config under `$(brew --prefix)/etc` *is* in scope — it's user-editable dev config.)
+- **App-bundle internals** — XAMPP/MAMP and similar live in `/Applications`; the app comes back via its Homebrew cask, its bundled config/data does not.
+- **Toolchain binaries & caches** — language runtimes, SDKs, build caches (`~/.gradle/caches`, Xcode `DerivedData`, `~/.pub-cache`), `node_modules`. Versions are *inventoried* and reinstalled via your version manager / package manager, not copied byte-for-byte.
+- **Secrets dothaven can't reach** — the macOS Keychain / Secret Service.
+
+The rule of thumb: if it's a file you'd edit, it's in scope; if it's data, a binary, or owned by root, it isn't.
+
 ## Security
 
 A pattern scanner classifies findings as HIGH/MEDIUM/LOW with an action of skip/redact/include. Secrets are redacted by default before anything is written, and a file containing a private key (a `skip`-action secret) is **never** written into a plaintext backup or snapshot. On export, high-sensitivity files are added with `chezmoi add --encrypt`. See [Security & redaction](https://doguyilmaz.github.io/dothaven/docs/security/).

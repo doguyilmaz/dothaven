@@ -134,10 +134,13 @@ still reads as a valid config, only the secret value is masked.
 
 ## Registered entries
 
-The registry currently declares around 84 entries across 17 categories. The lists
-below are grouped by category; large categories show the notable entries and end
-with "and more." The path shown is the macOS/Linux (`~`-relative) template;
-Windows templates differ where defined and some entries are macOS/Linux-only.
+The registry currently declares around 130 entries across 18 categories —
+including a `lang` category for per-language toolchain config (Ruby, Python, Go,
+Rust, PHP, .NET, JS, Elixir, Julia) and broad cloud/DevOps, git-ecosystem, and
+database-client coverage. The lists below are grouped by category; large
+categories show the notable entries and end with "and more." The path shown is
+the macOS/Linux (`~`-relative) template; Windows templates differ where defined
+and some entries are macOS/Linux-only.
 
 {{< callout type="warning" >}}
 Every credential-bearing entry is classified `high`. On a chezmoi export those are
