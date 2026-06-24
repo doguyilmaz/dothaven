@@ -159,6 +159,14 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				return nil
 			}
 
+			hasEncrypt := false
+			for _, p := range plan {
+				if p.Encrypt {
+					hasEncrypt = true
+					break
+				}
+			}
+
 			if len(plan) > 0 {
 				encrypted := 0
 				for _, p := range plan {
@@ -186,6 +194,10 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("  + run_onchange install script (%s)\n", strings.Join(groups, ", "))
 			}
 
+			if hasEncrypt {
+				fmt.Printf("\n🔒 Encrypted paths are recoverable only with your age key (%s/.config/chezmoi/key.txt).\n   Back it up offline before you rely on this — a lost key means those files are gone for good.\n", home)
+			}
+
 			if !apply {
 				fmt.Println("\nDry-run. Re-run with --apply to execute (requires chezmoi + a configured age key).")
 				return nil
@@ -200,13 +212,6 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			// Preflight: if the plan encrypts anything, age must be configured —
 			// otherwise the very first `add --encrypt` fails. Abort early with a
 			// clear message instead of a confusing per-file error.
-			hasEncrypt := false
-			for _, p := range plan {
-				if p.Encrypt {
-					hasEncrypt = true
-					break
-				}
-			}
 			if hasEncrypt {
 				configured := false
 				if b, err := os.ReadFile(home + "/.config/chezmoi/chezmoi.toml"); err == nil {
@@ -216,6 +221,21 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					fmt.Fprintln(os.Stderr, "\n✗ This plan encrypts secrets, but age encryption is not configured in chezmoi.toml.")
 					fmt.Fprintln(os.Stderr, "  Run `dothaven init`, configure your age key, then re-run with --apply.")
 					return ExitError{Code: 1}
+				}
+
+				// Age-key safety rail: encrypted secrets are recoverable only with
+				// the age key, so a human must acknowledge it's backed up before we
+				// write ciphertext they could otherwise lose forever. CI/non-TTY
+				// can't be prompted — the warning above still printed for them.
+				if tui.Interactive() {
+					ok, err := tui.Confirm("Have you backed up your age key offline?")
+					if err != nil {
+						return err
+					}
+					if !ok {
+						fmt.Fprintln(os.Stderr, "\nAborted. Back up your age key first, then re-run with --apply.")
+						return ExitError{Code: 1}
+					}
 				}
 			}
 
