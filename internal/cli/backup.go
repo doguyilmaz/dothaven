@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -72,6 +73,14 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			redact := !noRedact
 
+			// A backup is the safety net before wiping a machine — remind the user
+			// (on a terminal) that it captures saved config, not unsaved editor work.
+			if stdoutIsTTY() {
+				fmt.Println("Note: this captures saved config files — not unsaved editor buffers or")
+				fmt.Println("in-memory state. Save and quit your editors before relying on it to wipe a machine.")
+				fmt.Println()
+			}
+
 			// Interactive category picker: only on a terminal, and only when the
 			// user hasn't already constrained the set with --only/--skip.
 			if len(only) == 0 && len(skip) == 0 && tui.Interactive() {
@@ -101,6 +110,20 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 			if res.TotalFiles == 0 {
 				fmt.Println("No files found to backup.")
 				return nil
+			}
+
+			// Write a self-describing MANIFEST into the tree (before archiving, so
+			// it travels with the backup) — what's inside, what was excluded, and
+			// how to restore it.
+			manifest := backup.Manifest(backup.ManifestMeta{
+				Host:     host,
+				OS:       runtime.GOOS,
+				Version:  cmd.Root().Version,
+				Created:  time.Now().Format(time.RFC3339),
+				Redacted: redact,
+			}, res)
+			if err := sys.WriteFileSecure(filepath.Join(backupDir, "MANIFEST.txt"), manifest); err != nil {
+				return err
 			}
 
 			summary := formatCategories(res.PerCategory)
