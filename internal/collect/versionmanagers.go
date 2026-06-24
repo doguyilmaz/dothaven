@@ -1,9 +1,11 @@
 package collect
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
+	"github.com/doguyilmaz/dothaven/internal/sys"
 )
 
 // ToolVersion is one installed (tool, version) pair from a version manager.
@@ -55,6 +57,55 @@ func ParseVersionLines(text string) []string {
 	return out
 }
 
+// vmDirNoise are non-version entries that appear alongside version dirs.
+var vmDirNoise = map[string]bool{"current": true, "latest": true, "default": true}
+
+// nestedVersions reads managers that store <base>/<tool>/<version> on disk
+// (sdkman candidates, proto tools). The CLIs are shell functions, so the
+// filesystem is the reliable source. Returns sorted (tool, version) pairs.
+func nestedVersions(env sys.Env, base string) []ToolVersion {
+	tools, err := env.ListDir(base)
+	if err != nil {
+		return nil
+	}
+	sort.Strings(tools)
+	var out []ToolVersion
+	for _, tool := range tools {
+		if strings.HasPrefix(tool, ".") {
+			continue
+		}
+		vers, err := env.ListDir(base + "/" + tool)
+		if err != nil {
+			continue
+		}
+		sort.Strings(vers)
+		for _, v := range vers {
+			if vmDirNoise[v] || strings.HasPrefix(v, ".") {
+				continue
+			}
+			out = append(out, ToolVersion{Tool: tool, Version: v})
+		}
+	}
+	return out
+}
+
+// flatVersions reads managers that store one version dir per entry (jenv, fvm).
+func flatVersions(env sys.Env, dir string) []string {
+	names, err := env.ListDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, n := range names {
+		if vmDirNoise[n] || strings.HasPrefix(n, ".") {
+			continue
+		}
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func toolVersionItems(tvs []ToolVersion) []snapshot.Item {
 	out := make([]snapshot.Item, 0, len(tvs))
 	for _, tv := range tvs {
@@ -83,6 +134,36 @@ func VersionManagersCollector(c Ctx) snapshot.Snapshot {
 		if vs := ParseVersionLines(s); len(vs) > 0 {
 			out["vm.rbenv.versions"] = snapshot.Section{Items: toItems(vs)}
 		}
+	}
+
+	// goenv / nodenv share pyenv/rbenv's CLI shape.
+	for _, m := range []struct{ tool, id string }{
+		{"goenv", "vm.goenv.versions"},
+		{"nodenv", "vm.nodenv.versions"},
+	} {
+		if s, _ := c.Env.Run(c.Context, m.tool, "versions", "--bare"); true {
+			if vs := ParseVersionLines(s); len(vs) > 0 {
+				out[m.id] = snapshot.Section{Items: toItems(vs)}
+			}
+		}
+	}
+
+	home := c.Home
+	if home == "" {
+		home = c.Env.Home()
+	}
+	// Filesystem-backed managers (their CLIs are shell functions / heavy).
+	if tvs := nestedVersions(c.Env, home+"/.sdkman/candidates"); len(tvs) > 0 {
+		out["vm.sdkman.versions"] = snapshot.Section{Items: toolVersionItems(tvs)} // JVM family
+	}
+	if tvs := nestedVersions(c.Env, home+"/.proto/tools"); len(tvs) > 0 {
+		out["vm.proto.versions"] = snapshot.Section{Items: toolVersionItems(tvs)}
+	}
+	if vs := flatVersions(c.Env, home+"/.jenv/versions"); len(vs) > 0 {
+		out["vm.jenv.versions"] = snapshot.Section{Items: toItems(vs)} // Java
+	}
+	if vs := flatVersions(c.Env, home+"/.fvm/versions"); len(vs) > 0 {
+		out["vm.fvm.versions"] = snapshot.Section{Items: toItems(vs)} // Flutter
 	}
 	return out
 }
