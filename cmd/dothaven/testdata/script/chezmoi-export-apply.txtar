@@ -1,0 +1,18 @@
+# chezmoi-export --apply drives the plan through a fake chezmoi (no real toolchain).
+# A plain config (.zshrc) and an encrypted one (.npmrc, has a redact rule) are added.
+env CHEZMOI_SOURCE=$WORK/source
+mkdir $WORK/source
+exec dothaven chezmoi-export --apply --only shell,npm
+stdout 'add --encrypt'
+stdout 'age key'
+stdout '✔'
+stdout 'Done\.'
+! stderr 'failed'
+
+-- .config/chezmoi/chezmoi.toml --
+encryption = "age"
+
+-- .zshrc --
+alias ll='ls -la'
+-- .npmrc --
+//registry.npmjs.org/:_authToken=npm_supersecret123456789012345

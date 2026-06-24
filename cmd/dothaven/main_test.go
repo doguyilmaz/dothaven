@@ -1,17 +1,55 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
-// TestMain lets the test binary re-exec itself as the `dothaven` command, so
-// testscript .txtar files can drive the real CLI end-to-end.
+// TestMain lets the test binary re-exec itself as the `dothaven` command — and
+// as a fake `chezmoi`, so the destructive --apply path can be driven end-to-end
+// without depending on a real chezmoi/age toolchain in CI.
 func TestMain(m *testing.M) {
 	testscript.Main(m, map[string]func(){
 		"dothaven": main,
+		"chezmoi":  fakeChezmoi,
 	})
+}
+
+// fakeChezmoi stands in for the real chezmoi binary in --apply e2e scripts. It
+// answers only the subcommands the export apply path invokes (--version,
+// source-path, add). CHEZMOI_SOURCE controls source-path; CHEZMOI_FAIL_ON is a
+// substring that makes `add` fail for matching paths (to exercise the
+// failure-reporting branch).
+func fakeChezmoi() {
+	args := os.Args[1:]
+	if len(args) == 0 {
+		os.Exit(0)
+	}
+	switch args[0] {
+	case "--version":
+		fmt.Println("chezmoi version v2.0.0 (fake)")
+	case "source-path":
+		src := os.Getenv("CHEZMOI_SOURCE")
+		if src == "" {
+			src = filepath.Join(os.Getenv("HOME"), ".local", "share", "chezmoi")
+		}
+		fmt.Println(src)
+	case "add":
+		if sub := os.Getenv("CHEZMOI_FAIL_ON"); sub != "" {
+			for _, a := range args[1:] {
+				if strings.Contains(a, sub) {
+					fmt.Fprintln(os.Stderr, "fake chezmoi: add failed")
+					os.Exit(1)
+				}
+			}
+		}
+	}
+	os.Exit(0)
 }
 
 // TestScripts runs every .txtar in testdata/script against the real binary in a
