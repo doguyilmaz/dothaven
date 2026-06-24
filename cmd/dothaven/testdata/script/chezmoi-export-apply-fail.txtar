@@ -1,0 +1,15 @@
+# A failed encrypted add is reported, flagged as a NOT-carried secret, and exits non-zero.
+env CHEZMOI_SOURCE=$WORK/source
+env CHEZMOI_FAIL_ON=.npmrc
+mkdir $WORK/source
+! exec dothaven chezmoi-export --apply --only shell,npm
+stderr 'operation\(s\) failed'
+stderr 'NOT carried'
+
+-- .config/chezmoi/chezmoi.toml --
+encryption = "age"
+
+-- .zshrc --
+alias ll='ls -la'
+-- .npmrc --
+//registry.npmjs.org/:_authToken=npm_supersecret123456789012345

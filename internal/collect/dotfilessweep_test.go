@@ -43,6 +43,30 @@ func TestManagedDotNames(t *testing.T) {
 	})
 }
 
+func TestManagedConfigNames(t *testing.T) {
+	s := ManagedConfigNames(registry.Entries)
+	// Real registry entries living under ~/.config (on darwin and/or linux).
+	for _, want := range []string{"nvim", "gh", "fish", "nushell", "starship.toml"} {
+		if !s[want] {
+			t.Errorf("expected ~/.config managed set to contain %q (got %v)", want, s)
+		}
+	}
+}
+
+func TestClassifyConfigEntries(t *testing.T) {
+	got := ClassifyConfigEntries(
+		[]string{"nvim", "sheldon", ".DS_Store", "powershell", "..", "gh"},
+		map[string]bool{"nvim": true, "gh": true},
+		map[string]bool{".DS_Store": true},
+	)
+	if !reflect.DeepEqual(got.Managed, []string{"gh", "nvim"}) {
+		t.Errorf("managed = %v, want [gh nvim]", got.Managed)
+	}
+	if !reflect.DeepEqual(got.Review, []string{"powershell", "sheldon"}) {
+		t.Errorf("review = %v, want [powershell sheldon]", got.Review)
+	}
+}
+
 func TestParseLsA(t *testing.T) {
 	tests := []struct {
 		name string

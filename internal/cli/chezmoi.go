@@ -30,6 +30,24 @@ func runShell(ctx context.Context, name string, args ...string) (string, error) 
 	return strings.TrimSpace(string(out)), err
 }
 
+// templatizeSource rewrites the just-added chezmoi source template for src,
+// replacing absolute home paths with chezmoi's homeDir variable so the config
+// ports to a new machine. Best-effort: any lookup/read/write failure leaves the
+// template as a verbatim copy (still valid), so it never fails the export.
+func templatizeSource(ctx context.Context, src, home string) {
+	sp, err := runShell(ctx, "chezmoi", "source-path", src)
+	if err != nil || sp == "" {
+		return
+	}
+	raw, err := os.ReadFile(sp)
+	if err != nil {
+		return
+	}
+	if out, changed := chezmoi.Templatize(string(raw), home); changed {
+		_ = os.WriteFile(sp, []byte(out), 0o644)
+	}
+}
+
 func planHasSrc(plan []chezmoi.PlanItem, src string) bool {
 	for _, p := range plan {
 		if p.Src == src {
@@ -63,6 +81,7 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	brew := collect.HomebrewCollector(cctx)
 	pkgs := collect.PackagesCollector(cctx)
 	runtimes := collect.RuntimesCollector(cctx)
+	exts := collect.EditorsExtCollector(cctx)
 
 	specs := func(snap snapshot.Snapshot, id string) []string {
 		var out []string
@@ -89,13 +108,16 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	}
 
 	return chezmoi.Manifest{
-		Brewfile:     brewfile,
-		NodeVersions: nodeVersions,
-		BunGlobals:   specs(pkgs, "packages.bun.global"),
-		NpmGlobals:   specs(pkgs, "packages.npm.global"),
-		PnpmGlobals:  specs(pkgs, "packages.pnpm.global"),
-		CargoCrates:  specs(runtimes, "runtimes.rust.crates"),
-		DenoBins:     specs(pkgs, "packages.deno.bin"),
+		Brewfile:         brewfile,
+		NodeVersions:     nodeVersions,
+		BunGlobals:       specs(pkgs, "packages.bun.global"),
+		NpmGlobals:       specs(pkgs, "packages.npm.global"),
+		PnpmGlobals:      specs(pkgs, "packages.pnpm.global"),
+		CargoCrates:      specs(runtimes, "runtimes.rust.crates"),
+		DenoBins:         specs(pkgs, "packages.deno.bin"),
+		PipxPackages:     specs(pkgs, "packages.pipx"),
+		CursorExtensions: specs(exts, "editor.cursor.extensions"),
+		RustToolchains:   specs(runtimes, "runtimes.rust.toolchains"),
 	}
 }
 
@@ -159,6 +181,14 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				return nil
 			}
 
+			hasEncrypt := false
+			for _, p := range plan {
+				if p.Encrypt {
+					hasEncrypt = true
+					break
+				}
+			}
+
 			if len(plan) > 0 {
 				encrypted := 0
 				for _, p := range plan {
@@ -169,8 +199,11 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("chezmoi-export plan — %d path(s), %d encrypted:\n\n", len(plan), encrypted)
 				for _, p := range plan {
 					verb := "   add          "
-					if p.Encrypt {
+					switch {
+					case p.Encrypt:
 						verb = "🔒 add --encrypt"
+					case p.Template:
+						verb = "📝 add --template"
 					}
 					fmt.Printf("  %s  %s  (%s)\n", verb, p.Src, p.Reason)
 				}
@@ -184,6 +217,18 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					groups = append(groups, "packages")
 				}
 				fmt.Printf("  + run_onchange install script (%s)\n", strings.Join(groups, ", "))
+			}
+
+			if conflicts := chezmoi.SettingsSyncConflicts(plan, env.Exists); len(conflicts) > 0 {
+				fmt.Println("\n⚠ Editor Settings Sync looks active — chezmoi and the editor's cloud sync will")
+				fmt.Println("  both rewrite these, causing drift. Disable one (chezmoi-managed or Settings Sync):")
+				for _, c := range conflicts {
+					fmt.Printf("    %s\n", c)
+				}
+			}
+
+			if hasEncrypt {
+				fmt.Printf("\n🔒 Encrypted paths are recoverable only with your age key (%s/.config/chezmoi/key.txt).\n   Back it up offline before you rely on this — a lost key means those files are gone for good.\n", home)
 			}
 
 			if !apply {
@@ -200,13 +245,6 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			// Preflight: if the plan encrypts anything, age must be configured —
 			// otherwise the very first `add --encrypt` fails. Abort early with a
 			// clear message instead of a confusing per-file error.
-			hasEncrypt := false
-			for _, p := range plan {
-				if p.Encrypt {
-					hasEncrypt = true
-					break
-				}
-			}
 			if hasEncrypt {
 				configured := false
 				if b, err := os.ReadFile(home + "/.config/chezmoi/chezmoi.toml"); err == nil {
@@ -216,6 +254,21 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					fmt.Fprintln(os.Stderr, "\n✗ This plan encrypts secrets, but age encryption is not configured in chezmoi.toml.")
 					fmt.Fprintln(os.Stderr, "  Run `dothaven init`, configure your age key, then re-run with --apply.")
 					return ExitError{Code: 1}
+				}
+
+				// Age-key safety rail: encrypted secrets are recoverable only with
+				// the age key, so a human must acknowledge it's backed up before we
+				// write ciphertext they could otherwise lose forever. CI/non-TTY
+				// can't be prompted — the warning above still printed for them.
+				if tui.Interactive() {
+					ok, err := tui.Confirm("Have you backed up your age key offline?")
+					if err != nil {
+						return err
+					}
+					if !ok {
+						fmt.Fprintln(os.Stderr, "\nAborted. Back up your age key first, then re-run with --apply.")
+						return ExitError{Code: 1}
+					}
 				}
 			}
 
@@ -235,8 +288,11 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			var failed, failedEncrypted int
 			for _, p := range plan {
 				addArgs := []string{"add", p.Src}
-				if p.Encrypt {
+				switch {
+				case p.Encrypt:
 					addArgs = []string{"add", "--encrypt", p.Src}
+				case p.Template:
+					addArgs = []string{"add", "--template", p.Src}
 				}
 				if out, err := runShell(ctx, "chezmoi", addArgs...); err != nil {
 					fmt.Fprintf(os.Stderr, "  ✗ %s: %v %s\n", p.Src, err, out)
@@ -246,9 +302,15 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					}
 					continue
 				}
+				if p.Template {
+					templatizeSource(ctx, p.Src, home)
+				}
 				prefix := ""
-				if p.Encrypt {
+				switch {
+				case p.Encrypt:
 					prefix = "encrypted "
+				case p.Template:
+					prefix = "templated "
 				}
 				fmt.Printf("  ✔ %s%s\n", prefix, p.Src)
 			}
@@ -266,6 +328,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				if !wantPackages {
 					manifest.NodeVersions, manifest.BunGlobals, manifest.NpmGlobals = nil, nil, nil
 					manifest.PnpmGlobals, manifest.CargoCrates, manifest.DenoBins = nil, nil, nil
+					manifest.PipxPackages, manifest.CursorExtensions, manifest.RustToolchains = nil, nil, nil
 				}
 				if script, ok := chezmoi.BuildPackageInstallScript(manifest); ok && sourcePath != "" {
 					if err := os.WriteFile(sourcePath+"/run_onchange_install-packages.sh", []byte(script), 0o755); err != nil {

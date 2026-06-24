@@ -70,6 +70,7 @@ func MainMenu() (string, error) {
 		Title("dothaven").
 		Description("pick an action").
 		Options(
+			huh.NewOption("Set up this machine from chezmoi (apply)", "migrate"),
 			huh.NewOption("Back up configs", "backup"),
 			huh.NewOption("Export to chezmoi (age-encrypted)", "chezmoi-export"),
 			huh.NewOption("Restore from the latest backup", "restore"),

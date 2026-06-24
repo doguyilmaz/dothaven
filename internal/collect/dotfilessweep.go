@@ -32,6 +32,11 @@ var dotfilesSweepNoise = map[string]bool{
 
 var dotfilesSweepTopRe = regexp.MustCompile(`^~/(\.[^/]+)`)
 
+var dotfilesConfigRe = regexp.MustCompile(`^~/\.config/([^/]+)`)
+
+// dotfilesConfigNoise are ephemeral entries to ignore inside ~/.config.
+var dotfilesConfigNoise = map[string]bool{".DS_Store": true, ".git": true}
+
 // DotfilesSweep holds the classification of home dotfiles into managed (covered
 // by the registry) and review (unknown, not noise) buckets.
 type DotfilesSweep struct {
@@ -55,6 +60,23 @@ func ManagedDotNames(entries []registry.Entry) map[string]bool {
 		}
 		if m := dotfilesSweepTopRe.FindStringSubmatch(p); m != nil {
 			set[m[1]] = true
+		}
+	}
+	return set
+}
+
+// ManagedConfigNames derives the set of ~/.config/<name> entries covered by the
+// registry, across both darwin and linux paths (a tool's ~/.config form may
+// appear only on linux). Used to flag the ~/.config children that aren't
+// covered — otherwise the top-level sweep marks all of ~/.config "managed" and
+// silently hides every uncovered tool living under it.
+func ManagedConfigNames(entries []registry.Entry) map[string]bool {
+	set := map[string]bool{}
+	for _, e := range entries {
+		for _, goos := range []string{"darwin", "linux"} {
+			if m := dotfilesConfigRe.FindStringSubmatch(e.Paths[goos]); m != nil {
+				set[m[1]] = true
+			}
 		}
 	}
 	return set
@@ -96,6 +118,28 @@ func ClassifyDotfiles(entries []string, managed, noise map[string]bool) Dotfiles
 	return result
 }
 
+// ClassifyConfigEntries buckets ~/.config children into managed/review. Unlike
+// ClassifyDotfiles these names are not dot-prefixed; "." and ".." are dropped.
+func ClassifyConfigEntries(entries []string, managed, noise map[string]bool) DotfilesSweep {
+	result := DotfilesSweep{Managed: []string{}, Review: []string{}}
+	names := make([]string, 0, len(entries))
+	for _, n := range entries {
+		if n != "" && n != "." && n != ".." {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		switch {
+		case managed[name]:
+			result.Managed = append(result.Managed, name)
+		case !noise[name]:
+			result.Review = append(result.Review, name)
+		}
+	}
+	return result
+}
+
 // DotfilesSweepCollector runs `ls -A ~` and classifies the home dotfiles against
 // the registry, emitting "home.dotfiles.review" and "home.dotfiles.managed"
 // sections (each only when non-empty).
@@ -119,6 +163,18 @@ func DotfilesSweepCollector(c Ctx) snapshot.Snapshot {
 	}
 	if len(sweep.Managed) > 0 {
 		out["home.dotfiles.managed"] = snapshot.Section{Items: toItems(sweep.Managed)}
+	}
+
+	// The top-level sweep marks all of ~/.config "managed" because registry
+	// entries register only their first segment (.config). Sweep one level
+	// deeper so uncovered ~/.config/<tool> configs (sheldon, powershell, …)
+	// surface for review instead of being silently dropped.
+	cfgOut, _ := c.Env.Run(c.Context, "ls", "-A", home+"/.config")
+	if cfgEntries := ParseLsA(cfgOut); len(cfgEntries) > 0 {
+		cfg := ClassifyConfigEntries(cfgEntries, ManagedConfigNames(registry.Entries), dotfilesConfigNoise)
+		if len(cfg.Review) > 0 {
+			out["home.config.review"] = snapshot.Section{Items: toItems(cfg.Review)}
+		}
 	}
 	return out
 }

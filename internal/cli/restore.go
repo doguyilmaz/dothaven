@@ -96,6 +96,9 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 			if res.Skipped > 0 {
 				fmt.Printf("  %d file(s) skipped\n", res.Skipped)
 			}
+			if res.SkippedSymlink > 0 {
+				fmt.Printf("  %d symlinked target(s) skipped — resolve manually so we don't write through a link\n", res.SkippedSymlink)
+			}
 			return nil
 		},
 	}

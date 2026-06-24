@@ -142,6 +142,24 @@ func TestCrossManagerDuplicates(t *testing.T) {
 	}
 }
 
+func TestSettingsSyncConflicts(t *testing.T) {
+	plan := []PlanItem{
+		{ID: "editor.vscode.settings", Src: "/u/Library/Application Support/Code/User/settings.json"},
+		{ID: "editor.cursor", Src: "/u/Library/Application Support/Cursor/User/settings.json"},
+		{ID: "shell.zshrc", Src: "/u/.zshrc"},
+	}
+	// Only VS Code's sync state dir exists.
+	exists := func(p string) bool { return strings.HasSuffix(p, "Code/User/sync") }
+	got := SettingsSyncConflicts(plan, exists)
+	if len(got) != 1 || got[0] != "/u/Library/Application Support/Code/User/settings.json" {
+		t.Errorf("expected only the VS Code settings flagged, got %v", got)
+	}
+	// No sync dirs → no conflicts.
+	if c := SettingsSyncConflicts(plan, func(string) bool { return false }); len(c) != 0 {
+		t.Errorf("expected no conflicts, got %v", c)
+	}
+}
+
 func TestBuildPackageInstallScript(t *testing.T) {
 	if _, ok := BuildPackageInstallScript(Manifest{}); ok {
 		t.Error("empty manifest should produce no script")
@@ -152,11 +170,14 @@ func TestBuildPackageInstallScript(t *testing.T) {
 	}
 
 	script, ok := BuildPackageInstallScript(Manifest{
-		Brewfile:     "brew \"ripgrep\"",
-		NodeVersions: []string{"v20.0.0", "system"},
-		BunGlobals:   []string{"argent"},
-		CargoCrates:  []string{"ripgrep"},
-		DenoBins:     []string{"deployctl"},
+		Brewfile:         "brew \"ripgrep\"",
+		NodeVersions:     []string{"v20.0.0", "system"},
+		BunGlobals:       []string{"argent"},
+		CargoCrates:      []string{"ripgrep"},
+		DenoBins:         []string{"deployctl"},
+		PipxPackages:     []string{"poetry"},
+		CursorExtensions: []string{"anthropic.claude-code"},
+		RustToolchains:   []string{"stable"},
 	})
 	if !ok {
 		t.Fatal("expected a script")
@@ -167,6 +188,9 @@ func TestBuildPackageInstallScript(t *testing.T) {
 		"command -v fnm", "fnm install v20.0.0 || true",
 		"command -v bun", "bun add -g argent || true",
 		"command -v cargo", "cargo install ripgrep || true",
+		"command -v pipx", "pipx install poetry || true",
+		"command -v rustup", "rustup toolchain install stable || true",
+		"command -v cursor", "cursor --install-extension anthropic.claude-code || true",
 		"# deno global bins", "#   deployctl",
 		"exit 0",
 	} {
@@ -176,6 +200,10 @@ func TestBuildPackageInstallScript(t *testing.T) {
 	}
 	if strings.Contains(script, "fnm install system") {
 		t.Error("`system` node version must be filtered out")
+	}
+	// pipx/rustup/cursor inventory alone (no brew/node) still yields a script.
+	if _, ok := BuildPackageInstallScript(Manifest{PipxPackages: []string{"poetry"}}); !ok {
+		t.Error("pipx-only manifest should produce a script")
 	}
 }
 

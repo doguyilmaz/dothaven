@@ -2,6 +2,7 @@
 exec dothaven chezmoi-export
 stdout 'chezmoi-export plan'
 stdout 'add --encrypt'
+stdout 'age key'
 stdout 'Dry-run'
 ! stdout 'Done\.'
 

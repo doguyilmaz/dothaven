@@ -26,10 +26,11 @@ const (
 
 // Entry is one backed-up file mapped to its live target with a status.
 type Entry struct {
-	BackupPath string // path relative to the backup dir
-	TargetPath string // absolute path on the live machine
-	Category   string
-	Status     Status
+	BackupPath  string // path relative to the backup dir
+	TargetPath  string // absolute path on the live machine
+	Category    string
+	Status      Status
+	Sensitivity registry.Sensitivity // drives restore file perms (owner-only for medium/high)
 }
 
 // Plan is the full set of restorable entries from one backup directory.
@@ -43,22 +44,24 @@ type mapping struct {
 	target   string
 	category string
 	isDir    bool
+	sens     registry.Sensitivity
 }
 
 func buildMap(targets []registry.BackupTarget) map[string]mapping {
 	m := make(map[string]mapping, len(targets))
 	for _, t := range targets {
-		m[t.Dest] = mapping{target: t.Src, category: t.Category, isDir: t.IsDir}
+		m[t.Dest] = mapping{target: t.Src, category: t.Category, isDir: t.IsDir, sens: t.Sensitivity}
 	}
 	return m
 }
 
 // matchTarget maps a backed-up file (rel, slash-separated) to its live target:
 // an exact file dest, a directory-dest prefix, or a `<base>.local` sibling of a
-// file dest. Returns ("","") when nothing matches.
-func matchTarget(rel string, m map[string]mapping) (target, category string) {
+// file dest. A dir-prefix match that would escape its target base (via ../ in a
+// crafted backup) is refused. Returns ("","","") when nothing matches.
+func matchTarget(rel string, m map[string]mapping) (target, category string, sens registry.Sensitivity) {
 	if mp, ok := m[rel]; ok && !mp.isDir {
-		return mp.target, mp.category
+		return mp.target, mp.category, mp.sens
 	}
 	dirDests := make([]string, 0, len(m))
 	for dest, mp := range m {
@@ -70,15 +73,26 @@ func matchTarget(rel string, m map[string]mapping) (target, category string) {
 	for _, dest := range dirDests {
 		if strings.HasPrefix(rel, dest+"/") {
 			mp := m[dest]
-			return filepath.Join(mp.target, rel[len(dest)+1:]), mp.category
+			t := filepath.Join(mp.target, rel[len(dest)+1:])
+			if !contained(mp.target, t) {
+				return "", "", "" // backup path escapes its destination tree (../)
+			}
+			return t, mp.category, mp.sens
 		}
 	}
 	if base, ok := strings.CutSuffix(rel, ".local"); ok {
 		if mp, ok := m[base]; ok && !mp.isDir {
-			return mp.target + ".local", mp.category
+			return mp.target + ".local", mp.category, mp.sens
 		}
 	}
-	return "", ""
+	return "", "", ""
+}
+
+// contained reports whether target is base itself or lies within it (after
+// cleaning) — the guard against a backup entry writing outside its tree.
+func contained(base, target string) bool {
+	base, target = filepath.Clean(base), filepath.Clean(target)
+	return target == base || strings.HasPrefix(target, base+string(filepath.Separator))
 }
 
 // classify decides a file's restore status from its backup content and the live
@@ -109,7 +123,7 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		}
 		rel, _ := filepath.Rel(backupDir, path)
 		rel = filepath.ToSlash(rel)
-		target, category := matchTarget(rel, m)
+		target, category, sens := matchTarget(rel, m)
 		if target == "" {
 			return nil
 		}
@@ -120,7 +134,7 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		tRaw, tErr := os.ReadFile(target)
 		status := classify(string(raw), tErr == nil, string(tRaw))
 		catSet[category] = true
-		entries = append(entries, Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status})
+		entries = append(entries, Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens})
 		return nil
 	})
 	if walkErr != nil {
@@ -210,10 +224,11 @@ type ExecuteOptions struct {
 
 // ExecuteResult summarizes an applied restore.
 type ExecuteResult struct {
-	Restored    int
-	Skipped     int
-	SnapshotDir string // set if a pre-restore snapshot was written
-	PerCategory map[string]int
+	Restored       int
+	Skipped        int
+	SkippedSymlink int    // live target was a symlink — refused, surface for manual resolution
+	SnapshotDir    string // set if a pre-restore snapshot was written
+	PerCategory    map[string]int
 }
 
 // Execute applies the plan to the filesystem. New files are always written;
@@ -225,11 +240,18 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 	overwriteAll, skipAll := opts.Force, false
 
 	for _, e := range plan.Entries {
-		switch e.Status {
-		case StatusSame, StatusRedacted:
+		if e.Status == StatusSame || e.Status == StatusRedacted {
 			res.Skipped++
 			continue
-		case StatusConflict:
+		}
+		// Refuse to write a symlinked live target: following it would modify
+		// whatever it points at, and replacing it would silently break the
+		// user's link. Skip and surface it for manual resolution.
+		if fi, err := os.Lstat(e.TargetPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			res.SkippedSymlink++
+			continue
+		}
+		if e.Status == StatusConflict {
 			overwrite := overwriteAll
 			if !overwrite && !skipAll && opts.Resolve != nil {
 				backup, _ := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))
@@ -261,11 +283,20 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 		if err != nil {
 			return res, err
 		}
-		if err := sys.WriteFile(e.TargetPath, string(raw)); err != nil {
+		if err := writeTarget(e.TargetPath, string(raw), e.Sensitivity); err != nil {
 			return res, err
 		}
 		res.Restored++
 		res.PerCategory[e.Category]++
 	}
 	return res, nil
+}
+
+// writeTarget writes a restored file owner-only when the registry marked it
+// medium/high, so a secret never lands world-readable; low configs keep 0644.
+func writeTarget(path, content string, sens registry.Sensitivity) error {
+	if sens == registry.High || sens == registry.Medium {
+		return sys.WriteFileSecure(path, content)
+	}
+	return sys.WriteFile(path, content)
 }

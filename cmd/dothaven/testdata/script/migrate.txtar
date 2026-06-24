@@ -1,0 +1,12 @@
+# migrate applies the chezmoi source on a ready machine and points at verification
+env CHEZMOI_SOURCE=$WORK/source
+exec dothaven migrate
+stdout 'Applying chezmoi source'
+stdout 'Applied'
+stdout 'chezmoi diff'
+! stderr 'failed'
+
+-- .config/chezmoi/chezmoi.toml --
+encryption = "age"
+-- source/.git/HEAD --
+ref: refs/heads/main

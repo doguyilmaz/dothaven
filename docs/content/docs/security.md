@@ -61,9 +61,9 @@ Redacted values are replaced with the literal string `[REDACTED]`. When a file's
 
 A few targeted redactors preserve structure instead of blanking the line, so the file stays valid after masking:
 
-- **SSH config** — `HostName` and `IdentityFile` values become `[REDACTED]`, keeping the keyword so the config still parses.
-- **npm `.npmrc`** — `_authToken=` keeps its key and masks only the token.
-- **IP addresses** — replaced in place.
+- **SSH config** — `HostName` and `IdentityFile` values become `[REDACTED]`, keeping the keyword so the config still parses. Matching is case-insensitive, so lowercase `hostname` / `identityfile` are caught too.
+- **npm `.npmrc`** — `_authToken=`, plus the legacy `_auth=` and `_password=` forms, keep their key and mask only the value.
+- **IP addresses** — replaced in place (octets are bounded to 0–255 so version strings like `1.2.3.400` aren't mistaken for IPs).
 
 The same marker is what `restore` looks for to recognize a file as already-redacted, so a masked backup is never mistaken for clean data on the way back in.
 
@@ -151,6 +151,25 @@ The `chezmoi-export` command takes the opposite approach for `HIGH`-severity sec
 
 {{< callout type="warning" >}}
 age is the encryption backend for exported secrets. Losing the age key means the encrypted files are unrecoverable. Back up the key separately and securely.
+{{< /callout >}}
+
+## Key-material policy
+
+Private keys are the one thing you cannot reinstall with a package manager, so it's worth knowing exactly what dothaven moves, what it never touches, and what you have to carry yourself. The rule is: **dothaven migrates key material only through the encrypted `chezmoi-export` path, never into a plaintext backup — and only for the categories you select.**
+
+| Key material | What dothaven does |
+| --- | --- |
+| **SSH private keys** (`~/.ssh/id_*`) | Detected by content (a key header, not a filename) and added age-encrypted on `chezmoi-export` — **only when the `ssh` category is selected**. Never written to a plaintext backup or snapshot. |
+| **GnuPG** (`~/.gnupg`) | Carried age-encrypted on export when real secret keys exist (`private-keys-v1.d/*.key`); runtime cruft (sockets, locks, `random_seed`) is ignored. Never plaintext. |
+| **Other credentials** (cloud creds, `kubeconfig`, `.npmrc`, `.netrc`, …) | `HIGH`-sensitivity, so age-encrypted on export and excluded from a plaintext backup unless a targeted redactor can mask them. |
+| **The age key** (`~/.config/chezmoi/key.txt`) | **Never touched.** This is the one secret dothaven will not move for you. |
+| **Not handled** — `known_hosts`, `authorized_keys`, `.git-credentials`, the `.pub` half of a key pair, the macOS Keychain | Out of scope today. Regenerate or carry them manually. |
+
+{{< callout type="warning" >}}
+**Two ways to lose data permanently — both avoidable:**
+
+1. **Forgetting to select `ssh`.** If you don't tick the `ssh` category, your private keys are silently left behind. Select it before you wipe the source machine.
+2. **Losing the age key.** It is never in your repo, so if you encrypt your whole secret estate against it and then lose the only copy, every exported secret is unrecoverable — strictly worse than migrating nothing. Back the key up offline *before* you run `chezmoi-export --apply`.
 {{< /callout >}}
 
 ## Related

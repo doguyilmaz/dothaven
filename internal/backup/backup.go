@@ -4,9 +4,12 @@
 package backup
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/scan"
@@ -131,6 +134,59 @@ func copyFile(t registry.BackupTarget, destRoot string, redact bool, results *[]
 		return 0, err
 	}
 	return 1, nil
+}
+
+// ManifestMeta is the run context recorded in a backup's MANIFEST.
+type ManifestMeta struct {
+	Host     string
+	OS       string
+	Version  string
+	Created  string // pre-formatted timestamp
+	Redacted bool
+}
+
+// Manifest renders a self-describing MANIFEST for a backup tree: what was
+// captured, what was deliberately excluded, and how to restore it. A backup you
+// can't audit for completeness is dangerous — the exclusion list is the
+// safety-critical part, so it travels inside the backup rather than scrolling
+// past once in the console.
+func Manifest(meta ManifestMeta, res Result) string {
+	var b strings.Builder
+	b.WriteString("# dothaven backup\n#\n")
+	fmt.Fprintf(&b, "# host:     %s\n", meta.Host)
+	fmt.Fprintf(&b, "# os:       %s\n", meta.OS)
+	fmt.Fprintf(&b, "# created:  %s\n", meta.Created)
+	fmt.Fprintf(&b, "# dothaven: %s\n", meta.Version)
+	redacted := "no (raw values kept)"
+	if meta.Redacted {
+		redacted = "yes (secrets redacted)"
+	}
+	fmt.Fprintf(&b, "# redacted: %s\n#\n", redacted)
+	b.WriteString("# Restore on a new machine with:\n#   dothaven restore <this-directory>\n#\n")
+
+	fmt.Fprintf(&b, "# Captured — %d file(s):\n", res.TotalFiles)
+	cats := make([]string, 0, len(res.PerCategory))
+	for c := range res.PerCategory {
+		cats = append(cats, c)
+	}
+	sort.Strings(cats)
+	for _, c := range cats {
+		fmt.Fprintf(&b, "#   %s (%d)\n", c, res.PerCategory[c])
+	}
+	b.WriteString("#\n")
+
+	if len(res.SkippedSensitive) > 0 {
+		b.WriteString("# Excluded from this plaintext backup (high-sensitivity).\n")
+		b.WriteString("# Carry these age-encrypted with: dothaven chezmoi-export --apply\n")
+		excl := append([]string(nil), res.SkippedSensitive...)
+		sort.Strings(excl)
+		for _, d := range excl {
+			fmt.Fprintf(&b, "#   %s\n", d)
+		}
+	} else {
+		b.WriteString("# Excluded: none.\n")
+	}
+	return b.String()
 }
 
 // copyDir mirrors a directory recursively (dotfiles included). A directory entry

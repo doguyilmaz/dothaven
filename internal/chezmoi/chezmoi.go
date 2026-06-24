@@ -6,6 +6,7 @@ package chezmoi
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode"
@@ -15,13 +16,16 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
 
-// PlanItem is one path chezmoi will add, with the encrypt decision and why.
+// PlanItem is one path chezmoi will add, with the encrypt/template decision and
+// why. Encrypt and Template are mutually exclusive: secrets are encrypted, plain
+// host-varying configs are templated, everything else is added verbatim.
 type PlanItem struct {
-	ID      string
-	Src     string
-	Kind    string // "file" | "dir"
-	Encrypt bool
-	Reason  string
+	ID       string
+	Src      string
+	Kind     string // "file" | "dir"
+	Encrypt  bool
+	Template bool
+	Reason   string
 }
 
 func contains(list []string, s string) bool {
@@ -63,13 +67,38 @@ func PlanExport(entries []registry.Entry, home string, fileExists func(string) b
 			encrypt = true
 			reason = "secret detected"
 		}
+		// A plain, host-varying config is added as a template so its absolute
+		// home paths port to a new machine. Never both — secrets are encrypted.
+		template := false
+		if !encrypt && ShouldTemplate(e) {
+			template = true
+			reason = "templated (host paths)"
+		}
 		kind := "file"
 		if isDir {
 			kind = "dir"
 		}
-		items = append(items, PlanItem{ID: e.ID, Src: src, Kind: kind, Encrypt: encrypt, Reason: reason})
+		items = append(items, PlanItem{ID: e.ID, Src: src, Kind: kind, Encrypt: encrypt, Template: template, Reason: reason})
 	}
 	return items
+}
+
+// syncStateEditors are editor settings entries whose app also syncs the same
+// files from the cloud (VS Code / Cursor "Settings Sync").
+var syncStateEditors = map[string]bool{"editor.vscode.settings": true, "editor.cursor": true}
+
+// SettingsSyncConflicts reports plan sources whose editor has built-in cloud
+// Settings Sync active (a sibling `sync/` state dir next to the settings file).
+// chezmoi apply and that sync will both rewrite the file, producing endless
+// drift, so the user should disable one. exists is injected (env.Exists).
+func SettingsSyncConflicts(plan []PlanItem, exists func(string) bool) []string {
+	var hits []string
+	for _, p := range plan {
+		if syncStateEditors[p.ID] && exists(filepath.Join(filepath.Dir(p.Src), "sync")) {
+			hits = append(hits, p.Src)
+		}
+	}
+	return hits
 }
 
 func anyHigh(findings []scan.Finding) bool {
@@ -214,13 +243,16 @@ func PickInstallSpec(it snapshot.Item, pin bool) string {
 
 // Manifest is the set of reinstallable packages captured for the install script.
 type Manifest struct {
-	Brewfile     string
-	NodeVersions []string
-	BunGlobals   []string
-	NpmGlobals   []string
-	PnpmGlobals  []string
-	CargoCrates  []string
-	DenoBins     []string
+	Brewfile         string
+	NodeVersions     []string
+	BunGlobals       []string
+	NpmGlobals       []string
+	PnpmGlobals      []string
+	CargoCrates      []string
+	DenoBins         []string
+	PipxPackages     []string
+	CursorExtensions []string // VS Code extensions ride in the Brewfile; Cursor's don't
+	RustToolchains   []string
 }
 
 // CrossManagerDuplicates are names installed by more than one JS global manager
@@ -306,6 +338,19 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 			body[i] = fmt.Sprintf("  cargo install %s || true", c)
 		}
 		blocks = append(blocks, guarded("cargo", body...))
+	}
+
+	// Inventory that collect captures but the script used to drop. Each is
+	// command-guarded and idempotent, so re-running apply is safe. VS Code
+	// extensions are intentionally absent — they ride in the Brewfile already.
+	if b, ok := installBlock("pipx", "pipx install", m.PipxPackages); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("rustup", "rustup toolchain install", m.RustToolchains); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("cursor", "cursor --install-extension", m.CursorExtensions); ok {
+		blocks = append(blocks, b)
 	}
 
 	if len(blocks) == 0 {
