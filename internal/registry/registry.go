@@ -206,6 +206,19 @@ var Entries = []Entry{
 	{ID: "lang.yarnrc", Name: ".yarnrc.yml", Category: "lang", Kind: File, BackupDest: "lang/js/.yarnrc.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.yarnrc.yml", "linux": "~/.yarnrc.yml"}},
 	{ID: "lang.iex", Name: ".iex.exs", Category: "lang", Kind: File, BackupDest: "lang/elixir/.iex.exs", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.iex.exs", "linux": "~/.iex.exs"}},
 	{ID: "lang.julia", Name: "Julia startup", Category: "lang", Kind: File, BackupDest: "lang/julia/startup.jl", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.julia/config/startup.jl", "linux": "~/.julia/config/startup.jl"}},
+
+	// More cloud / devops / git-CLI coverage. Credential-bearing entries are High.
+	{ID: "git.gh.hosts", Name: "GitHub CLI hosts", Category: "git", Kind: File, BackupDest: "git/gh/hosts.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/gh/hosts.yml", "linux": "~/.config/gh/hosts.yml", "windows": "%APPDATA%/GitHub CLI/hosts.yml"}},
+	{ID: "git.glab", Name: "GitLab CLI", Category: "git", Kind: File, BackupDest: "git/glab/config.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/glab-cli/config.yml", "linux": "~/.config/glab-cli/config.yml"}},
+	{ID: "cloud.teleport", Name: "Teleport (tsh)", Category: "cloud", Kind: Dir, BackupDest: "cloud/tsh", Sensitivity: High, Paths: map[string]string{"darwin": "~/.tsh", "linux": "~/.tsh"}},
+	{ID: "cloud.ngrok", Name: "ngrok", Category: "cloud", Kind: File, BackupDest: "cloud/ngrok/ngrok.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/Library/Application Support/ngrok/ngrok.yml", "linux": "~/.config/ngrok/ngrok.yml"}},
+	{ID: "cloud.scaleway", Name: "Scaleway CLI", Category: "cloud", Kind: File, BackupDest: "cloud/scw/config.yaml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/scw/config.yaml", "linux": "~/.config/scw/config.yaml"}},
+	{ID: "cloud.argocd", Name: "Argo CD", Category: "cloud", Kind: File, BackupDest: "cloud/argocd/config", Sensitivity: High, Paths: map[string]string{"darwin": "~/.config/argocd/config", "linux": "~/.config/argocd/config"}},
+	{ID: "cloud.onepassword", Name: "1Password CLI", Category: "cloud", Kind: File, BackupDest: "cloud/op/config.json", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.config/op/config", "linux": "~/.config/op/config"}},
+	{ID: "devops.ansible", Name: "Ansible config", Category: "devops", Kind: File, BackupDest: "devops/ansible.cfg", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.ansible.cfg", "linux": "~/.ansible.cfg"}},
+	{ID: "devops.terraformrc", Name: "Terraform CLI config", Category: "devops", Kind: File, BackupDest: "devops/terraform/.terraformrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.terraformrc", "linux": "~/.terraformrc"}},
+	{ID: "devops.packer", Name: "Packer config", Category: "devops", Kind: File, BackupDest: "devops/.packerconfig", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.packerconfig", "linux": "~/.packerconfig"}},
+	{ID: "devops.skaffold", Name: "Skaffold config", Category: "devops", Kind: File, BackupDest: "devops/skaffold/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.skaffold/config", "linux": "~/.skaffold/config"}},
 }
 
 // ResolvePath expands an entry's path template for the current OS ("" if the
