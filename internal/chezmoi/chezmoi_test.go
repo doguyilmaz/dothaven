@@ -142,6 +142,24 @@ func TestCrossManagerDuplicates(t *testing.T) {
 	}
 }
 
+func TestSettingsSyncConflicts(t *testing.T) {
+	plan := []PlanItem{
+		{ID: "editor.vscode.settings", Src: "/u/Library/Application Support/Code/User/settings.json"},
+		{ID: "editor.cursor", Src: "/u/Library/Application Support/Cursor/User/settings.json"},
+		{ID: "shell.zshrc", Src: "/u/.zshrc"},
+	}
+	// Only VS Code's sync state dir exists.
+	exists := func(p string) bool { return strings.HasSuffix(p, "Code/User/sync") }
+	got := SettingsSyncConflicts(plan, exists)
+	if len(got) != 1 || got[0] != "/u/Library/Application Support/Code/User/settings.json" {
+		t.Errorf("expected only the VS Code settings flagged, got %v", got)
+	}
+	// No sync dirs → no conflicts.
+	if c := SettingsSyncConflicts(plan, func(string) bool { return false }); len(c) != 0 {
+		t.Errorf("expected no conflicts, got %v", c)
+	}
+}
+
 func TestBuildPackageInstallScript(t *testing.T) {
 	if _, ok := BuildPackageInstallScript(Manifest{}); ok {
 		t.Error("empty manifest should produce no script")

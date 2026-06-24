@@ -6,6 +6,7 @@ package chezmoi
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode"
@@ -80,6 +81,24 @@ func PlanExport(entries []registry.Entry, home string, fileExists func(string) b
 		items = append(items, PlanItem{ID: e.ID, Src: src, Kind: kind, Encrypt: encrypt, Template: template, Reason: reason})
 	}
 	return items
+}
+
+// syncStateEditors are editor settings entries whose app also syncs the same
+// files from the cloud (VS Code / Cursor "Settings Sync").
+var syncStateEditors = map[string]bool{"editor.vscode.settings": true, "editor.cursor": true}
+
+// SettingsSyncConflicts reports plan sources whose editor has built-in cloud
+// Settings Sync active (a sibling `sync/` state dir next to the settings file).
+// chezmoi apply and that sync will both rewrite the file, producing endless
+// drift, so the user should disable one. exists is injected (env.Exists).
+func SettingsSyncConflicts(plan []PlanItem, exists func(string) bool) []string {
+	var hits []string
+	for _, p := range plan {
+		if syncStateEditors[p.ID] && exists(filepath.Join(filepath.Dir(p.Src), "sync")) {
+			hits = append(hits, p.Src)
+		}
+	}
+	return hits
 }
 
 func anyHigh(findings []scan.Finding) bool {

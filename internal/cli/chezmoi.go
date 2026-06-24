@@ -219,6 +219,14 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("  + run_onchange install script (%s)\n", strings.Join(groups, ", "))
 			}
 
+			if conflicts := chezmoi.SettingsSyncConflicts(plan, env.Exists); len(conflicts) > 0 {
+				fmt.Println("\n⚠ Editor Settings Sync looks active — chezmoi and the editor's cloud sync will")
+				fmt.Println("  both rewrite these, causing drift. Disable one (chezmoi-managed or Settings Sync):")
+				for _, c := range conflicts {
+					fmt.Printf("    %s\n", c)
+				}
+			}
+
 			if hasEncrypt {
 				fmt.Printf("\n🔒 Encrypted paths are recoverable only with your age key (%s/.config/chezmoi/key.txt).\n   Back it up offline before you rely on this — a lost key means those files are gone for good.\n", home)
 			}
