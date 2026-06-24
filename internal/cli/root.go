@@ -34,6 +34,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		newDiffCmd(env),
 		newChezmoiExportCmd(env),
 		newMigrateCmd(env),
+		newDefaultsCmd(env),
 		newInitCmd(env),
 		newScanCmd(env),
 		newSecurityCmd(env),

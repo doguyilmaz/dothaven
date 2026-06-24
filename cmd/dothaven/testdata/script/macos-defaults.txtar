@@ -1,0 +1,11 @@
+# `defaults export` captures curated macOS app prefs (only domains with keys);
+# `defaults import` replays them. Driven through a fake `defaults`.
+exec dothaven defaults export -o $WORK/out
+stdout 'iTerm2'
+stdout 'Exported 1 domain'
+exists $WORK/out/macos-defaults/com.googlecode.iterm2.plist
+! exists $WORK/out/macos-defaults/com.apple.Terminal.plist
+
+exec dothaven defaults import $WORK/out
+stdout 'com.googlecode.iterm2'
+stdout 'Imported 1 domain'
