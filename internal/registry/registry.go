@@ -188,6 +188,24 @@ var Entries = []Entry{
 
 	// Secrets (carried encrypted) — declarative: a no-op until ~/.gnupg has real keys.
 	{ID: "secrets.gnupg", Name: "GnuPG home", Category: "secrets", Kind: Dir, BackupDest: "secrets/gnupg", Sensitivity: High, Paths: map[string]string{"darwin": "~/.gnupg", "linux": "~/.gnupg"}},
+
+	// Language & toolchain config (lang). Files that hold tokens by design are
+	// High (encrypted on export, excluded from a plaintext backup).
+	{ID: "lang.gemrc", Name: ".gemrc", Category: "lang", Kind: File, BackupDest: "lang/ruby/.gemrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.gemrc", "linux": "~/.gemrc"}},
+	{ID: "lang.bundle", Name: "Bundler config", Category: "lang", Kind: File, BackupDest: "lang/ruby/bundle-config", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.bundle/config", "linux": "~/.bundle/config"}},
+	{ID: "lang.irbrc", Name: ".irbrc", Category: "lang", Kind: File, BackupDest: "lang/ruby/.irbrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.irbrc", "linux": "~/.irbrc"}},
+	{ID: "lang.pip", Name: "pip config", Category: "lang", Kind: File, BackupDest: "lang/python/pip.conf", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/Library/Application Support/pip/pip.conf", "linux": "~/.config/pip/pip.conf"}},
+	{ID: "lang.condarc", Name: ".condarc", Category: "lang", Kind: File, BackupDest: "lang/python/.condarc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.condarc", "linux": "~/.condarc"}},
+	{ID: "lang.poetry.auth", Name: "Poetry auth", Category: "lang", Kind: File, BackupDest: "lang/python/poetry-auth.toml", Sensitivity: High, Paths: map[string]string{"darwin": "~/Library/Application Support/pypoetry/auth.toml", "linux": "~/.config/pypoetry/auth.toml"}},
+	{ID: "lang.go.env", Name: "go env", Category: "lang", Kind: File, BackupDest: "lang/go/env", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/go/env", "linux": "~/.config/go/env"}},
+	{ID: "lang.cargo.config", Name: "Cargo config", Category: "lang", Kind: File, BackupDest: "lang/rust/config.toml", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.cargo/config.toml", "linux": "~/.cargo/config.toml"}},
+	{ID: "lang.cargo.credentials", Name: "Cargo credentials", Category: "lang", Kind: File, BackupDest: "lang/rust/credentials.toml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.cargo/credentials.toml", "linux": "~/.cargo/credentials.toml"}},
+	{ID: "lang.composer", Name: "Composer config", Category: "lang", Kind: File, BackupDest: "lang/php/composer.json", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.composer/composer.json", "linux": "~/.config/composer/composer.json"}},
+	{ID: "lang.composer.auth", Name: "Composer auth", Category: "lang", Kind: File, BackupDest: "lang/php/auth.json", Sensitivity: High, Paths: map[string]string{"darwin": "~/.composer/auth.json", "linux": "~/.config/composer/auth.json"}},
+	{ID: "lang.nuget", Name: "NuGet config", Category: "lang", Kind: File, BackupDest: "lang/dotnet/NuGet.Config", Sensitivity: High, Paths: map[string]string{"darwin": "~/.nuget/NuGet/NuGet.Config", "linux": "~/.nuget/NuGet/NuGet.Config", "windows": "%APPDATA%/NuGet/NuGet.Config"}},
+	{ID: "lang.yarnrc", Name: ".yarnrc.yml", Category: "lang", Kind: File, BackupDest: "lang/js/.yarnrc.yml", Sensitivity: High, Paths: map[string]string{"darwin": "~/.yarnrc.yml", "linux": "~/.yarnrc.yml"}},
+	{ID: "lang.iex", Name: ".iex.exs", Category: "lang", Kind: File, BackupDest: "lang/elixir/.iex.exs", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.iex.exs", "linux": "~/.iex.exs"}},
+	{ID: "lang.julia", Name: "Julia startup", Category: "lang", Kind: File, BackupDest: "lang/julia/startup.jl", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.julia/config/startup.jl", "linux": "~/.julia/config/startup.jl"}},
 }
 
 // ResolvePath expands an entry's path template for the current OS ("" if the
