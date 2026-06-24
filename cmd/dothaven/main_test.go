@@ -34,22 +34,53 @@ func fakeChezmoi() {
 	case "--version":
 		fmt.Println("chezmoi version v2.0.0 (fake)")
 	case "source-path":
-		src := os.Getenv("CHEZMOI_SOURCE")
-		if src == "" {
-			src = filepath.Join(os.Getenv("HOME"), ".local", "share", "chezmoi")
+		// `source-path <target>` → that file's .tmpl source; bare → the root.
+		if len(args) >= 2 {
+			fmt.Println(chezmoiTmplPath(args[len(args)-1]))
+		} else {
+			fmt.Println(chezmoiSrcRoot())
 		}
-		fmt.Println(src)
 	case "add":
-		if sub := os.Getenv("CHEZMOI_FAIL_ON"); sub != "" {
-			for _, a := range args[1:] {
-				if strings.Contains(a, sub) {
-					fmt.Fprintln(os.Stderr, "fake chezmoi: add failed")
-					os.Exit(1)
-				}
+		target := args[len(args)-1]
+		if sub := os.Getenv("CHEZMOI_FAIL_ON"); sub != "" && strings.Contains(target, sub) {
+			fmt.Fprintln(os.Stderr, "fake chezmoi: add failed")
+			os.Exit(1)
+		}
+		isTemplate := false
+		for _, a := range args[1:] {
+			if a == "--template" {
+				isTemplate = true
+			}
+		}
+		// Emulate `add --template`: copy the target into the source state as a
+		// .tmpl so the export's source-path lookup + rewrite can find it.
+		if isTemplate {
+			if raw, err := os.ReadFile(target); err == nil {
+				dst := chezmoiTmplPath(target)
+				_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+				_ = os.WriteFile(dst, raw, 0o644)
 			}
 		}
 	}
 	os.Exit(0)
+}
+
+func chezmoiSrcRoot() string {
+	if s := os.Getenv("CHEZMOI_SOURCE"); s != "" {
+		return s
+	}
+	return filepath.Join(os.Getenv("HOME"), ".local", "share", "chezmoi")
+}
+
+// chezmoiTmplPath mirrors chezmoi's source naming for a template: ~/.gitconfig
+// → <source>/dot_gitconfig.tmpl. Deterministic so add and source-path agree
+// across the two separate fake-process invocations.
+func chezmoiTmplPath(target string) string {
+	base := filepath.Base(target)
+	if strings.HasPrefix(base, ".") {
+		base = "dot_" + base[1:]
+	}
+	return filepath.Join(chezmoiSrcRoot(), base+".tmpl")
 }
 
 // TestScripts runs every .txtar in testdata/script against the real binary in a

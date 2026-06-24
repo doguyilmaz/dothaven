@@ -1,0 +1,16 @@
+# A host-varying config (git) is added as a chezmoi template, not a verbatim copy,
+# so its absolute home paths can port to a new machine.
+env CHEZMOI_SOURCE=$WORK/source
+mkdir $WORK/source
+exec dothaven chezmoi-export --apply --only git
+stdout 'add --template'
+stdout 'templated'
+exists $WORK/source/dot_gitconfig.tmpl
+! stderr 'failed'
+
+-- .gitconfig --
+[user]
+	name = Dev
+	email = dev@example.com
+[core]
+	excludesfile = ~/.gitignore_global

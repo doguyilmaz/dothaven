@@ -15,13 +15,16 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
 
-// PlanItem is one path chezmoi will add, with the encrypt decision and why.
+// PlanItem is one path chezmoi will add, with the encrypt/template decision and
+// why. Encrypt and Template are mutually exclusive: secrets are encrypted, plain
+// host-varying configs are templated, everything else is added verbatim.
 type PlanItem struct {
-	ID      string
-	Src     string
-	Kind    string // "file" | "dir"
-	Encrypt bool
-	Reason  string
+	ID       string
+	Src      string
+	Kind     string // "file" | "dir"
+	Encrypt  bool
+	Template bool
+	Reason   string
 }
 
 func contains(list []string, s string) bool {
@@ -63,11 +66,18 @@ func PlanExport(entries []registry.Entry, home string, fileExists func(string) b
 			encrypt = true
 			reason = "secret detected"
 		}
+		// A plain, host-varying config is added as a template so its absolute
+		// home paths port to a new machine. Never both — secrets are encrypted.
+		template := false
+		if !encrypt && ShouldTemplate(e) {
+			template = true
+			reason = "templated (host paths)"
+		}
 		kind := "file"
 		if isDir {
 			kind = "dir"
 		}
-		items = append(items, PlanItem{ID: e.ID, Src: src, Kind: kind, Encrypt: encrypt, Reason: reason})
+		items = append(items, PlanItem{ID: e.ID, Src: src, Kind: kind, Encrypt: encrypt, Template: template, Reason: reason})
 	}
 	return items
 }

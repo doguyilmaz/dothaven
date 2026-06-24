@@ -30,6 +30,24 @@ func runShell(ctx context.Context, name string, args ...string) (string, error) 
 	return strings.TrimSpace(string(out)), err
 }
 
+// templatizeSource rewrites the just-added chezmoi source template for src,
+// replacing absolute home paths with chezmoi's homeDir variable so the config
+// ports to a new machine. Best-effort: any lookup/read/write failure leaves the
+// template as a verbatim copy (still valid), so it never fails the export.
+func templatizeSource(ctx context.Context, src, home string) {
+	sp, err := runShell(ctx, "chezmoi", "source-path", src)
+	if err != nil || sp == "" {
+		return
+	}
+	raw, err := os.ReadFile(sp)
+	if err != nil {
+		return
+	}
+	if out, changed := chezmoi.Templatize(string(raw), home); changed {
+		_ = os.WriteFile(sp, []byte(out), 0o644)
+	}
+}
+
 func planHasSrc(plan []chezmoi.PlanItem, src string) bool {
 	for _, p := range plan {
 		if p.Src == src {
@@ -177,8 +195,11 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("chezmoi-export plan — %d path(s), %d encrypted:\n\n", len(plan), encrypted)
 				for _, p := range plan {
 					verb := "   add          "
-					if p.Encrypt {
+					switch {
+					case p.Encrypt:
 						verb = "🔒 add --encrypt"
+					case p.Template:
+						verb = "📝 add --template"
 					}
 					fmt.Printf("  %s  %s  (%s)\n", verb, p.Src, p.Reason)
 				}
@@ -255,8 +276,11 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			var failed, failedEncrypted int
 			for _, p := range plan {
 				addArgs := []string{"add", p.Src}
-				if p.Encrypt {
+				switch {
+				case p.Encrypt:
 					addArgs = []string{"add", "--encrypt", p.Src}
+				case p.Template:
+					addArgs = []string{"add", "--template", p.Src}
 				}
 				if out, err := runShell(ctx, "chezmoi", addArgs...); err != nil {
 					fmt.Fprintf(os.Stderr, "  ✗ %s: %v %s\n", p.Src, err, out)
@@ -266,9 +290,15 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					}
 					continue
 				}
+				if p.Template {
+					templatizeSource(ctx, p.Src, home)
+				}
 				prefix := ""
-				if p.Encrypt {
+				switch {
+				case p.Encrypt:
 					prefix = "encrypted "
+				case p.Template:
+					prefix = "templated "
 				}
 				fmt.Printf("  ✔ %s%s\n", prefix, p.Src)
 			}
