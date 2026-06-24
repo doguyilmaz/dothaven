@@ -257,6 +257,11 @@ type Manifest struct {
 	ComposerGlobals  []string
 	PubGlobals       []string
 	DotnetTools      []string
+	AptPackages      []string
+	DnfPackages      []string
+	PacmanPackages   []string
+	SnapPackages     []string
+	FlatpakPackages  []string
 }
 
 // CrossManagerDuplicates are names installed by more than one JS global manager
@@ -366,6 +371,25 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 		blocks = append(blocks, b)
 	}
 	if b, ok := installBlock("dotnet", "dotnet tool install --global", m.DotnetTools); ok {
+		blocks = append(blocks, b)
+	}
+
+	// Linux system packages — guarded by manager presence; sudo may prompt once
+	// on an interactive apply, and every line is `|| true` so a missing package
+	// never aborts the script.
+	if b, ok := installBlock("apt-get", "sudo apt-get install -y", m.AptPackages); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("dnf", "sudo dnf install -y", m.DnfPackages); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("pacman", "sudo pacman -S --noconfirm --needed", m.PacmanPackages); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("snap", "sudo snap install", m.SnapPackages); ok {
+		blocks = append(blocks, b)
+	}
+	if b, ok := installBlock("flatpak", "flatpak install -y flathub", m.FlatpakPackages); ok {
 		blocks = append(blocks, b)
 	}
 

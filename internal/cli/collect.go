@@ -31,6 +31,7 @@ func defaultCollectors() []collect.Collector {
 		collect.AppsCollector,
 		collect.HomebrewCollector,
 		collect.PackagesCollector,
+		collect.LinuxPackagesCollector,
 		collect.VersionManagersCollector,
 		collect.RuntimesCollector,
 		collect.EditorsExtCollector,

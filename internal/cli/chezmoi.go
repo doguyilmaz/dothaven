@@ -82,6 +82,7 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	pkgs := collect.PackagesCollector(cctx)
 	runtimes := collect.RuntimesCollector(cctx)
 	exts := collect.EditorsExtCollector(cctx)
+	linux := collect.LinuxPackagesCollector(cctx)
 
 	specs := func(snap snapshot.Snapshot, id string) []string {
 		var out []string
@@ -122,6 +123,11 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 		ComposerGlobals:  specs(pkgs, "packages.composer"),
 		PubGlobals:       specs(pkgs, "packages.pub"),
 		DotnetTools:      specs(pkgs, "packages.dotnet"),
+		AptPackages:      specs(linux, "packages.apt"),
+		DnfPackages:      specs(linux, "packages.dnf"),
+		PacmanPackages:   specs(linux, "packages.pacman"),
+		SnapPackages:     specs(linux, "packages.snap"),
+		FlatpakPackages:  specs(linux, "packages.flatpak"),
 	}
 }
 
@@ -334,6 +340,8 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					manifest.PnpmGlobals, manifest.CargoCrates, manifest.DenoBins = nil, nil, nil
 					manifest.PipxPackages, manifest.CursorExtensions, manifest.RustToolchains = nil, nil, nil
 					manifest.UvTools, manifest.ComposerGlobals, manifest.PubGlobals, manifest.DotnetTools = nil, nil, nil, nil
+					manifest.AptPackages, manifest.DnfPackages, manifest.PacmanPackages = nil, nil, nil
+					manifest.SnapPackages, manifest.FlatpakPackages = nil, nil
 				}
 				if script, ok := chezmoi.BuildPackageInstallScript(manifest); ok && sourcePath != "" {
 					if err := os.WriteFile(sourcePath+"/run_onchange_install-packages.sh", []byte(script), 0o755); err != nil {

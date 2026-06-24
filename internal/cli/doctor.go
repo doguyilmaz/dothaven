@@ -79,6 +79,16 @@ func remediationCommand(id string) string {
 		return "dart pub global activate"
 	case "packages.dotnet":
 		return "dotnet tool install --global"
+	case "packages.apt":
+		return "sudo apt-get install -y"
+	case "packages.dnf":
+		return "sudo dnf install -y"
+	case "packages.pacman":
+		return "sudo pacman -S --needed"
+	case "packages.snap":
+		return "sudo snap install"
+	case "packages.flatpak":
+		return "flatpak install -y flathub"
 	case "runtimes.rust.crates":
 		return "cargo install"
 	case "runtimes.rust.toolchains":
