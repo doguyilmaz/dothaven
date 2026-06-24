@@ -219,6 +219,17 @@ var Entries = []Entry{
 	{ID: "devops.terraformrc", Name: "Terraform CLI config", Category: "devops", Kind: File, BackupDest: "devops/terraform/.terraformrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.terraformrc", "linux": "~/.terraformrc"}},
 	{ID: "devops.packer", Name: "Packer config", Category: "devops", Kind: File, BackupDest: "devops/.packerconfig", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.packerconfig", "linux": "~/.packerconfig"}},
 	{ID: "devops.skaffold", Name: "Skaffold config", Category: "devops", Kind: File, BackupDest: "devops/skaffold/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.skaffold/config", "linux": "~/.skaffold/config"}},
+
+	// Git ecosystem: XDG config, SSH-signing allowlist, global hooks, companions.
+	{ID: "git.xdg.config", Name: "XDG git config", Category: "git", Kind: File, BackupDest: "git/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/config", "linux": "~/.config/git/config"}},
+	{ID: "git.xdg.ignore", Name: "XDG git ignore", Category: "git", Kind: File, BackupDest: "git/ignore", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/ignore", "linux": "~/.config/git/ignore"}},
+	{ID: "git.xdg.attributes", Name: "XDG git attributes", Category: "git", Kind: File, BackupDest: "git/attributes", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/attributes", "linux": "~/.config/git/attributes"}},
+	{ID: "git.allowed_signers", Name: "git allowed_signers", Category: "git", Kind: File, BackupDest: "git/allowed_signers", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/allowed_signers", "linux": "~/.config/git/allowed_signers"}},
+	{ID: "git.hooks", Name: "Global git hooks", Category: "git", Kind: Dir, BackupDest: "git/hooks", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/git/hooks", "linux": "~/.config/git/hooks"}},
+	{ID: "git.lazygit", Name: "lazygit", Category: "git", Kind: File, BackupDest: "git/lazygit/config.yml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/Library/Application Support/lazygit/config.yml", "linux": "~/.config/lazygit/config.yml"}},
+	{ID: "git.jj", Name: "Jujutsu config", Category: "git", Kind: File, BackupDest: "git/jj/config.toml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/jj/config.toml", "linux": "~/.config/jj/config.toml"}},
+	{ID: "git.gitui", Name: "gitui", Category: "git", Kind: Dir, BackupDest: "git/gitui", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/gitui", "linux": "~/.config/gitui"}},
+	{ID: "git.tig", Name: ".tigrc", Category: "git", Kind: File, BackupDest: "git/.tigrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.tigrc", "linux": "~/.tigrc"}},
 }
 
 // ResolvePath expands an entry's path template for the current OS ("" if the
