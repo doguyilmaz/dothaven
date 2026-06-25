@@ -231,8 +231,10 @@ dothaven compare      # diff the two newest reports in ./reports
 
 Once a snapshot looks right, hand the actual files off to chezmoi for storage,
 age-encryption, and applying on another machine. `dothaven chezmoi-export` builds
-the plan: plain `chezmoi add` for ordinary configs and `chezmoi add --encrypt`
-for anything containing a high-severity secret.
+the plan: plain `chezmoi add` for ordinary configs, `chezmoi add --encrypt` for
+anything containing a high-severity secret, and `chezmoi add --template` for
+host-varying configs (shell rc, gitconfig, editor settings) — whose absolute home
+paths are rewritten to `{{ .chezmoi.homeDir }}` so they port across machines.
 
 It is a dry run by default — nothing is changed until you pass `--apply`.
 
@@ -243,11 +245,15 @@ dothaven chezmoi-export
 ```text
 chezmoi-export plan — 4 path(s), 1 encrypted:
 
-     add            /Users/you/.config/ghostty/config  (config)
-     add            /Users/you/.gitconfig  (config)
-     add            /Users/you/.zshrc  (config)
+     add            /Users/you/.gemini/GEMINI.md  (plain)
+  📝 add --template  /Users/you/.gitconfig  (templated (host paths))
+  📝 add --template  /Users/you/.zshrc  (templated (host paths))
   🔒 add --encrypt  /Users/you/.ssh/id_ed25519  (ssh private key)
 ```
+
+On the fresh machine, `dothaven migrate` runs the other half: it checks the
+prerequisites and applies your chezmoi source (pulling configs and running the
+install script). See [Commands](../commands#migrate).
 
 Useful flags:
 

@@ -222,9 +222,9 @@ At this point the old machine's work is done. Make sure you still have:
 age is the encryption backend. **If you lose your age key, every encrypted file
 in your chezmoi repository is unrecoverable** — there is no recovery path. Before
 you wipe the old machine, back the key up somewhere safe and offline (a password
-manager or hardware-backed store). The default key location is
-`~/.config/age/`; check `~/.config/chezmoi/chezmoi.toml` for the exact path your
-setup uses.
+manager or hardware-backed store). dothaven and `init` use
+`~/.config/chezmoi/key.txt`; check `~/.config/chezmoi/chezmoi.toml` for the exact
+path your setup uses.
 {{< /callout >}}
 
 ## Part 2 — New machine
@@ -238,10 +238,10 @@ encrypted entry.
 
 ```bash
 brew install chezmoi age
-mkdir -p ~/.config/age
+mkdir -p ~/.config/chezmoi
 # Restore the key you backed up in Step 5, e.g.:
-cp /Volumes/backup/key.txt ~/.config/age/key.txt
-chmod 600 ~/.config/age/key.txt
+cp /Volumes/backup/key.txt ~/.config/chezmoi/key.txt
+chmod 600 ~/.config/chezmoi/key.txt
 ```
 
 {{< callout type="warning" >}}
