@@ -51,6 +51,22 @@ Backup saved to: /Users/you/project/reports/backup-mbp-20260604091233
 (The per-category line is rendered from the actual category counts; `git (2), shell (3)`
 means two files in the `git` category, three in `shell`.)
 
+### The MANIFEST
+
+Every backup tree includes a `MANIFEST.txt` (written before any archiving, so it travels
+with the backup). It records the source host and OS, the dothaven version, whether
+redaction was on, the per-category file counts, **the high-sensitivity paths that were
+deliberately excluded**, and the restore command. The exclusion list is the
+safety-critical part: a backup you can't audit for completeness is dangerous, so it lives
+inside the backup rather than scrolling past once in the console.
+
+{{< callout type="warning" >}}
+On a terminal, `backup` first prints a reminder that it captures **saved config, not
+unsaved editor buffers or in-memory state**. Save and quit your editors before relying on
+a backup to wipe a machine — hot-exit drafts and unsaved tabs are not on disk and are not
+captured.
+{{< /callout >}}
+
 ### The copy engine
 
 Each registry target is either a single file or a directory:
@@ -164,6 +180,12 @@ By default, `restore` is conservative:
 - **`new`** files are written.
 - **`conflict`** files are **skipped** — your existing file is left untouched.
 - **`same`** and **`redacted`** files are never written.
+
+Three safety guarantees apply to every write:
+
+- **Owner-only perms for secrets.** A file from a medium/high-sensitivity registry entry is written `0600`, so a secret restored from a `--no-redact` backup never lands world-readable; ordinary configs keep `0644`.
+- **Path containment.** A backed-up path that would resolve outside its target directory (a `../` traversal in a crafted backup) is refused — restore never writes outside the destination tree.
+- **Symlink refusal.** If a live target is a symlink, restore skips it rather than following it (which would modify whatever it points at) and reports the count so you can resolve it by hand.
 
 ```text
 $ dothaven restore ~/backups/backup-mbp-20260604091233

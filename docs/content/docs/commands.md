@@ -3,7 +3,7 @@ title: Commands
 weight: 5
 ---
 
-dothaven is a single static Go binary built on [Cobra](https://github.com/spf13/cobra). It ships eleven commands plus Cobra's auto-generated `help` and `completion`. This page is the complete reference: purpose, synopsis, every flag with its default, argument rules, and an example for each.
+dothaven is a single static Go binary built on [Cobra](https://github.com/spf13/cobra). It ships the commands below — plus the interactive [`tui`](../interactive) launcher and Cobra's auto-generated `help` and `completion`. This page is the complete reference: purpose, synopsis, every flag with its default, argument rules, and an example for each.
 
 dothaven covers the **discovery, audit, and export** half of the workflow; [chezmoi](https://www.chezmoi.io/) handles **storage, age-encryption, and apply** on the target machine. Several commands stop at planning by design — they print what they would do and leave execution to chezmoi.
 
@@ -298,7 +298,7 @@ Plan (or apply) adding configs to chezmoi, encrypting secrets.
 dothaven chezmoi-export [flags]
 ```
 
-Builds a chezmoi-add plan — plain `add` for ordinary configs, `add --encrypt` for secrets — plus a `run_onchange` install script for Homebrew and global packages. **Dry-run by default:** it prints the plan and stops. With `--apply`, it executes against chezmoi (which must be installed, with a configured age key). On apply it also merges `.chezmoiignore` patterns for GnuPG runtime cruft when relevant and writes `run_onchange_install-packages.sh` into the chezmoi source path.
+Builds a chezmoi-add plan — plain `add` for ordinary configs, `add --encrypt` for secrets, and `add --template` for host-varying configs (shell rc, gitconfig, editor settings), whose absolute home paths are rewritten to `{{ .chezmoi.homeDir }}` so they port across machines — plus a `run_onchange` install script for Homebrew and global packages. **Dry-run by default:** it prints the plan and stops. With `--apply`, it executes against chezmoi (which must be installed, with a configured age key). When the plan encrypts anything it warns that those files are recoverable only with your age key and, on a terminal, asks you to confirm the key is backed up. If your editor's built-in Settings Sync looks active, it warns that cloud sync and chezmoi will both rewrite those files. On apply it also merges `.chezmoiignore` patterns for GnuPG runtime cruft when relevant and writes `run_onchange_install-packages.sh` into the chezmoi source path.
 
 **Arguments:** none.
 
@@ -348,6 +348,56 @@ dothaven init — chezmoi + age bootstrap
 
 Run the commands above, then re-run `dothaven init`.
 ```
+
+### migrate
+
+Set up this machine from your chezmoi source (prereqs → apply → verify).
+
+```text
+dothaven migrate
+```
+
+The clean-machine happy path — one command for the moment you're staring at an empty laptop. It verifies chezmoi is installed and the source repo is initialized (printing guidance and exiting non-zero if not), warns if age encryption isn't configured, asks for confirmation on a terminal, then runs `chezmoi apply` — which pulls your managed configs and runs the generated install script. It finishes by pointing at `chezmoi diff` and `dothaven doctor` to verify. On a non-terminal (CI) it skips the confirmation.
+
+**Arguments:** none.
+
+This command has no flags.
+
+---
+
+## macOS preferences & local services
+
+Two paired commands for config that doesn't live in a `~/.dotfile`: macOS app preferences (binary plists managed by `cfprefsd`) and Homebrew service config (under the brew prefix). Both capture to a directory and replay onto a new machine; both are macOS-oriented and no-op gracefully where the underlying tool is absent.
+
+### defaults
+
+Capture and restore curated macOS app preferences.
+
+```text
+dothaven defaults export [-o dir]
+dothaven defaults import <dir>
+```
+
+`export` runs `defaults export` for a curated allowlist of app domains (iTerm2, Terminal.app, Rectangle, Hammerspoon, AltTab), writing each to an owner-only `.plist` under `<dir>/macos-defaults/`; domains with no preferences are skipped. `import` replays them with `defaults import` — the safe round-trip for `cfprefsd`-managed prefs, since a raw file copy is silently ignored. System domains (Dock/Finder/keyboard) are intentionally excluded: they mix portable keys with host-specific ones (display/Spaces UUIDs, absolute paths) that would corrupt a new machine, and need per-key curation.
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `-o`, `--output` (export) | _(repo `./reports`, else `~/Downloads`)_ | Output directory for the `macos-defaults/` plists. |
+
+### services
+
+Capture and restore Homebrew-managed local service config.
+
+```text
+dothaven services export [-o dir]
+dothaven services import <dir>
+```
+
+`export` captures user-editable service config under `$(brew --prefix)/etc` (nginx, httpd, my.cnf, redis, dnsmasq), writes it owner-only, records the source brew prefix, and warns — without redacting, since it must round-trip — if a file looks secret-bearing (e.g. a password in `my.cnf`). `import` resolves *this* machine's `$(brew --prefix)` and re-points the old prefix to the new one in the content, so Intel/ARM/Linuxbrew paths resolve. The service binaries themselves come back via the Brewfile; databases and other data are out of scope.
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `-o`, `--output` (export) | _(repo `./reports`, else `~/Downloads`)_ | Output directory for the `services/` tree. |
 
 ---
 

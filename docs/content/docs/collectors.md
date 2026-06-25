@@ -56,11 +56,12 @@ The canonical order, from `defaultCollectors()` in
 5. `AppsCollector`
 6. `HomebrewCollector`
 7. `PackagesCollector`
-8. `VersionManagersCollector`
-9. `RuntimesCollector`
-10. `EditorsExtCollector`
-11. `FontsCollector`
-12. `DotfilesSweepCollector`
+8. `LinuxPackagesCollector`
+9. `VersionManagersCollector`
+10. `RuntimesCollector`
+11. `EditorsExtCollector`
+12. `FontsCollector`
+13. `DotfilesSweepCollector`
 
 Meta runs first because it labels the snapshot with host and OS. The registry
 collector is part of the same pipeline; it is declarative (a list of entries)
@@ -79,12 +80,13 @@ The command-backed collectors and the sections they produce:
 | Ollama | `ai.ollama.models` | `ollama` | name / size / modified per model |
 | Apps | `apps.raycast`, `apps.alttab`, `apps.macos` | `ls`, `defaults` | macOS app inventory |
 | Homebrew | `apps.brew.formulae`, `apps.brew.casks`, `apps.brew.bundle` | `brew` | installed formulae, casks, and a restorable Brewfile |
-| Packages | `packages.npm.global`, `packages.bun.global`, `packages.pnpm.global`, `packages.node.fnm`, `packages.deno.bin`, `packages.pipx`, `packages.go.bin` | `npm`, `bun`, `pnpm`, `fnm`, `pipx` (reads `~/.deno/bin`, `~/go/bin`) | global package managers, node versions, pipx + `go install` binaries |
-| VersionManagers | `vm.asdf.versions`, `vm.pyenv.versions`, `vm.rbenv.versions` | `asdf`, `pyenv`, `rbenv` | versions installed via each version manager |
+| Packages | `packages.npm.global`, `packages.bun.global`, `packages.pnpm.global`, `packages.node.fnm`, `packages.deno.bin`, `packages.pipx`, `packages.go.bin`, `packages.uv`, `packages.composer`, `packages.pub`, `packages.dotnet` | `npm`, `bun`, `pnpm`, `fnm`, `pipx`, `uv`, `composer`, `dart`, `dotnet` (reads `~/.deno/bin`, `~/go/bin`) | global package managers + tools, node versions, `go install` binaries |
+| LinuxPackages | `packages.apt`, `packages.dnf`, `packages.pacman`, `packages.snap`, `packages.flatpak` | `apt-mark`, `dnf`, `pacman`, `snap`, `flatpak` | explicitly-installed Linux system packages (no-op off Linux) |
+| VersionManagers | `vm.asdf.versions`, `vm.pyenv.versions`, `vm.rbenv.versions`, `vm.goenv.versions`, `vm.nodenv.versions`, `vm.sdkman.versions`, `vm.proto.versions`, `vm.jenv.versions`, `vm.fvm.versions` | `asdf`, `pyenv`, `rbenv`, `goenv`, `nodenv` (reads `~/.sdkman`, `~/.proto`, `~/.jenv`, `~/.fvm`) | versions installed via each version manager |
 | Runtimes | `runtimes.go`, `runtimes.rust`, `runtimes.rust.toolchains`, `runtimes.rust.crates`, `runtimes.swift`, `runtimes.zig`, `runtimes.xcode`, `runtimes.android`, `runtimes.android.buildTools`, `runtimes.android.platforms` | `go`, `rustc`, `cargo`, `rustup`, `swift`, `zig`, `xcodebuild`, `xcode-select`, `adb` | language / SDK toolchains |
 | EditorsExt | `editor.vscode.extensions`, `editor.cursor.extensions` | `code`, `cursor` | installed editor extensions |
 | Fonts | `fonts.user`, `fonts.system` | none (reads font directories) | user + system installed font files |
-| DotfilesSweep | `home.dotfiles.review`, `home.dotfiles.managed` | `ls` | classifies `~/.X` entries against the registry |
+| DotfilesSweep | `home.dotfiles.review`, `home.dotfiles.managed`, `home.config.review` | `ls` | classifies `~/.X` and `~/.config/*` entries against the registry |
 
 Every section is emitted only when it has content. If a tool is absent or returns
 nothing parseable, its section never appears in the snapshot.
@@ -160,6 +162,10 @@ when non-empty:
 | `packages.deno.bin` | the names in `~/.deno/bin` (directory read, no command) |
 | `packages.pipx` | `pipx list --short` (Python apps; name + version) |
 | `packages.go.bin` | the names in `~/go/bin` (directory read, no command) — `go install`ed binaries |
+| `packages.uv` | `uv tool list` (Python tools) |
+| `packages.composer` | `composer global show --format=json` (PHP) |
+| `packages.pub` | `dart pub global list` (Dart) |
+| `packages.dotnet` | `dotnet tool list --global` (.NET) |
 
 Package items carry name and version columns; the default fnm node version is
 marked `(default)`. `packages.go.bin` captures user tools installed via
@@ -177,9 +183,28 @@ section is emitted only when the tool is present and reports at least one versio
 | `vm.asdf.versions` | `asdf list` (parsed as tool → versions; the current `*` marker is stripped) |
 | `vm.pyenv.versions` | `pyenv versions --bare` (one version per line; `*`, `(set by …)`, and `system` dropped) |
 | `vm.rbenv.versions` | `rbenv versions --bare` (same parsing as pyenv) |
+| `vm.goenv.versions` / `vm.nodenv.versions` | `goenv`/`nodenv versions --bare` (pyenv-style) |
+| `vm.sdkman.versions` | the `~/.sdkman/candidates/<tool>/<version>` dirs (the JVM family — Java/Kotlin/Scala/…); `sdk` is a shell function, so read from disk |
+| `vm.proto.versions` | the `~/.proto/tools/<tool>/<version>` dirs |
+| `vm.jenv.versions` | the `~/.jenv/versions` dirs (Java) |
+| `vm.fvm.versions` | the `~/.fvm/versions` dirs (Flutter) |
 
-`vm.asdf.versions` items carry `[tool, version]` columns; the pyenv / rbenv
-sections are plain version lists.
+`vm.asdf.versions`, `vm.sdkman.versions`, and `vm.proto.versions` items carry
+`[tool, version]` columns; the others are plain version lists.
+
+### LinuxPackages
+
+On Linux, inventories explicitly-installed system packages plus snap/flatpak apps
+(a no-op on other OSes). These feed `doctor` parity and the export's install
+script. Each section is emitted only when the manager is present:
+
+| Section | Source |
+|---------|--------|
+| `packages.apt` | `apt-mark showmanual` |
+| `packages.dnf` | `dnf repoquery --userinstalled --qf %{name}` |
+| `packages.pacman` | `pacman -Qqe` |
+| `packages.snap` | `snap list` (first column) |
+| `packages.flatpak` | `flatpak list --app --columns=application` |
 
 ### Runtimes
 
@@ -232,6 +257,10 @@ non-empty:
 - `home.dotfiles.review` — dot entries that are neither managed nor noise, i.e.
   candidates you may want to add to the registry. Anything not clearly noise lands
   here, so nothing important is hidden.
+- `home.config.review` — it also sweeps one level into `~/.config`, classifying each
+  `~/.config/<tool>` against the registry. Without this, every `~/.config/*` entry
+  reads as "managed" (the registry covers `~/.config` wholesale via its children),
+  silently hiding uncovered tools like sheldon or powershell.
 
 ## Running collectors
 

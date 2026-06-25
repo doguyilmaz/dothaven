@@ -62,8 +62,9 @@ dothaven decides *what* to encrypt; chezmoi *performs* it. It is not itself an e
 | `backup` / `restore` | Copy tracked config files out and back, with a redaction gate |
 | `status` / `diff` | Compare a backup against the live machine |
 | `compare` / `list` | Diff two snapshots / print a snapshot section |
-| `chezmoi-export` | Plan (or `--apply`) adding configs to chezmoi, encrypting secrets |
-| `init` | Check the chezmoi + age prerequisites |
+| `chezmoi-export` | Plan (or `--apply`) adding configs to chezmoi, encrypting secrets, templating host paths |
+| `init` / `migrate` | Check chezmoi + age prerequisites / apply your source on a clean machine |
+| `defaults` / `services` | Capture & restore macOS app prefs / Homebrew service config (export + import) |
 
 Full reference, with every flag: **[Commands](https://doguyilmaz.github.io/dothaven/docs/commands/)**.
 
