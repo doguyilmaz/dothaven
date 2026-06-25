@@ -36,6 +36,7 @@ internal/
   restore/           plan a restore against the live machine, then apply
   chezmoi/           plan the hybrid export + install script
   cli/               Cobra composition root + per-command wiring
+  tui/               interactive terminal prompts (charmbracelet/huh)
 ```
 
 Everything under `internal/` is unexported API — the only public surface is the CLI itself. `main` is intentionally tiny: it builds the root command, runs it, and maps a typed error to an exit code.
@@ -51,8 +52,9 @@ Everything under `internal/` is unexported API — the only public surface is th
 | `scan` | Pattern-based secret detection over text, with a severity/action model and content redaction. |
 | `backup` | Copies tracked files into a timestamped tree, applying the same redaction/skip gate as collect so a plaintext backup never carries a raw secret. |
 | `restore` | Builds a plan from a backup directory by classifying each file against the live machine (`new`/`conflict`/`same`/`redacted`), then applies it. |
-| `chezmoi` | Plans the hybrid export — which sources go plain vs. `--encrypt` — and generates a `run_onchange_` install script. |
+| `chezmoi` | Plans the hybrid export — which sources go plain vs. `--encrypt` vs. `--template` (rewriting absolute home paths) — and generates a `run_onchange_` install script. |
 | `cli` | The composition root: builds the Cobra tree, wires each subcommand with its `sys.OS`, and holds shared rendering helpers. |
+| `tui` | Interactive terminal flows (charmbracelet/huh): the menu launcher, category pickers, and conflict prompts — only invoked when stdin/stdout are a TTY. |
 
 ## The `sys.Env` seam
 
@@ -169,11 +171,15 @@ The serializers and renderers are written to be byte-stable so their output can 
 
 ```go
 func TestMain(m *testing.M) {
-	testscript.Main(m, map[string]func(){"dothaven": main})
+	testscript.Main(m, map[string]func(){
+		"dothaven": main,
+		"chezmoi":  fakeChezmoi, // plus fake `brew` and `defaults`
+		// …
+	})
 }
 ```
 
-Each `.txtar` is a self-contained scenario — commands to run, expected stdout/stderr, and inline files — driving the real binary with no external tools invoked. For example, `scan.txtar` asserts that a secret is flagged, a clean file reports clean, and a missing path is an error:
+Each `.txtar` is a self-contained scenario — commands to run, expected stdout/stderr, and inline files — driving the real binary. For example, `scan.txtar` asserts that a secret is flagged, a clean file reports clean, and a missing path is an error:
 
 ```text
 exec dothaven scan secret.txt
@@ -192,7 +198,7 @@ token=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 just some plain text with nothing sensitive
 ```
 
-The e2e scripts deliberately cover the filesystem/render commands (scan, security, compare, list, status, backup, restore, diff, chezmoi-export, help/version) — the ones that don't shell out — so the suite stays hermetic.
+The e2e scripts cover the filesystem/render commands (scan, security, compare, list, status, backup, restore, diff, chezmoi-export, help/version) directly. For commands that shell out — `chezmoi-export --apply`, `migrate`, `defaults`, `services` — the harness registers **fake `chezmoi`, `brew`, and `defaults` binaries** (the same self-re-exec trick used for `dothaven`), so those paths are driven end-to-end on any OS without depending on a real toolchain. The suite stays hermetic.
 
 ## The CLI composition root
 

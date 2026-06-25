@@ -16,7 +16,8 @@ never surprised by a prompt.
 ```text
   dothaven
   pick an action
-  > Back up configs
+  > Set up this machine from chezmoi (apply)
+    Back up configs
     Export to chezmoi (age-encrypted)
     Restore from the latest backup
     Check setup (chezmoi + age)
@@ -25,8 +26,9 @@ never surprised by a prompt.
 ```
 
 Each choice runs the matching command with its defaults, so the per-command
-interactive flow below takes over. Off a terminal, `tui` exits with an error
-rather than hanging.
+interactive flow below takes over. The first entry runs [`migrate`](../commands#migrate)
+— the clean-machine path — so the menu leads with what a fresh laptop needs.
+Off a terminal, `tui` exits with an error rather than hanging.
 
 ## Interactive-when-TTY commands
 

@@ -75,6 +75,12 @@ The first two are decided from the registry metadata alone, with no file read. T
 
 The secret check is deliberately **HIGH-only**. A benign IP address or email — which the scanner flags at a lower severity — never forces encryption. Only credentials the scanner classifies as HIGH (private keys, tokens, and similar) tip an entry into the encrypted set. Anything that isn't high-sensitivity, doesn't carry a redact rule, and contains no HIGH secret is added **plain** (reason `plain`).
 
+### The template decision, per entry
+
+A plain (non-encrypted) config that commonly hard-codes an absolute home path — shell rc files, gitconfig, prompt and editor settings (categories `shell`, `git`, `terminal`, `editor`, `dev`, `vm`) — is added as `add --template` (reason `templated (host paths)`) instead of a verbatim copy. After the add, dothaven rewrites the generated chezmoi source: every occurrence of your absolute home prefix (`/Users/you/`) becomes `{{ .chezmoi.homeDir }}/`, so the config resolves correctly when chezmoi applies it on a machine with a different home directory.
+
+The rewrite is deliberately conservative — only the `<home>/` prefix is substituted, so a sibling path like `/Users/youother` is never mangled, and no greedy username/value substitution happens (the documented footgun of chezmoi's own `--autotemplate`). Templating and encryption are mutually exclusive: secrets are encrypted, host-varying plain configs are templated, everything else is added verbatim.
+
 ### The SSH private-key sweep
 
 In addition to the registry entries, when the `ssh` category is selected dothaven sweeps `~/.ssh` for private keys. The sweep is **by content, not by filename**: it scans each file (skipping anything ending in `.pub`) and keeps it only if the scanner matches a private-key header — `private-key-pem` (the `-----BEGIN ... PRIVATE KEY-----` family, which covers OpenSSH, RSA, and others) or `pgp-private-key`.
