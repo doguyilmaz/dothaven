@@ -29,12 +29,14 @@ func main() {
 	sigCh := make(chan os.Signal, 2)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		<-sigCh
+		first := <-sigCh
 		cancel()
-		// A second signal force-exits with the conventional 128+signum code so a
-		// supervisor can tell SIGINT (130) from SIGTERM (143).
+		<-sigCh // a second signal force-exits, even if a command ignores the context
+		// Exit code reflects the signal that initiated shutdown (the cause), using
+		// the conventional 128+signum so a supervisor can tell SIGINT (130) from
+		// SIGTERM (143).
 		code := 130
-		if <-sigCh == syscall.SIGTERM {
+		if first == syscall.SIGTERM {
 			code = 143
 		}
 		os.Exit(code)

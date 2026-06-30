@@ -71,6 +71,10 @@ func (o *OS) Run(ctx context.Context, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, CommandTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	// WaitDelay bounds Wait() after the context fires: CommandContext SIGKILLs
+	// only the direct child, but a forked grandchild that inherited stdout keeps
+	// the pipe open, so Wait would otherwise block past the timeout forever.
+	cmd.WaitDelay = 5 * time.Second
 	out := &capBuffer{cap: maxCmdOutput}
 	cmd.Stdout = out
 	if err := cmd.Run(); err != nil {

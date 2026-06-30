@@ -102,11 +102,17 @@ func remediationCommand(id string) string {
 	}
 }
 
-// firstToken is the package name from an item's reported form ("name version" →
-// "name"), so a remediation command lists installable names, not version noise.
+// firstToken is the installable name from an item's reported form, so a `fix:`
+// command lists installable names rather than a pinned (possibly yanked or
+// non-existent) spec. It drops a trailing " version" and an "@version" pin
+// (npm/bun/pnpm/pipx/cargo all report name@version), preserving a leading '@'
+// for scoped npm packages (@scope/pkg@1.2.3 → @scope/pkg).
 func firstToken(s string) string {
 	if i := strings.IndexAny(s, " \t"); i >= 0 {
-		return s[:i]
+		s = s[:i]
+	}
+	if i := strings.LastIndexByte(s, '@'); i > 0 {
+		s = s[:i]
 	}
 	return s
 }

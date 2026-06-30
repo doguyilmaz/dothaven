@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/chezmoi"
 	"github.com/doguyilmaz/dothaven/internal/collect"
@@ -30,6 +31,10 @@ func runShell(ctx context.Context, name string, args ...string) (string, error) 
 	// Non-interactive: stdin stays closed and git won't open /dev/tty to prompt,
 	// so a child can't silently block waiting on input until the timeout.
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	// WaitDelay so a grandchild that inherits the output pipe (a forked daemon
+	// from `chezmoi apply`'s install script) can't keep Wait() blocked past the
+	// deadline after CommandContext SIGKILLs the direct child.
+	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

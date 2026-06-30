@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +15,16 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 	"github.com/doguyilmaz/dothaven/internal/sys"
 )
+
+// Selected applies the standard --only/--skip category filter shared by backup,
+// restore, and export: --skip always wins; a non-empty --only restricts to its
+// members. Single source of truth so the three commands can't drift.
+func Selected(category string, only, skip []string) bool {
+	if slices.Contains(skip, category) {
+		return false
+	}
+	return len(only) == 0 || slices.Contains(only, category)
+}
 
 type Kind int
 
