@@ -162,6 +162,14 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 				}
 			}
 
+			if len(res.RawSecrets) > 0 {
+				fmt.Fprintf(os.Stderr, "\n🔴 --no-redact wrote %d private key/secret file(s) UNENCRYPTED into this backup:\n", len(res.RawSecrets))
+				for _, d := range res.RawSecrets {
+					fmt.Fprintf(os.Stderr, "    %s\n", d)
+				}
+				fmt.Fprintln(os.Stderr, "  Treat this tree as secret. Prefer: dothaven chezmoi-export --apply  (age-encrypted)")
+			}
+
 			if redact {
 				if report := scan.FormatReport(scan.Summarize(res.ScanResults)); strings.TrimSpace(report) != "" {
 					fmt.Println(report)

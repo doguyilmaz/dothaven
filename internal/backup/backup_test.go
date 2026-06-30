@@ -23,8 +23,8 @@ func TestSelected(t *testing.T) {
 		{"shell", []string{"shell"}, []string{"shell"}, false}, // skip wins
 	}
 	for _, c := range cases {
-		if got := selected(c.cat, c.only, c.skip); got != c.want {
-			t.Errorf("selected(%q, only=%v, skip=%v) = %v, want %v", c.cat, c.only, c.skip, got, c.want)
+		if got := registry.Selected(c.cat, c.only, c.skip); got != c.want {
+			t.Errorf("Selected(%q, only=%v, skip=%v) = %v, want %v", c.cat, c.only, c.skip, got, c.want)
 		}
 	}
 }
@@ -113,6 +113,26 @@ func TestRunNoRedactKeepsRaw(t *testing.T) {
 	}
 	if got := readFile(t, filepath.Join(dest, "ssh/id_rsa")); !strings.Contains(got, "BEGIN RSA PRIVATE KEY") {
 		t.Errorf("--no-redact should copy raw key, got %q", got)
+	}
+}
+
+func TestRunNoRedactReportsRawSecrets(t *testing.T) {
+	home, dest := t.TempDir(), t.TempDir()
+	mustWrite(t, filepath.Join(home, "id_rsa"), "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n")
+	targets := []registry.BackupTarget{{Src: filepath.Join(home, "id_rsa"), Dest: "ssh/id_rsa", Category: "ssh"}}
+
+	res, err := Run(targets, dest, Options{Redact: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The key is written (escape hatch) but must be surfaced so the CLI can warn.
+	if len(res.RawSecrets) != 1 || res.RawSecrets[0] != "ssh/id_rsa" {
+		t.Errorf("RawSecrets = %v, want [ssh/id_rsa]", res.RawSecrets)
+	}
+	// Redacting backup drops it and reports no raw secret.
+	res2, _ := Run(targets, t.TempDir(), Options{Redact: true})
+	if len(res2.RawSecrets) != 0 || res2.TotalFiles != 0 {
+		t.Errorf("redacting backup must drop the key: files=%d raw=%v", res2.TotalFiles, res2.RawSecrets)
 	}
 }
 

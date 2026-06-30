@@ -36,24 +36,11 @@ type Result struct {
 	// (permission/I-O errors, as opposed to simply absent). A safety-net backup
 	// must surface these rather than silently omit a file the user expects.
 	ReadErrors []string
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
-}
-
-// selected applies the --only/--skip filters: skip always wins; a non-empty
-// only-list restricts to its members.
-func selected(category string, only, skip []string) bool {
-	if contains(skip, category) {
-		return false
-	}
-	return len(only) == 0 || contains(only, category)
+	// RawSecrets lists dests whose content scanned as skip-action (a private key)
+	// but were written verbatim because --no-redact was set. The redacting backup
+	// always drops these; under --no-redact the power-user opt-in is honored, but
+	// the CLI must warn loudly that a key landed in a plaintext tree.
+	RawSecrets []string
 }
 
 // Run copies every selected target into destRoot. Missing or unreadable sources
@@ -61,7 +48,7 @@ func selected(category string, only, skip []string) bool {
 func Run(targets []registry.BackupTarget, destRoot string, opts Options) (Result, error) {
 	res := Result{PerCategory: map[string]int{}}
 	for _, t := range targets {
-		if !selected(t.Category, opts.Only, opts.Skip) {
+		if !registry.Selected(t.Category, opts.Only, opts.Skip) {
 			continue
 		}
 		// A plaintext backup must never hold an unredactable secret. A
@@ -88,6 +75,17 @@ func Run(targets []registry.BackupTarget, destRoot string, opts Options) (Result
 		if n > 0 {
 			res.PerCategory[t.Category] += n
 			res.TotalFiles += n
+		}
+	}
+	// Under --no-redact the gate is bypassed, so a skip-action private key is
+	// written verbatim. Collect those dests so the CLI can warn loudly — the
+	// "never in a plaintext backup" invariant holds by default, and the
+	// power-user opt-in is at least made impossible to miss.
+	if !opts.Redact {
+		for _, sr := range res.ScanResults {
+			if sr.Action == scan.Skip {
+				res.RawSecrets = append(res.RawSecrets, sr.Path)
+			}
 		}
 	}
 	return res, nil
