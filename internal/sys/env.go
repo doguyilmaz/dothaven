@@ -152,8 +152,22 @@ func writeFile(path, content string, dirPerm, filePerm os.FileMode) error {
 	return nil
 }
 
-// ResolveOutputDir decides where reports/backups land: an explicit path wins;
-// inside a git repo → <cwd>/reports; otherwise → ~/Downloads.
+// DataDir is dothaven's stable per-user data directory ($XDG_DATA_HOME/dothaven,
+// else ~/.local/share/dothaven). Backups live here so `backup` and the commands
+// that read them (restore/status/diff) always agree regardless of the cwd —
+// unlike ResolveOutputDir, which is cwd-aware. ~/Downloads is deliberately
+// avoided: it's user-visible clutter and broadly readable by other apps.
+func (o *OS) DataDir() string {
+	if x := os.Getenv("XDG_DATA_HOME"); x != "" {
+		return filepath.Join(x, "dothaven")
+	}
+	return filepath.Join(o.home, ".local", "share", "dothaven")
+}
+
+// ResolveOutputDir decides where cwd-local inspection outputs land (collect
+// snapshots, service/defaults exports): an explicit path wins; inside a git repo
+// → <cwd>/reports (handy while working in a project); otherwise the stable
+// DataDir. Backups do NOT use this — they always go to DataDir (see above).
 func (o *OS) ResolveOutputDir(explicit string) string {
 	if explicit != "" {
 		return explicit
@@ -163,5 +177,5 @@ func (o *OS) ResolveOutputDir(explicit string) string {
 			return filepath.Join(cwd, "reports")
 		}
 	}
-	return filepath.Join(o.home, "Downloads")
+	return o.DataDir()
 }

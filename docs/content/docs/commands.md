@@ -9,11 +9,16 @@ dothaven covers the **discovery, audit, and export** half of the workflow; [chez
 
 ## How output paths are resolved
 
-Commands that write files (`collect`, `backup`, and the snapshot machinery behind `status` / `diff`) resolve their destination the same way:
+**Backups** (`backup`, and the commands that read them — `restore` / `status` / `diff`) use a **stable, cwd-independent** location so they always agree on where the latest backup is:
+
+1. An explicit `-o`/`--output` value always wins.
+2. Otherwise, `~/.local/share/dothaven` (or `$XDG_DATA_HOME/dothaven`).
+
+**Inspection output** (`collect` snapshots, `services` / `defaults` exports) is cwd-aware, since you typically read it where you ran it:
 
 1. An explicit `-o`/`--output` value always wins.
 2. Otherwise, if the current directory is a git repository (a `.git/HEAD` exists), output goes to `<cwd>/reports`.
-3. Otherwise, output goes to `~/Downloads`.
+3. Otherwise, `~/.local/share/dothaven`.
 
 Snapshot files are named `<hostname>-<timestamp>.json`; backups are named `backup-<hostname>-<timestamp>`. The timestamp is UTC `YYYYMMDDHHMMSS`.
 
@@ -43,7 +48,7 @@ Runs the full collector pipeline (host metadata, the declarative registry, SSH, 
 | --- | --- | --- |
 | `--no-redact` | `false` | Keep raw values (skip secret redaction). |
 | `--slim` | `false` | Truncate long file contents to 10 lines. |
-| `-o`, `--output` | _(resolved)_ | Output directory. Default: `./reports` in a repo, else `~/Downloads`. |
+| `-o`, `--output` | _(resolved)_ | Output directory. Default: `./reports` in a repo, else `~/.local/share/dothaven`. |
 
 ```bash
 $ dothaven collect
@@ -193,13 +198,13 @@ Collects the registry's backup targets from your home directory, redacts secrets
 | --- | --- | --- |
 | `--no-redact` | `false` | Keep raw values (skip secret redaction). |
 | `--archive` | `false` | Create a `.tar.gz` instead of a directory. |
-| `-o`, `--output` | _(resolved)_ | Output directory. Default: `./reports` in a repo, else `~/Downloads`. |
+| `-o`, `--output` | _(resolved)_ | Output directory. Default: `~/.local/share/dothaven` (stable, cwd-independent). |
 | `--only` | _(none)_ | Only these categories (comma-separated). |
 | `--skip` | _(none)_ | Skip these categories (comma-separated). |
 
 ```bash
 $ dothaven backup --only shell,git
-Backup saved to: /Users/you/project/reports/backup-macbook-20260604120000
+Backup saved to: /Users/you/.local/share/dothaven/backup-macbook-20260604120000
   5 files across: git (2), shell (3)
 ```
 
@@ -223,7 +228,7 @@ Builds a plan from a backup directory, mapping each backed-up file to its home-d
 | `--skip` | _(none)_ | Skip these categories (comma-separated). |
 
 ```bash
-$ dothaven restore reports/backup-macbook-20260604120000 --dry-run
+$ dothaven restore ~/.local/share/dothaven/backup-macbook-20260604120000 --dry-run
 
 Dry run — no files will be changed:
 
@@ -241,7 +246,7 @@ Summarize the latest backup against the live machine.
 dothaven status
 ```
 
-Finds the newest `backup-*` directory in the resolved output directory and reports how it compares to the live machine: files tracked, modified (conflicts), unchanged, new in backup, and redacted. Modified files are listed by name. If no backup exists, it tells you to run `backup` first.
+Finds the newest `backup-*` directory in `~/.local/share/dothaven` and reports how it compares to the live machine: files tracked, modified (conflicts), unchanged, new in backup, and redacted. Modified files are listed by name. If no backup exists, it tells you to run `backup` first.
 
 **Arguments:** none.
 
@@ -382,7 +387,7 @@ dothaven defaults import <dir>
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `-o`, `--output` (export) | _(repo `./reports`, else `~/Downloads`)_ | Output directory for the `macos-defaults/` plists. |
+| `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for the `macos-defaults/` plists. |
 
 ### services
 
@@ -397,7 +402,7 @@ dothaven services import <dir>
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `-o`, `--output` (export) | _(repo `./reports`, else `~/Downloads`)_ | Output directory for the `services/` tree. |
+| `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for the `services/` tree. |
 
 ---
 

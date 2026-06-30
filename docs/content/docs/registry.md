@@ -403,7 +403,7 @@ dothaven backup --no-redact        # keep raw values
 ```
 
 The output directory follows dothaven's standard resolution: an explicit `-o`
-wins; otherwise `<cwd>/reports` when run inside a git repo, else `~/Downloads`.
+wins; otherwise `<cwd>/reports` when run inside a git repo, else `~/.local/share/dothaven`.
 
 {{< callout type="info" >}}
 Sensitive entries are best carried through the hybrid model: dothaven discovers,

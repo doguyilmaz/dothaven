@@ -132,6 +132,6 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 	}
 	c.Flags().BoolVar(&noRedact, "no-redact", false, "keep raw values (skip secret redaction)")
 	c.Flags().BoolVar(&slim, "slim", false, "truncate long file contents to 10 lines")
-	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/Downloads)")
+	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/.local/share/dothaven)")
 	return c
 }

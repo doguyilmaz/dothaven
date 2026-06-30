@@ -66,9 +66,9 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 	sub.SetContext(cmd.Context())
 	// restore needs a path argument — feed it the latest backup.
 	if action == "restore" {
-		latest := latestBackup(env.ResolveOutputDir(""))
+		latest := latestBackup(env.DataDir())
 		if latest == "" {
-			fmt.Println("No backup found. Run a backup first.")
+			fmt.Printf("No backup found in %s. Run a backup first.\n", env.DataDir())
 			return nil
 		}
 		return sub.RunE(sub, []string{latest})

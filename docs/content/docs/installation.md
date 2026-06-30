@@ -90,7 +90,7 @@ Commands that emit JSON snapshots resolve the output directory in this order:
 
 1. An explicit `-o` / `--output` flag wins.
 2. Otherwise, `<cwd>/reports` when the current directory is inside a git repository.
-3. Otherwise, `~/Downloads`.
+3. Otherwise, `~/.local/share/dothaven`.
 
 ```bash
 dothaven collect -o ./snapshots

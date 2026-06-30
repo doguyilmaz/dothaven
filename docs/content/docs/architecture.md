@@ -92,11 +92,15 @@ With a `Fake`, a collector's exact behavior — including parsing — is asserte
 
 ### Output directory resolution
 
-`ResolveOutputDir` is the single place that decides where reports and backups land:
+Backups use a stable, cwd-independent home (`DataDir`) so `restore`/`status`/`diff`
+always locate them: an explicit `-o`/`--output` wins, otherwise `$XDG_DATA_HOME/dothaven`
+(else `~/.local/share/dothaven`).
+
+`ResolveOutputDir` covers the cwd-aware *inspection* output (`collect` snapshots, `services`/`defaults` exports):
 
 1. An explicit `-o`/`--output` path always wins.
 2. Otherwise, if the current directory is a git repo (it has a `.git/HEAD`), use `<cwd>/reports`.
-3. Otherwise fall back to `~/Downloads`.
+3. Otherwise fall back to `DataDir` (`~/.local/share/dothaven`).
 
 ## The collector concurrency model
 

@@ -102,7 +102,7 @@ Report saved to: /Users/you/projects/dotfiles/reports/old-host-20260604093000.js
 
 The output directory is resolved in this order: an explicit `-o` / `--output`
 wins; otherwise, if the working directory is a git repo the file lands in
-`<cwd>/reports`; otherwise it falls back to `~/Downloads`. The filename is
+`<cwd>/reports`; otherwise it falls back to `~/.local/share/dothaven`. The filename is
 `<hostname>-<UTC timestamp>.json`. **Keep this file** — you will copy it to the
 new machine and feed it to `dothaven doctor` to verify parity in Part 2.
 

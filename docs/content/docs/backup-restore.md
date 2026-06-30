@@ -30,11 +30,15 @@ hostname can't be read it falls back to `machine`.
 
 ### Where backups land
 
-The destination follows the standard output-directory resolution:
+Backups go to a **stable, cwd-independent** location so `restore`, `status`, and
+`diff` always find them no matter where you run them from:
 
 - an explicit `-o` / `--output` wins;
-- otherwise `<cwd>/reports` when you're inside a git repository;
-- otherwise `~/Downloads`.
+- otherwise `~/.local/share/dothaven` (or `$XDG_DATA_HOME/dothaven`).
+
+(Unlike `collect` snapshots and `services`/`defaults` exports, which stay
+cwd-aware — `./reports` inside a git repo — since they're inspection output you
+read in place, not a backup another command must locate later.)
 
 ```bash
 dothaven backup -o ~/dotfiles-backups
@@ -44,7 +48,7 @@ Example run:
 
 ```text
 $ dothaven backup
-Backup saved to: /Users/you/project/reports/backup-mbp-20260604091233
+Backup saved to: /Users/you/.local/share/dothaven/backup-mbp-20260604091233
   6 files across: git (2), shell (3), ssh (1)
 ```
 
@@ -125,7 +129,7 @@ dothaven backup --archive
 
 ```text
 $ dothaven backup --archive
-Archive saved to: /Users/you/project/reports/backup-mbp-20260604091233.tar.gz
+Archive saved to: /Users/you/.local/share/dothaven/backup-mbp-20260604091233.tar.gz
   6 files across: git (2), shell (3), ssh (1)
 ```
 
@@ -148,7 +152,7 @@ dothaven backup --skip ssh
 
 | Flag | Description |
 | --- | --- |
-| `-o`, `--output` | Output directory (default: `./reports` in a repo, else `~/Downloads`) |
+| `-o`, `--output` | Output directory (default: `~/.local/share/dothaven`) |
 | `--archive` | Create a `.tar.gz` instead of a directory |
 | `--no-redact` | Keep raw values (skip secret redaction) |
 | `--only` | Only these categories (comma-separated) |
