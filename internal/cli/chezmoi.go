@@ -104,10 +104,15 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	}
 
 	// The Brewfile is embedded verbatim into an UNENCRYPTED script — redact any
-	// inline credentials (e.g. a private tap's https://user:pass@host) first.
+	// inline credentials (e.g. a private tap's https://user:pass@host) first, and
+	// drop it entirely on a skip-action secret (a private key): ApplyRedactions
+	// only masks redact-action findings, so embedding a skip-action body would
+	// leak it raw. Mirrors the drop-on-skip gate used by collect/backup.
 	var brewfile string
 	if c := brew["apps.brew.bundle"].Content; c != nil {
-		brewfile = scan.ApplyRedactions(*c, scan.ScanContent("Brewfile", *c))
+		if sr := scan.ScanContent("Brewfile", *c); sr.Action != scan.Skip {
+			brewfile = scan.ApplyRedactions(*c, sr)
+		}
 	}
 
 	var nodeVersions []string // node always keeps its exact version

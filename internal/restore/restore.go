@@ -55,21 +55,35 @@ func buildMap(targets []registry.BackupTarget) map[string]mapping {
 	return m
 }
 
+// dirDestsByLength returns the directory-kind dests sorted longest-first (ties
+// alphabetical), so a file under overlapping dests (e.g. "editor" and
+// "editor/nvim") matches the most-specific one. Computed once per plan, not per
+// file.
+func dirDestsByLength(m map[string]mapping) []string {
+	dests := make([]string, 0, len(m))
+	for dest, mp := range m {
+		if mp.isDir {
+			dests = append(dests, dest)
+		}
+	}
+	sort.Slice(dests, func(i, j int) bool {
+		if len(dests[i]) != len(dests[j]) {
+			return len(dests[i]) > len(dests[j])
+		}
+		return dests[i] < dests[j]
+	})
+	return dests
+}
+
 // matchTarget maps a backed-up file (rel, slash-separated) to its live target:
-// an exact file dest, a directory-dest prefix, or a `<base>.local` sibling of a
-// file dest. A dir-prefix match that would escape its target base (via ../ in a
-// crafted backup) is refused. Returns ("","","") when nothing matches.
-func matchTarget(rel string, m map[string]mapping) (target, category string, sens registry.Sensitivity) {
+// an exact file dest, a directory-dest prefix (most-specific first, via the
+// precomputed dirDests), or a `<base>.local` sibling of a file dest. A dir-prefix
+// match that would escape its target base (via ../ in a crafted backup) is
+// refused. Returns ("","","") when nothing matches.
+func matchTarget(rel string, m map[string]mapping, dirDests []string) (target, category string, sens registry.Sensitivity) {
 	if mp, ok := m[rel]; ok && !mp.isDir {
 		return mp.target, mp.category, mp.sens
 	}
-	dirDests := make([]string, 0, len(m))
-	for dest, mp := range m {
-		if mp.isDir {
-			dirDests = append(dirDests, dest)
-		}
-	}
-	sort.Strings(dirDests) // deterministic when dests could overlap
 	for _, dest := range dirDests {
 		if strings.HasPrefix(rel, dest+"/") {
 			mp := m[dest]
@@ -133,6 +147,7 @@ func classify(backupContent string, targetExists bool, targetContent string) Sta
 // A missing/empty backup dir yields an empty plan (no error).
 func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, error) {
 	m := buildMap(targets)
+	dirDests := dirDestsByLength(m)
 	var entries []Entry
 	catSet := map[string]bool{}
 
@@ -145,7 +160,7 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		}
 		rel, _ := filepath.Rel(backupDir, path)
 		rel = filepath.ToSlash(rel)
-		target, category, sens := matchTarget(rel, m)
+		target, category, sens := matchTarget(rel, m, dirDests)
 		if target == "" {
 			return nil
 		}
