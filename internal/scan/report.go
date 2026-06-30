@@ -8,10 +8,17 @@ import (
 
 var severityRank = map[Severity]int{High: 3, Medium: 2, Low: 1}
 
+// genericPatternID marks the catch-all keyword rules. When several patterns
+// match the same line at equal severity, a specific detector (e.g. "GitHub
+// token") is a more useful label than the generic "secret value", so topFinding
+// prefers it.
+var genericPatternID = map[string]bool{"generic-secret": true, "generic-api-key": true, "secret-keyword": true}
+
 func topFinding(r Result) Finding {
 	top := r.Findings[0]
 	for _, f := range r.Findings[1:] {
-		if severityRank[f.Pattern.Severity] > severityRank[top.Pattern.Severity] {
+		fr, tr := severityRank[f.Pattern.Severity], severityRank[top.Pattern.Severity]
+		if fr > tr || (fr == tr && genericPatternID[top.Pattern.ID] && !genericPatternID[f.Pattern.ID]) {
 			top = f
 		}
 	}

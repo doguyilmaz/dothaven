@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -44,12 +45,13 @@ var skipDirs = map[string]bool{
 // Action is the highest-priority action among the findings (skip > redact >
 // include); no findings → include.
 func ScanContent(path, content string) Result {
+	pats := Patterns() // hoisted out of the line loop
 	var findings []Finding
 	for i, line := range strings.Split(content, "\n") {
 		if len(line) > maxLineLen {
 			continue // minified/data line — not where secrets live, and costly to scan
 		}
-		for _, p := range Patterns() {
+		for _, p := range pats {
 			if loc := p.re.FindStringIndex(line); loc != nil {
 				findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(line[loc[0]:loc[1]], 40)})
 			}
@@ -81,13 +83,15 @@ func ScanFile(path string) *Result {
 	return &r
 }
 
-// ScanDir recursively scans every regular file under dir, pruning skipDirs
-// subtrees and skipping symlinks/devices and files larger than MaxFileSize. File
-// scans run on a worker pool (one per CPU) since each scan is independent. The
-// walk aborts and returns ctx.Err() when ctx is cancelled. If progress is
-// non-nil it is incremented (atomically) once per file scanned, letting a caller
-// report progress without blocking the walk.
-func ScanDir(ctx context.Context, dir string, progress *int64) ([]Result, error) {
+// ScanDir recursively scans every regular file under dir, skipping symlinks/
+// devices and files larger than MaxFileSize. File scans run on a worker pool
+// (one per CPU) since each scan is independent. The walk aborts and returns
+// ctx.Err() when ctx is cancelled. If progress is non-nil it is incremented
+// (atomically) once per file scanned, letting a caller report progress without
+// blocking the walk. When prune is true, dependency/cache/VCS subtrees
+// (skipDirs) are skipped — right for a user-facing scan, but a security probe
+// that must not miss a secret (chezmoi export) passes false to scan everything.
+func ScanDir(ctx context.Context, dir string, progress *int64, prune bool) ([]Result, error) {
 	paths := make(chan string)
 	var walkErr error
 	go func() {
@@ -100,7 +104,7 @@ func ScanDir(ctx context.Context, dir string, progress *int64) ([]Result, error)
 				return nil // skip unreadable entries, keep going
 			}
 			if d.IsDir() {
-				if skipDirs[d.Name()] {
+				if prune && skipDirs[d.Name()] {
 					return fs.SkipDir
 				}
 				return nil
@@ -125,6 +129,14 @@ func ScanDir(ctx context.Context, dir string, progress *int64) ([]Result, error)
 	)
 	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Go(func() {
+			defer func() {
+				// A scan of one file must never crash the whole process; recover and
+				// drop just that file (RE2 is panic-safe, so this is belt-and-braces,
+				// mirroring RunCollectors' isolation).
+				if rec := recover(); rec != nil {
+					fmt.Fprintf(os.Stderr, "dothaven: scan worker recovered: %v\n", rec)
+				}
+			}()
 			for path := range paths {
 				r := ScanFile(path)
 				if progress != nil {

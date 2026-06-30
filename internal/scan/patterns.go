@@ -31,10 +31,12 @@ func build() {
 		// e.g. "(21:protected-private-key" — so the PEM rule above misses it.
 		mk("gpg-sexp-private-key", "GnuPG private key", High, Skip, `\(\d{1,3}:(protected-|shadowed-)?private-key`),
 
-		// HIGH — generic env-style secrets
-		mk("generic-secret", "secret value", High, Redact, `\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b\s*[=:]\s*\S+`),
-		mk("generic-api-key", "API key", High, Redact, `(?i)(API_KEY|APIKEY)\s*[=:]\s*\S+`),
-		mk("secret-keyword", "secret value", High, Redact, `(?i)\b(password|passwd|secret|client[_-]?secret|secret[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key)\b\s*[=:]\s*\S+`),
+		// HIGH — generic env-style secrets. The `["']?` before the delimiter lets
+		// these fire on JSON (`"token": "v"`) as well as shell/ini (`TOKEN=v`); a
+		// quote between the keyword and the colon otherwise defeats the match.
+		mk("generic-secret", "secret value", High, Redact, `\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b["']?\s*[=:]\s*\S+`),
+		mk("generic-api-key", "API key", High, Redact, `(?i)(API_KEY|APIKEY)["']?\s*[=:]\s*\S+`),
+		mk("secret-keyword", "secret value", High, Redact, `(?i)\b(password|passwd|secret|token|client[_-]?secret|secret[_-]?key|api[_-]?key|apikey|api[_-]?secret|api[_-]?token|access[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|personal[_-]?access[_-]?token|private[_-]?key)\b["']?\s*[=:]\s*\S+`),
 
 		// HIGH — auth tokens & prefixed keys
 		mk("auth-token-npm", "npm auth token", High, Redact, `(?i)\b_(authToken|auth|password)\s*=\s*\S+`),

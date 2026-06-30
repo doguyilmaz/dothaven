@@ -24,7 +24,7 @@ func TestScanDirSkipsAndScans(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "node_modules", "leak.env"), "TOKEN="+ghp)
 
 	var scanned int64
-	results, err := ScanDir(context.Background(), dir, &scanned)
+	results, err := ScanDir(context.Background(), dir, &scanned, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestScanDirCancelled(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "a.txt"), "x")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := ScanDir(ctx, dir, nil); !errors.Is(err, context.Canceled) {
+	if _, err := ScanDir(ctx, dir, nil, true); !errors.Is(err, context.Canceled) {
 		t.Errorf("cancelled scan err = %v, want context.Canceled", err)
 	}
 }
@@ -73,7 +73,7 @@ func TestScanDirFollowsSymlinkToRegularFile(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(dir, "link.env")); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	results, err := ScanDir(context.Background(), dir, nil)
+	results, err := ScanDir(context.Background(), dir, nil, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -125,6 +125,43 @@ func TestScanContentActions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestScanContentJSONAndBareKeywordSecrets(t *testing.T) {
+	// JSON-quoted keys and bare lowercase credential keywords must be detected;
+	// the quote between keyword and ':' previously defeated the delimiter match.
+	redacted := []string{
+		`  "token": "opaque40charvaluewithnoknownprefix01"`,
+		`  "apiKey": "anotheropaquesecretvalue1234567890"`,
+		`  "apiToken": "x7y8z9opaquetokenvalue0011223344"`,
+		`"access_token": "ya-no-prefix-opaque-but-named"`,
+		`token=opaquevaluewithnoprefixatall12345`,
+	}
+	for _, c := range redacted {
+		if r := ScanContent("mcp.json", c); r.Action != Redact {
+			t.Errorf("expected redact for %q, got %s", c, r.Action)
+		}
+	}
+	// A non-credential key with a delimiter must stay benign.
+	if r := ScanContent("cfg", `  "theme": "dark"`); r.Action != Include {
+		t.Errorf("benign pair should be Include, got %s", r.Action)
+	}
+}
+
+func TestRedactSectionOpaqueValueUnderCredentialKey(t *testing.T) {
+	// A flattened JSON pair whose value is an opaque secret under a credential
+	// key (no recognizable value prefix) must be masked, not kept verbatim.
+	s := snapshot.Section{Pairs: map[string]string{
+		"auth.apiKey": "opaqueValue0123456789noKnownPrefix",
+		"theme":       "dark",
+	}}
+	RedactSection("ai.gemini.settings", &s)
+	if s.Pairs["auth.apiKey"] != Marker {
+		t.Errorf("opaque secret under credential key should be masked, got %q", s.Pairs["auth.apiKey"])
+	}
+	if s.Pairs["theme"] != "dark" {
+		t.Errorf("benign value changed: %q", s.Pairs["theme"])
 	}
 }
 

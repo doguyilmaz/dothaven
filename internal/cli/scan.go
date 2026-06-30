@@ -28,7 +28,7 @@ func scanTarget(ctx context.Context, target string) ([]scan.Result, error) {
 	if info.IsDir() {
 		var scanned int64
 		stop := startScanProgress(&scanned)
-		results, err := scan.ScanDir(ctx, abs, &scanned)
+		results, err := scan.ScanDir(ctx, abs, &scanned, true)
 		stop()
 		return results, err
 	}
