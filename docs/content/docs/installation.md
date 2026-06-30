@@ -57,7 +57,7 @@ dothaven --version
 ```
 
 ```text
-dothaven version 1.0.0
+dothaven version 0.2.0
 ```
 
 A source or `go install` build that wasn't stamped at release time reports `dev`:

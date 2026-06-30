@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -82,6 +83,12 @@ func ResolveConflict(path, backupContent, liveContent string) (ConflictChoice, e
 			).
 			Value(&choice)
 		if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+			// Ctrl-C at a prompt aborts the whole restore (skip every remaining
+			// conflict), not just this one file — otherwise the user has to
+			// interrupt once per conflict.
+			if errors.Is(err, huh.ErrUserAborted) {
+				return ChoiceSkipAll, nil
+			}
 			return ChoiceSkip, err
 		}
 		switch choice {

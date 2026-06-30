@@ -26,7 +26,11 @@ func runShell(ctx context.Context, name string, args ...string) (string, error) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*sys.CommandTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, name, args...)
+	// Non-interactive: stdin stays closed and git won't open /dev/tty to prompt,
+	// so a child can't silently block waiting on input until the timeout.
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 
