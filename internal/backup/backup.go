@@ -32,6 +32,10 @@ type Result struct {
 	// with no guaranteed redactor — they belong in the encrypted export, not a
 	// plaintext backup.
 	SkippedSensitive []string
+	// ReadErrors lists dests for sources that exist but could not be read
+	// (permission/I-O errors, as opposed to simply absent). A safety-net backup
+	// must surface these rather than silently omit a file the user expects.
+	ReadErrors []string
 }
 
 func contains(list []string, s string) bool {
@@ -74,9 +78,9 @@ func Run(targets []registry.BackupTarget, destRoot string, opts Options) (Result
 		var n int
 		var err error
 		if t.IsDir {
-			n, err = copyDir(t, destRoot, opts.Redact, &res.ScanResults)
+			n, err = copyDir(t, destRoot, opts.Redact, &res.ScanResults, &res.ReadErrors)
 		} else {
-			n, err = copyFile(t, destRoot, opts.Redact, &res.ScanResults)
+			n, err = copyFile(t, destRoot, opts.Redact, &res.ScanResults, &res.ReadErrors)
 		}
 		if err != nil {
 			return res, err
@@ -113,18 +117,25 @@ func gate(scanPath, body string, redact bool, entryRedact func(string) string, r
 // memory (and, unscanned, it could smuggle a secret into a plaintext backup).
 const maxBackupFileSize = 16 << 20 // 16 MiB
 
-func tooLarge(path string) bool {
+// copyable reports whether path (following symlinks, as os.ReadFile would) is a
+// regular file within the size cap. os.Stat resolves the link without opening
+// it, so a symlink to a regular file is still copied while a symlink to a
+// device/FIFO — which os.ReadFile would block on forever — is skipped.
+func copyable(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.Size() > maxBackupFileSize
+	return err == nil && info.Mode().IsRegular() && info.Size() <= maxBackupFileSize
 }
 
-func copyFile(t registry.BackupTarget, destRoot string, redact bool, results *[]scan.Result) (int, error) {
-	if tooLarge(t.Src) {
-		return 0, nil
+func copyFile(t registry.BackupTarget, destRoot string, redact bool, results *[]scan.Result, readErrs *[]string) (int, error) {
+	if !copyable(t.Src) {
+		return 0, nil // missing, non-regular (device/FIFO), or oversized → skip
 	}
 	raw, err := os.ReadFile(t.Src)
 	if err != nil {
-		return 0, nil // missing/unreadable → skip silently
+		if !os.IsNotExist(err) {
+			*readErrs = append(*readErrs, t.Dest) // exists but unreadable — surface it
+		}
+		return 0, nil // a tool that isn't installed simply has no source file
 	}
 	body, keep := gate(t.Dest, string(raw), redact, t.Redact, results)
 	if !keep {
@@ -191,33 +202,39 @@ func Manifest(meta ManifestMeta, res Result) string {
 
 // copyDir mirrors a directory recursively (dotfiles included). A directory entry
 // has no per-entry redact rule — only the scan gate applies.
-func copyDir(t registry.BackupTarget, destRoot string, redact bool, results *[]scan.Result) (int, error) {
+func copyDir(t registry.BackupTarget, destRoot string, redact bool, results *[]scan.Result, readErrs *[]string) (int, error) {
 	count := 0
-	walkErr := filepath.WalkDir(t.Src, func(path string, d fs.DirEntry, err error) error {
+	var writeErr error
+	// WalkDir's own return is ignored: per-entry errors are swallowed below (one
+	// unreadable file must not abort the rest), and a missing source dir is the
+	// benign "tool not installed" case. The only failure that must surface is a
+	// write to the backup destination, captured in writeErr.
+	_ = filepath.WalkDir(t.Src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		if tooLarge(path) {
-			return nil
-		}
-		raw, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return nil
+		if !copyable(path) {
+			return nil // symlink-to-device/FIFO, socket, broken link, or oversized → skip
 		}
 		rel, _ := filepath.Rel(t.Src, path)
 		destRel := filepath.Join(t.Dest, rel)
+		raw, rerr := os.ReadFile(path)
+		if rerr != nil {
+			if !os.IsNotExist(rerr) {
+				*readErrs = append(*readErrs, destRel) // exists but unreadable — surface it
+			}
+			return nil
+		}
 		body, keep := gate(destRel, string(raw), redact, nil, results)
 		if !keep {
 			return nil
 		}
 		if werr := sys.WriteFileSecure(filepath.Join(destRoot, destRel), body); werr != nil {
-			return werr
+			writeErr = werr // a failed write to the backup destination is a real failure
+			return werr     // stop the walk and surface it (don't report success)
 		}
 		count++
 		return nil
 	})
-	if walkErr != nil {
-		return count, nil // dir doesn't exist / unreadable → skip silently
-	}
-	return count, nil
+	return count, writeErr
 }

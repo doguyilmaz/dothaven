@@ -136,6 +136,33 @@ func TestRunDir(t *testing.T) {
 	}
 }
 
+func TestRunDirFollowsSymlinkToRegularFile(t *testing.T) {
+	// Regression: a symlinked config file inside a dir-kind target (common with
+	// dotfile managers / stow) must be backed up. WalkDir reports the symlink as
+	// non-regular, so the copy decision has to resolve the target, not the link.
+	home := t.TempDir()
+	dest := t.TempDir()
+	cfg := filepath.Join(home, "cfg")
+	mustWrite(t, filepath.Join(cfg, "real.conf"), "theme = dark\n")
+	target := filepath.Join(t.TempDir(), "external.conf")
+	mustWrite(t, target, "color = blue\n")
+	if err := os.Symlink(target, filepath.Join(cfg, "link.conf")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	targets := []registry.BackupTarget{{Src: cfg, Dest: "cfg", Category: "x", IsDir: true}}
+	res, err := Run(targets, dest, Options{Redact: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TotalFiles != 2 {
+		t.Errorf("TotalFiles = %d, want 2 (real.conf + the symlinked link.conf)", res.TotalFiles)
+	}
+	if got := readFile(t, filepath.Join(dest, "cfg/link.conf")); got != "color = blue\n" {
+		t.Errorf("symlinked file not backed up via its target, got %q", got)
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
