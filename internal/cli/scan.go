@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/scan"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -14,19 +18,54 @@ import (
 
 // scanTarget stats a path and scans it as a file or directory. A missing path
 // is an error; a 0-byte file is still scanned as a file (stat decides, not size).
-func scanTarget(target string) ([]scan.Result, error) {
+// A directory scan honors ctx (Ctrl-C aborts it) and streams progress to stderr.
+func scanTarget(ctx context.Context, target string) ([]scan.Result, error) {
 	abs, _ := filepath.Abs(target)
 	info, err := os.Stat(abs)
 	if err != nil {
 		return nil, fmt.Errorf("path not found: %s", abs)
 	}
 	if info.IsDir() {
-		return scan.ScanDir(abs), nil
+		var scanned int64
+		stop := startScanProgress(&scanned)
+		results, err := scan.ScanDir(ctx, abs, &scanned)
+		stop()
+		return results, err
 	}
 	if r := scan.ScanFile(abs); r != nil {
 		return []scan.Result{*r}, nil
 	}
 	return nil, nil
+}
+
+// startScanProgress streams a throttled file count to stderr while a directory
+// scan runs, so a long scan never looks frozen. It is a no-op when stderr isn't
+// a terminal (keeps piped/CI output clean). The returned func stops the ticker
+// and clears the line.
+func startScanProgress(scanned *int64) func() {
+	if !stderrIsTTY() {
+		return func() {}
+	}
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		t := time.NewTicker(150 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				fmt.Fprintf(os.Stderr, "\rscanning… %d files", atomic.LoadInt64(scanned))
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished // wait for the ticker to stop before clearing, so no late tick re-prints
+		fmt.Fprint(os.Stderr, "\r\033[K")
+	}
 }
 
 var severityRank = map[scan.Severity]int{scan.High: 3, scan.Medium: 2, scan.Low: 1}
@@ -59,7 +98,11 @@ func newScanCmd(_ *sys.OS) *cobra.Command {
 			if len(args) > 0 {
 				target = args[0]
 			}
-			results, err := scanTarget(target)
+			results, err := scanTarget(c.Context(), target)
+			if errors.Is(err, context.Canceled) {
+				fmt.Fprintln(os.Stderr, "scan cancelled.")
+				return ExitError{Code: 130} // aborted ≠ clean; surface 130 for scripts/CI
+			}
 			if err != nil {
 				return err
 			}
@@ -91,7 +134,11 @@ func newSecurityCmd(_ *sys.OS) *cobra.Command {
 			if len(args) > 0 {
 				target = args[0]
 			}
-			results, err := scanTarget(target)
+			results, err := scanTarget(c.Context(), target)
+			if errors.Is(err, context.Canceled) {
+				fmt.Fprintln(os.Stderr, "scan cancelled.")
+				return ExitError{Code: 130} // aborted ≠ clean; surface 130 for scripts/CI
+			}
 			if err != nil {
 				return err
 			}

@@ -5,6 +5,7 @@
 package chezmoi
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -114,7 +115,10 @@ func anyHigh(findings []scan.Finding) bool {
 // directory). HIGH-only so a benign IP/email never forces encryption.
 func ContainsHighSecret(path string, isDir bool) bool {
 	if isDir {
-		for _, r := range scan.ScanDir(path) {
+		// A bounded scan of one known registry directory; background ctx is fine
+		// (these dirs are small and the export path was never cancellable here).
+		results, _ := scan.ScanDir(context.Background(), path, nil)
+		for _, r := range results {
 			if anyHigh(r.Findings) {
 				return true
 			}

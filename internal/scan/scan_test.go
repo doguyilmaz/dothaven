@@ -1,6 +1,10 @@
 package scan
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -8,6 +12,88 @@ import (
 )
 
 const ghp = "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" // ghp_ + 36
+
+func TestScanDirSkipsAndScans(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "secret.env"), "TOKEN="+ghp)
+	mustWrite(t, filepath.Join(dir, "clean.txt"), "theme = dark")
+	// a pruned subtree whose secret must never be scanned
+	if err := os.MkdirAll(filepath.Join(dir, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, "node_modules", "leak.env"), "TOKEN="+ghp)
+
+	var scanned int64
+	results, err := ScanDir(context.Background(), dir, &scanned)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, r := range results {
+		if strings.Contains(r.Path, "node_modules") {
+			t.Errorf("node_modules subtree should be pruned, got %s", r.Path)
+		}
+	}
+	found := false
+	for _, r := range results {
+		if strings.HasSuffix(r.Path, "secret.env") && r.Action == Redact {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("secret.env should be flagged for redaction; results: %+v", results)
+	}
+	if scanned < 2 {
+		t.Errorf("progress counter = %d, want >= 2 files scanned", scanned)
+	}
+}
+
+func TestScanDirCancelled(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "a.txt"), "x")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := ScanDir(ctx, dir, nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled scan err = %v, want context.Canceled", err)
+	}
+}
+
+func TestScanFileSkipsNonRegular(t *testing.T) {
+	if ScanFile(t.TempDir()) != nil {
+		t.Error("ScanFile should return nil for a directory (non-regular)")
+	}
+}
+
+func TestScanDirFollowsSymlinkToRegularFile(t *testing.T) {
+	// A symlink to a regular file must still be scanned (os.Stat follows it);
+	// only symlinks to devices/FIFOs are skipped. Regression guard: a DirEntry
+	// reports a symlink as non-regular, so a naive type check would drop it.
+	dir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "real_secret")
+	mustWrite(t, target, "TOKEN="+ghp)
+	if err := os.Symlink(target, filepath.Join(dir, "link.env")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	results, err := ScanDir(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, r := range results {
+		if strings.HasSuffix(r.Path, "link.env") && r.Action == Redact {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("secret behind a symlink-to-regular should be scanned; results: %+v", results)
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestScanContentActions(t *testing.T) {
 	cases := []struct {

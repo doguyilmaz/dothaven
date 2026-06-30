@@ -1,10 +1,16 @@
 package scan
 
 import (
+	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 var actionPriority = map[Action]int{Skip: 3, Redact: 2, Include: 1}
@@ -14,12 +20,35 @@ var actionPriority = map[Action]int{Skip: 3, Redact: 2, Include: 1}
 // uncapped read is a memory-exhaustion vector on an attacker-supplied tree.
 const MaxFileSize = 1 << 20 // 1 MiB
 
+// maxLineLen bounds the length of a single line fed to the regex set. A real
+// secret sits in a short config line; a longer line is almost always minified
+// code or an embedded data blob, and matching every pattern against it is wasted
+// work (a 1 MiB single-line file would otherwise be scanned against every
+// pattern). Such lines are skipped rather than truncated, since a truncated
+// match would report a misleading column.
+const maxLineLen = 64 << 10 // 64 KiB
+
+// skipDirs are subtree names never worth scanning: VCS metadata, dependency and
+// build caches, the macOS trash, and cloud-storage mounts (the latter can block
+// on network I/O). Pruning them keeps a scan from drowning in machine-generated
+// files. This is the single source of truth for directory-walk pruning.
+var skipDirs = map[string]bool{
+	".git": true, ".hg": true, ".svn": true, "CVS": true,
+	"node_modules": true, "vendor": true,
+	".cache": true, "Caches": true, "CloudStorage": true, ".Trash": true,
+	".gradle": true, ".m2": true, "Pods": true, ".terraform": true,
+	".venv": true, "venv": true, "__pycache__": true, ".npm": true,
+}
+
 // ScanContent scans text line by line against every pattern. The result's
 // Action is the highest-priority action among the findings (skip > redact >
 // include); no findings → include.
 func ScanContent(path, content string) Result {
 	var findings []Finding
 	for i, line := range strings.Split(content, "\n") {
+		if len(line) > maxLineLen {
+			continue // minified/data line — not where secrets live, and costly to scan
+		}
 		for _, p := range Patterns() {
 			if loc := p.re.FindStringIndex(line); loc != nil {
 				findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(line[loc[0]:loc[1]], 40)})
@@ -35,10 +64,13 @@ func ScanContent(path, content string) Result {
 	return Result{Path: path, Findings: findings, Action: action}
 }
 
-// ScanFile scans a file's contents. A missing/unreadable path, or one larger
-// than MaxFileSize, returns nil (callers may pass any path defensively).
+// ScanFile scans a regular file's contents. A missing/unreadable path, a
+// non-regular file (symlink, device, FIFO, socket), or one larger than
+// MaxFileSize returns nil — callers may pass any path defensively, and reading a
+// device or FIFO would otherwise block forever.
 func ScanFile(path string) *Result {
-	if info, err := os.Stat(path); err != nil || info.Size() > MaxFileSize {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxFileSize {
 		return nil
 	}
 	b, err := os.ReadFile(path)
@@ -49,29 +81,72 @@ func ScanFile(path string) *Result {
 	return &r
 }
 
-// ScanDir recursively scans a directory, skipping node_modules/.git subtrees
-// and files larger than 1 MiB. A non-directory / unreadable path yields nil.
-func ScanDir(dir string) []Result {
-	var out []Result
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip unreadable entries, keep going
-		}
-		if d.IsDir() {
-			if n := d.Name(); n == "node_modules" || n == ".git" {
-				return fs.SkipDir
+// ScanDir recursively scans every regular file under dir, pruning skipDirs
+// subtrees and skipping symlinks/devices and files larger than MaxFileSize. File
+// scans run on a worker pool (one per CPU) since each scan is independent. The
+// walk aborts and returns ctx.Err() when ctx is cancelled. If progress is
+// non-nil it is incremented (atomically) once per file scanned, letting a caller
+// report progress without blocking the walk.
+func ScanDir(ctx context.Context, dir string, progress *int64) ([]Result, error) {
+	paths := make(chan string)
+	var walkErr error
+	go func() {
+		defer close(paths)
+		walkErr = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if cerr := ctx.Err(); cerr != nil {
+				return cerr // abort the walk on cancellation
+			}
+			if err != nil {
+				return nil // skip unreadable entries, keep going
+			}
+			if d.IsDir() {
+				if skipDirs[d.Name()] {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			// Every non-dir entry (symlinks included) goes to a worker. ScanFile
+			// resolves the target with os.Stat and skips non-regular files, so a
+			// symlink-to-device/FIFO can't block the read while a symlink-to-a-
+			// regular-file is still scanned (os.Stat doesn't block on a device).
+			select {
+			case paths <- path:
+			case <-ctx.Done():
+				return ctx.Err()
 			}
 			return nil
-		}
-		if info, err := d.Info(); err == nil && info.Size() > MaxFileSize {
-			return nil
-		}
-		if r := ScanFile(path); r != nil {
-			out = append(out, *r)
-		}
-		return nil
-	})
-	return out
+		})
+	}()
+
+	var (
+		mu  sync.Mutex
+		out []Result
+		wg  sync.WaitGroup
+	)
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Go(func() {
+			for path := range paths {
+				r := ScanFile(path)
+				if progress != nil {
+					atomic.AddInt64(progress, 1)
+				}
+				if r != nil {
+					mu.Lock()
+					out = append(out, *r)
+					mu.Unlock()
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	// Workers append in completion order; sort by path for stable output.
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+
+	if errors.Is(walkErr, context.Canceled) || errors.Is(walkErr, context.DeadlineExceeded) {
+		return out, walkErr
+	}
+	return out, nil
 }
 
 // Summarize keeps only results with findings and tallies actions.
