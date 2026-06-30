@@ -4,11 +4,25 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 )
+
+// menuHintStyle renders the muted one-line explanation beside each menu action.
+var menuHintStyle = lipgloss.NewStyle().Faint(true)
+
+// menuOption builds a menu entry whose label is followed by a muted hint,
+// aligned in a column so the menu reads like "action — what it does".
+func menuOption(label, value, hint string) huh.Option[string] {
+	if hint == "" {
+		return huh.NewOption(label, value)
+	}
+	return huh.NewOption(fmt.Sprintf("%-37s %s", label, menuHintStyle.Render(hint)), value)
+}
 
 // Interactive reports whether both stdin and stdout are terminals, i.e. a prompt
 // makes sense. Piped/redirected I/O (CI, `| cat`, `< file`) returns false.
@@ -70,16 +84,20 @@ func MainMenu() (string, error) {
 		Title("dothaven").
 		Description("pick an action").
 		Options(
-			huh.NewOption("Set up this machine from chezmoi (apply)", "migrate"),
-			huh.NewOption("Back up configs", "backup"),
-			huh.NewOption("Export to chezmoi (age-encrypted)", "chezmoi-export"),
-			huh.NewOption("Restore from the latest backup", "restore"),
-			huh.NewOption("Check setup (chezmoi + age)", "init"),
-			huh.NewOption("Status of the latest backup", "status"),
-			huh.NewOption("Quit", "quit"),
+			menuOption("Set up this machine (chezmoi apply)", "migrate", "chezmoi apply + reinstall packages"),
+			menuOption("Back up configs", "backup", "create a new local config backup"),
+			menuOption("Export to chezmoi (age-encrypted)", "chezmoi-export", "stage configs; secrets encrypted"),
+			menuOption("Restore from the latest backup", "restore", "apply the latest backup to ~"),
+			menuOption("Check setup (chezmoi + age)", "init", "verify chezmoi + age are ready"),
+			menuOption("Status of the latest backup", "status", "diff the latest backup vs ~ (read-only)"),
+			menuOption("Quit", "quit", ""),
 		).
 		Value(&choice)
 	if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+		// Esc / Ctrl-C at the menu means quit, not an error to surface.
+		if errors.Is(err, huh.ErrUserAborted) {
+			return "quit", nil
+		}
 		return "", err
 	}
 	return choice, nil
