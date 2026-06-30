@@ -88,6 +88,25 @@ func matchTarget(rel string, m map[string]mapping) (target, category string, sen
 	return "", "", ""
 }
 
+// readLiveTarget reads a live target for comparison. It reports exists=false
+// when absent, and reads content only for a regular file: a symlink/FIFO/device
+// is reported as existing-but-unread (os.ReadFile would follow a link or block
+// forever on a pipe), and Execute refuses to write over a non-regular target.
+func readLiveTarget(path string) (content string, exists bool) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return "", false
+	}
+	if !fi.Mode().IsRegular() {
+		return "", true
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", true
+	}
+	return string(b), true
+}
+
 // contained reports whether target is base itself or lies within it (after
 // cleaning) — the guard against a backup entry writing outside its tree.
 func contained(base, target string) bool {
@@ -121,6 +140,9 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		if err != nil || d.IsDir() {
 			return nil
 		}
+		if !d.Type().IsRegular() {
+			return nil // skip a symlink/FIFO/device in the backup tree — reading it can hang
+		}
 		rel, _ := filepath.Rel(backupDir, path)
 		rel = filepath.ToSlash(rel)
 		target, category, sens := matchTarget(rel, m)
@@ -131,8 +153,8 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		if rerr != nil {
 			return nil
 		}
-		tRaw, tErr := os.ReadFile(target)
-		status := classify(string(raw), tErr == nil, string(tRaw))
+		tContent, exists := readLiveTarget(target)
+		status := classify(string(raw), exists, tContent)
 		catSet[category] = true
 		entries = append(entries, Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens})
 		return nil
@@ -154,21 +176,10 @@ func Filter(p Plan, only, skip []string) Plan {
 	if len(only) == 0 && len(skip) == 0 {
 		return p
 	}
-	contains := func(list []string, s string) bool {
-		for _, x := range list {
-			if x == s {
-				return true
-			}
-		}
-		return false
-	}
 	var kept []Entry
 	catSet := map[string]bool{}
 	for _, e := range p.Entries {
-		if contains(skip, e.Category) {
-			continue
-		}
-		if len(only) > 0 && !contains(only, e.Category) {
+		if !registry.Selected(e.Category, only, skip) {
 			continue
 		}
 		kept = append(kept, e)
@@ -244,10 +255,11 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			res.Skipped++
 			continue
 		}
-		// Refuse to write a symlinked live target: following it would modify
-		// whatever it points at, and replacing it would silently break the
-		// user's link. Skip and surface it for manual resolution.
-		if fi, err := os.Lstat(e.TargetPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		// Refuse to write over a non-regular live target. A symlink would modify
+		// whatever it points at (and replacing it breaks the user's link); a
+		// FIFO/device/socket would block the write. Skip and surface for manual
+		// resolution. (A regular file or an absent target proceeds normally.)
+		if fi, err := os.Lstat(e.TargetPath); err == nil && !fi.Mode().IsRegular() {
 			res.SkippedSymlink++
 			continue
 		}

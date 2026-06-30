@@ -4,30 +4,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
 
-// latestBackup returns the newest backup-* directory in dir (timestamped names
-// sort chronologically), or "" if none. Archives (.tar.gz) are ignored — they
-// can't be diffed/restored without extraction.
+// latestBackup returns the most recently modified backup-* directory in dir, or
+// "" if none. Sorting by mtime (not name) is correct when a dir holds backups
+// from several machines: a name sort orders by host before timestamp, so it
+// would pick the alphabetically-last host's backup rather than the newest.
+// Archives (.tar.gz) are ignored — they can't be diffed/restored without extraction.
 func latestBackup(dir string) string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return ""
 	}
-	var names []string
+	var newest string
+	var newestMod time.Time
 	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), "backup-") {
-			names = append(names, e.Name())
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "backup-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if newest == "" || info.ModTime().After(newestMod) {
+			newest, newestMod = e.Name(), info.ModTime()
 		}
 	}
-	if len(names) == 0 {
+	if newest == "" {
 		return ""
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(names)))
-	return filepath.Join(dir, names[0])
+	return filepath.Join(dir, newest)
 }
 
 // backupAge renders a backup directory's mtime as a coarse "Xm/Xh/Xd ago".

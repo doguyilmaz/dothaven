@@ -211,6 +211,26 @@ func TestExecuteSkipsSymlinkTargets(t *testing.T) {
 	}
 }
 
+func TestExecuteSkipsNonRegularTargets(t *testing.T) {
+	// A live target that is a directory (or FIFO/device) must be refused, not
+	// written over — writing to it would error or, for a FIFO, block forever.
+	home := t.TempDir()
+	backup := t.TempDir()
+	write(t, filepath.Join(backup, "cfg/x"), "from backup\n")
+	if err := os.MkdirAll(filepath.Join(home, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targets := []registry.BackupTarget{{Src: filepath.Join(home, "x"), Dest: "cfg/x", Category: "cfg"}}
+	plan, _ := BuildPlan(backup, home, targets)
+	res, err := Execute(plan, ExecuteOptions{Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SkippedSymlink != 1 || res.Restored != 0 {
+		t.Errorf("non-regular target should be skipped, got %+v", res)
+	}
+}
+
 func TestExecutePreservesSecretPerms(t *testing.T) {
 	home := t.TempDir()
 	backup := t.TempDir()
