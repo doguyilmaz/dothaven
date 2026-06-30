@@ -29,6 +29,9 @@ func TestMatchTarget(t *testing.T) {
 	m := map[string]mapping{
 		"shell/.zshrc":     {target: "/home/u/.zshrc", category: "shell"},
 		"ai/claude/skills": {target: "/home/u/.claude/skills", category: "ai", isDir: true},
+		// Overlapping dir dests: the more-specific one must win.
+		"editor":      {target: "/home/u/.config", category: "editor", isDir: true},
+		"editor/nvim": {target: "/home/u/.config/nvim", category: "nvim", isDir: true},
 	}
 	cases := []struct {
 		rel          string
@@ -39,10 +42,13 @@ func TestMatchTarget(t *testing.T) {
 		{"ai/claude/skills/nested/a.md", "/home/u/.claude/skills/nested/a.md", "ai"},
 		{"shell/.zshrc.local", "/home/u/.zshrc.local", "shell"},
 		{"unknown/file", "", ""},
-		{"ai/claude/skills/../../../../etc/evil", "", ""}, // path escape is refused
+		{"ai/claude/skills/../../../../etc/evil", "", ""},                 // path escape is refused
+		{"editor/nvim/init.lua", "/home/u/.config/nvim/init.lua", "nvim"}, // longest prefix wins
+		{"editor/other.conf", "/home/u/.config/other.conf", "editor"},
 	}
+	dirDests := dirDestsByLength(m)
 	for _, c := range cases {
-		gt, gc, _ := matchTarget(c.rel, m)
+		gt, gc, _ := matchTarget(c.rel, m, dirDests)
 		if gt != c.wantTarget || gc != c.wantCategory {
 			t.Errorf("matchTarget(%q) = (%q,%q), want (%q,%q)", c.rel, gt, gc, c.wantTarget, c.wantCategory)
 		}
@@ -208,6 +214,26 @@ func TestExecuteSkipsSymlinkTargets(t *testing.T) {
 	}
 	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
 		t.Error("the symlink itself was replaced or removed")
+	}
+}
+
+func TestExecuteSkipsNonRegularTargets(t *testing.T) {
+	// A live target that is a directory (or FIFO/device) must be refused, not
+	// written over — writing to it would error or, for a FIFO, block forever.
+	home := t.TempDir()
+	backup := t.TempDir()
+	write(t, filepath.Join(backup, "cfg/x"), "from backup\n")
+	if err := os.MkdirAll(filepath.Join(home, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targets := []registry.BackupTarget{{Src: filepath.Join(home, "x"), Dest: "cfg/x", Category: "cfg"}}
+	plan, _ := BuildPlan(backup, home, targets)
+	res, err := Execute(plan, ExecuteOptions{Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SkippedSymlink != 1 || res.Restored != 0 {
+		t.Errorf("non-regular target should be skipped, got %+v", res)
 	}
 }
 

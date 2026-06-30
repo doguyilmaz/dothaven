@@ -55,21 +55,35 @@ func buildMap(targets []registry.BackupTarget) map[string]mapping {
 	return m
 }
 
+// dirDestsByLength returns the directory-kind dests sorted longest-first (ties
+// alphabetical), so a file under overlapping dests (e.g. "editor" and
+// "editor/nvim") matches the most-specific one. Computed once per plan, not per
+// file.
+func dirDestsByLength(m map[string]mapping) []string {
+	dests := make([]string, 0, len(m))
+	for dest, mp := range m {
+		if mp.isDir {
+			dests = append(dests, dest)
+		}
+	}
+	sort.Slice(dests, func(i, j int) bool {
+		if len(dests[i]) != len(dests[j]) {
+			return len(dests[i]) > len(dests[j])
+		}
+		return dests[i] < dests[j]
+	})
+	return dests
+}
+
 // matchTarget maps a backed-up file (rel, slash-separated) to its live target:
-// an exact file dest, a directory-dest prefix, or a `<base>.local` sibling of a
-// file dest. A dir-prefix match that would escape its target base (via ../ in a
-// crafted backup) is refused. Returns ("","","") when nothing matches.
-func matchTarget(rel string, m map[string]mapping) (target, category string, sens registry.Sensitivity) {
+// an exact file dest, a directory-dest prefix (most-specific first, via the
+// precomputed dirDests), or a `<base>.local` sibling of a file dest. A dir-prefix
+// match that would escape its target base (via ../ in a crafted backup) is
+// refused. Returns ("","","") when nothing matches.
+func matchTarget(rel string, m map[string]mapping, dirDests []string) (target, category string, sens registry.Sensitivity) {
 	if mp, ok := m[rel]; ok && !mp.isDir {
 		return mp.target, mp.category, mp.sens
 	}
-	dirDests := make([]string, 0, len(m))
-	for dest, mp := range m {
-		if mp.isDir {
-			dirDests = append(dirDests, dest)
-		}
-	}
-	sort.Strings(dirDests) // deterministic when dests could overlap
 	for _, dest := range dirDests {
 		if strings.HasPrefix(rel, dest+"/") {
 			mp := m[dest]
@@ -86,6 +100,25 @@ func matchTarget(rel string, m map[string]mapping) (target, category string, sen
 		}
 	}
 	return "", "", ""
+}
+
+// readLiveTarget reads a live target for comparison. It reports exists=false
+// when absent, and reads content only for a regular file: a symlink/FIFO/device
+// is reported as existing-but-unread (os.ReadFile would follow a link or block
+// forever on a pipe), and Execute refuses to write over a non-regular target.
+func readLiveTarget(path string) (content string, exists bool) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return "", false
+	}
+	if !fi.Mode().IsRegular() {
+		return "", true
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", true
+	}
+	return string(b), true
 }
 
 // contained reports whether target is base itself or lies within it (after
@@ -114,6 +147,7 @@ func classify(backupContent string, targetExists bool, targetContent string) Sta
 // A missing/empty backup dir yields an empty plan (no error).
 func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, error) {
 	m := buildMap(targets)
+	dirDests := dirDestsByLength(m)
 	var entries []Entry
 	catSet := map[string]bool{}
 
@@ -121,9 +155,12 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		if err != nil || d.IsDir() {
 			return nil
 		}
+		if !d.Type().IsRegular() {
+			return nil // skip a symlink/FIFO/device in the backup tree — reading it can hang
+		}
 		rel, _ := filepath.Rel(backupDir, path)
 		rel = filepath.ToSlash(rel)
-		target, category, sens := matchTarget(rel, m)
+		target, category, sens := matchTarget(rel, m, dirDests)
 		if target == "" {
 			return nil
 		}
@@ -131,8 +168,8 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		if rerr != nil {
 			return nil
 		}
-		tRaw, tErr := os.ReadFile(target)
-		status := classify(string(raw), tErr == nil, string(tRaw))
+		tContent, exists := readLiveTarget(target)
+		status := classify(string(raw), exists, tContent)
 		catSet[category] = true
 		entries = append(entries, Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens})
 		return nil
@@ -154,21 +191,10 @@ func Filter(p Plan, only, skip []string) Plan {
 	if len(only) == 0 && len(skip) == 0 {
 		return p
 	}
-	contains := func(list []string, s string) bool {
-		for _, x := range list {
-			if x == s {
-				return true
-			}
-		}
-		return false
-	}
 	var kept []Entry
 	catSet := map[string]bool{}
 	for _, e := range p.Entries {
-		if contains(skip, e.Category) {
-			continue
-		}
-		if len(only) > 0 && !contains(only, e.Category) {
+		if !registry.Selected(e.Category, only, skip) {
 			continue
 		}
 		kept = append(kept, e)
@@ -244,10 +270,11 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			res.Skipped++
 			continue
 		}
-		// Refuse to write a symlinked live target: following it would modify
-		// whatever it points at, and replacing it would silently break the
-		// user's link. Skip and surface it for manual resolution.
-		if fi, err := os.Lstat(e.TargetPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		// Refuse to write over a non-regular live target. A symlink would modify
+		// whatever it points at (and replacing it breaks the user's link); a
+		// FIFO/device/socket would block the write. Skip and surface for manual
+		// resolution. (A regular file or an absent target proceeds normally.)
+		if fi, err := os.Lstat(e.TargetPath); err == nil && !fi.Mode().IsRegular() {
 			res.SkippedSymlink++
 			continue
 		}

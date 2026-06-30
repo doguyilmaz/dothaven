@@ -54,7 +54,11 @@ func RedactSection(name string, s *snapshot.Section) (kept bool, results []Resul
 			delete(s.Pairs, k)
 			continue
 		}
-		if r := ScanContent(name+"."+k, s.Pairs[k]); r.Action != Include {
+		// Scan the reconstructed `key=value`, not the value alone: an opaque
+		// secret (no recognizable prefix) under a credential-named key — e.g. a
+		// flattened JSON `auth.apiKey` => <random> — only trips the keyword
+		// patterns when the keyword and a delimiter sit on the same line.
+		if r := ScanContent(name+"."+k, k+"="+s.Pairs[k]); r.Action != Include {
 			results = append(results, r)
 			s.Pairs[k] = Marker
 		}

@@ -23,8 +23,8 @@ func TestSelected(t *testing.T) {
 		{"shell", []string{"shell"}, []string{"shell"}, false}, // skip wins
 	}
 	for _, c := range cases {
-		if got := selected(c.cat, c.only, c.skip); got != c.want {
-			t.Errorf("selected(%q, only=%v, skip=%v) = %v, want %v", c.cat, c.only, c.skip, got, c.want)
+		if got := registry.Selected(c.cat, c.only, c.skip); got != c.want {
+			t.Errorf("Selected(%q, only=%v, skip=%v) = %v, want %v", c.cat, c.only, c.skip, got, c.want)
 		}
 	}
 }
@@ -116,6 +116,26 @@ func TestRunNoRedactKeepsRaw(t *testing.T) {
 	}
 }
 
+func TestRunNoRedactReportsRawSecrets(t *testing.T) {
+	home, dest := t.TempDir(), t.TempDir()
+	mustWrite(t, filepath.Join(home, "id_rsa"), "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n")
+	targets := []registry.BackupTarget{{Src: filepath.Join(home, "id_rsa"), Dest: "ssh/id_rsa", Category: "ssh"}}
+
+	res, err := Run(targets, dest, Options{Redact: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The key is written (escape hatch) but must be surfaced so the CLI can warn.
+	if len(res.RawSecrets) != 1 || res.RawSecrets[0] != "ssh/id_rsa" {
+		t.Errorf("RawSecrets = %v, want [ssh/id_rsa]", res.RawSecrets)
+	}
+	// Redacting backup drops it and reports no raw secret.
+	res2, _ := Run(targets, t.TempDir(), Options{Redact: true})
+	if len(res2.RawSecrets) != 0 || res2.TotalFiles != 0 {
+		t.Errorf("redacting backup must drop the key: files=%d raw=%v", res2.TotalFiles, res2.RawSecrets)
+	}
+}
+
 func TestRunDir(t *testing.T) {
 	home := t.TempDir()
 	dest := t.TempDir()
@@ -133,6 +153,33 @@ func TestRunDir(t *testing.T) {
 	}
 	if readFile(t, filepath.Join(dest, "ai/claude/skills/nested/b.md")) != "skill b\n" {
 		t.Error("nested dir file not mirrored")
+	}
+}
+
+func TestRunDirFollowsSymlinkToRegularFile(t *testing.T) {
+	// Regression: a symlinked config file inside a dir-kind target (common with
+	// dotfile managers / stow) must be backed up. WalkDir reports the symlink as
+	// non-regular, so the copy decision has to resolve the target, not the link.
+	home := t.TempDir()
+	dest := t.TempDir()
+	cfg := filepath.Join(home, "cfg")
+	mustWrite(t, filepath.Join(cfg, "real.conf"), "theme = dark\n")
+	target := filepath.Join(t.TempDir(), "external.conf")
+	mustWrite(t, target, "color = blue\n")
+	if err := os.Symlink(target, filepath.Join(cfg, "link.conf")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	targets := []registry.BackupTarget{{Src: cfg, Dest: "cfg", Category: "x", IsDir: true}}
+	res, err := Run(targets, dest, Options{Redact: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TotalFiles != 2 {
+		t.Errorf("TotalFiles = %d, want 2 (real.conf + the symlinked link.conf)", res.TotalFiles)
+	}
+	if got := readFile(t, filepath.Join(dest, "cfg/link.conf")); got != "color = blue\n" {
+		t.Errorf("symlinked file not backed up via its target, got %q", got)
 	}
 }
 

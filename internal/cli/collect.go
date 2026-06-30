@@ -24,7 +24,7 @@ func defaultCollectors() []collect.Collector {
 	return []collect.Collector{
 		collect.MetaCollector,
 		func(c collect.Ctx) snapshot.Snapshot {
-			return registry.Collect(c.Env, c.Home, c.Redact, registry.Entries)
+			return registry.Collect(c.Context, c.Env, c.Home, c.Redact, registry.Entries)
 		},
 		collect.SSHCollector,
 		collect.OllamaCollector,
@@ -81,6 +81,10 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			redact := !noRedact
 			snap := gatherSnapshot(cmd.Context(), env, redact)
+			if cerr := cmd.Context().Err(); cerr != nil {
+				fmt.Fprintln(os.Stderr, "collect cancelled.")
+				return ExitError{Code: 130} // cancelled mid-collect — don't write a truncated snapshot as success
+			}
 
 			var scanResults []scan.Result
 			if redact {

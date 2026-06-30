@@ -3,8 +3,10 @@
 package registry
 
 import (
+	"context"
 	"encoding/json"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,6 +15,16 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 	"github.com/doguyilmaz/dothaven/internal/sys"
 )
+
+// Selected applies the standard --only/--skip category filter shared by backup,
+// restore, and export: --skip always wins; a non-empty --only restricts to its
+// members. Single source of truth so the three commands can't drift.
+func Selected(category string, only, skip []string) bool {
+	if slices.Contains(skip, category) {
+		return false
+	}
+	return len(only) == 0 || slices.Contains(only, category)
+}
 
 type Kind int
 
@@ -263,10 +275,15 @@ func ResolvePath(e Entry, home string) string {
 	return strings.Replace(tmpl, "~", home, 1)
 }
 
-// Collect reads every entry that exists on disk into a snapshot.
-func Collect(env sys.Env, home string, redact bool, entries []Entry) snapshot.Snapshot {
+// Collect reads every entry that exists on disk into a snapshot. It checks ctx
+// between entries so a cancelled run (Ctrl-C) stops the file-read pass promptly
+// rather than reading every remaining source.
+func Collect(ctx context.Context, env sys.Env, home string, redact bool, entries []Entry) snapshot.Snapshot {
 	out := snapshot.Snapshot{}
 	for _, e := range entries {
+		if ctx.Err() != nil {
+			break
+		}
 		path := ResolvePath(e, home)
 		if path == "" {
 			continue

@@ -1,6 +1,10 @@
 package scan
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -8,6 +12,88 @@ import (
 )
 
 const ghp = "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" // ghp_ + 36
+
+func TestScanDirSkipsAndScans(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "secret.env"), "TOKEN="+ghp)
+	mustWrite(t, filepath.Join(dir, "clean.txt"), "theme = dark")
+	// a pruned subtree whose secret must never be scanned
+	if err := os.MkdirAll(filepath.Join(dir, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, "node_modules", "leak.env"), "TOKEN="+ghp)
+
+	var scanned int64
+	results, err := ScanDir(context.Background(), dir, &scanned, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, r := range results {
+		if strings.Contains(r.Path, "node_modules") {
+			t.Errorf("node_modules subtree should be pruned, got %s", r.Path)
+		}
+	}
+	found := false
+	for _, r := range results {
+		if strings.HasSuffix(r.Path, "secret.env") && r.Action == Redact {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("secret.env should be flagged for redaction; results: %+v", results)
+	}
+	if scanned < 2 {
+		t.Errorf("progress counter = %d, want >= 2 files scanned", scanned)
+	}
+}
+
+func TestScanDirCancelled(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "a.txt"), "x")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := ScanDir(ctx, dir, nil, true); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled scan err = %v, want context.Canceled", err)
+	}
+}
+
+func TestScanFileSkipsNonRegular(t *testing.T) {
+	if ScanFile(t.TempDir()) != nil {
+		t.Error("ScanFile should return nil for a directory (non-regular)")
+	}
+}
+
+func TestScanDirFollowsSymlinkToRegularFile(t *testing.T) {
+	// A symlink to a regular file must still be scanned (os.Stat follows it);
+	// only symlinks to devices/FIFOs are skipped. Regression guard: a DirEntry
+	// reports a symlink as non-regular, so a naive type check would drop it.
+	dir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "real_secret")
+	mustWrite(t, target, "TOKEN="+ghp)
+	if err := os.Symlink(target, filepath.Join(dir, "link.env")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	results, err := ScanDir(context.Background(), dir, nil, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, r := range results {
+		if strings.HasSuffix(r.Path, "link.env") && r.Action == Redact {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("secret behind a symlink-to-regular should be scanned; results: %+v", results)
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestScanContentActions(t *testing.T) {
 	cases := []struct {
@@ -39,6 +125,43 @@ func TestScanContentActions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestScanContentJSONAndBareKeywordSecrets(t *testing.T) {
+	// JSON-quoted keys and bare lowercase credential keywords must be detected;
+	// the quote between keyword and ':' previously defeated the delimiter match.
+	redacted := []string{
+		`  "token": "opaque40charvaluewithnoknownprefix01"`,
+		`  "apiKey": "anotheropaquesecretvalue1234567890"`,
+		`  "apiToken": "x7y8z9opaquetokenvalue0011223344"`,
+		`"access_token": "ya-no-prefix-opaque-but-named"`,
+		`token=opaquevaluewithnoprefixatall12345`,
+	}
+	for _, c := range redacted {
+		if r := ScanContent("mcp.json", c); r.Action != Redact {
+			t.Errorf("expected redact for %q, got %s", c, r.Action)
+		}
+	}
+	// A non-credential key with a delimiter must stay benign.
+	if r := ScanContent("cfg", `  "theme": "dark"`); r.Action != Include {
+		t.Errorf("benign pair should be Include, got %s", r.Action)
+	}
+}
+
+func TestRedactSectionOpaqueValueUnderCredentialKey(t *testing.T) {
+	// A flattened JSON pair whose value is an opaque secret under a credential
+	// key (no recognizable value prefix) must be masked, not kept verbatim.
+	s := snapshot.Section{Pairs: map[string]string{
+		"auth.apiKey": "opaqueValue0123456789noKnownPrefix",
+		"theme":       "dark",
+	}}
+	RedactSection("ai.gemini.settings", &s)
+	if s.Pairs["auth.apiKey"] != Marker {
+		t.Errorf("opaque secret under credential key should be masked, got %q", s.Pairs["auth.apiKey"])
+	}
+	if s.Pairs["theme"] != "dark" {
+		t.Errorf("benign value changed: %q", s.Pairs["theme"])
 	}
 }
 

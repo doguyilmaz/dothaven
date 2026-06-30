@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/chezmoi"
 	"github.com/doguyilmaz/dothaven/internal/collect"
@@ -26,7 +27,15 @@ func runShell(ctx context.Context, name string, args ...string) (string, error) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*sys.CommandTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, name, args...)
+	// Non-interactive: stdin stays closed and git won't open /dev/tty to prompt,
+	// so a child can't silently block waiting on input until the timeout.
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	// WaitDelay so a grandchild that inherits the output pipe (a forked daemon
+	// from `chezmoi apply`'s install script) can't keep Wait() blocked past the
+	// deadline after CommandContext SIGKILLs the direct child.
+	cmd.WaitDelay = 5 * time.Second
+	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 
@@ -95,10 +104,15 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	}
 
 	// The Brewfile is embedded verbatim into an UNENCRYPTED script — redact any
-	// inline credentials (e.g. a private tap's https://user:pass@host) first.
+	// inline credentials (e.g. a private tap's https://user:pass@host) first, and
+	// drop it entirely on a skip-action secret (a private key): ApplyRedactions
+	// only masks redact-action findings, so embedding a skip-action body would
+	// leak it raw. Mirrors the drop-on-skip gate used by collect/backup.
 	var brewfile string
 	if c := brew["apps.brew.bundle"].Content; c != nil {
-		brewfile = scan.ApplyRedactions(*c, scan.ScanContent("Brewfile", *c))
+		if sr := scan.ScanContent("Brewfile", *c); sr.Action != scan.Skip {
+			brewfile = scan.ApplyRedactions(*c, sr)
+		}
 	}
 
 	var nodeVersions []string // node always keeps its exact version

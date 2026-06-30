@@ -4,6 +4,9 @@ package collect
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"runtime/debug"
 	"sync"
 
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
@@ -43,7 +46,14 @@ func RunCollectors(c Ctx, collectors []Collector) snapshot.Snapshot {
 		wg.Add(1)
 		go func(i int, col Collector) {
 			defer wg.Done()
-			defer func() { _ = recover() }()
+			// Failure isolation: a panicking collector yields an empty section
+			// instead of aborting the run — but log it to stderr so a genuine
+			// parser bug is observable rather than silently swallowed.
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Fprintf(os.Stderr, "dothaven: collector %d panicked: %v\n%s\n", i, r, debug.Stack())
+				}
+			}()
 			results[i] = col(c)
 		}(i, col)
 	}

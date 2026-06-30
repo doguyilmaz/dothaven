@@ -79,8 +79,15 @@ homebrew_casks:
       name: homebrew-tap
       # A PAT with contents:write on the tap repo (the default GITHUB_TOKEN can't push cross-repo).
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    # No quarantine workaround needed — the binary is signed + notarized above,
-    # so macOS Gatekeeper accepts it cleanly.
+    # The binary itself is self-contained. The chezmoi-export --apply and init
+    # paths shell out to chezmoi (and age) — not pulled in as a hard cask
+    # dependency, so flag them as optional installs.
+    caveats: |
+      dothaven runs standalone. The encrypted-migration features
+      (`dothaven chezmoi-export --apply`, `dothaven init`) also need chezmoi and age:
+        brew install chezmoi age
+    # When the signing secret is set (see notarize: above) the release is signed +
+    # notarized, so Gatekeeper accepts it with no quarantine workaround.
 
 release:
   draft: false

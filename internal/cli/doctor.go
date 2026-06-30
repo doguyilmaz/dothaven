@@ -102,11 +102,17 @@ func remediationCommand(id string) string {
 	}
 }
 
-// firstToken is the package name from an item's reported form ("name version" →
-// "name"), so a remediation command lists installable names, not version noise.
+// firstToken is the installable name from an item's reported form, so a `fix:`
+// command lists installable names rather than a pinned (possibly yanked or
+// non-existent) spec. It drops a trailing " version" and an "@version" pin
+// (npm/bun/pnpm/pipx/cargo all report name@version), preserving a leading '@'
+// for scoped npm packages (@scope/pkg@1.2.3 → @scope/pkg).
 func firstToken(s string) string {
 	if i := strings.IndexAny(s, " \t"); i >= 0 {
-		return s[:i]
+		s = s[:i]
+	}
+	if i := strings.LastIndexByte(s, '@'); i > 0 {
+		s = s[:i]
 	}
 	return s
 }
@@ -124,7 +130,11 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			missing := findMissing(want, gatherSnapshot(cmd.Context(), env, false))
+			snap := gatherSnapshot(cmd.Context(), env, false)
+			if cerr := cmd.Context().Err(); cerr != nil {
+				return ExitError{Code: 130} // cancelled mid-collect — a partial snapshot gives a bogus verdict
+			}
+			missing := findMissing(want, snap)
 
 			ids := make([]string, 0, len(missing))
 			for id := range missing {

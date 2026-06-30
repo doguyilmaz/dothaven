@@ -5,10 +5,13 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/doguyilmaz/dothaven/internal/scan"
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
 
-const sshRedactionMarker = "[REDACTED]"
+// sshRedactionMarker aliases scan.Marker — one redaction marker across the
+// codebase so a future change to the token can't leave ssh output out of sync.
+const sshRedactionMarker = scan.Marker
 
 var (
 	sshHostRe     = regexp.MustCompile(`(?i)^Host\s+(.+)`)

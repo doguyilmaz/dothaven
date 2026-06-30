@@ -26,13 +26,13 @@ func parseNameLines(text string) []string {
 // the first column (the snap name) of every other row.
 func ParseSnapList(text string) []string {
 	var out []string
-	for i, l := range strings.Split(text, "\n") {
+	for _, l := range strings.Split(text, "\n") {
 		f := strings.Fields(l)
 		if len(f) == 0 {
 			continue
 		}
-		if i == 0 && f[0] == "Name" {
-			continue
+		if f[0] == "Name" {
+			continue // header row — detected by content so a leading blank line can't leak it
 		}
 		out = append(out, f[0])
 	}

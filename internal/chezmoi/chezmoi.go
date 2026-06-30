@@ -5,6 +5,7 @@
 package chezmoi
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -39,10 +40,7 @@ func contains(list []string, s string) bool {
 
 // IsSelected applies --only/--skip: skip wins; a non-empty only-list restricts.
 func IsSelected(category string, only, skip []string) bool {
-	if contains(skip, category) {
-		return false
-	}
-	return len(only) == 0 || contains(only, category)
+	return registry.Selected(category, only, skip)
 }
 
 // PlanExport decides, per registry entry that exists on disk, whether chezmoi
@@ -114,7 +112,12 @@ func anyHigh(findings []scan.Finding) bool {
 // directory). HIGH-only so a benign IP/email never forces encryption.
 func ContainsHighSecret(path string, isDir bool) bool {
 	if isDir {
-		for _, r := range scan.ScanDir(path) {
+		// Security probe: scan EVERYTHING (prune=false) so a HIGH secret hidden in
+		// a dependency/cache subtree of an otherwise-benign config dir still forces
+		// encryption rather than a plaintext export. Background ctx is fine — these
+		// are small config dirs and the export path was never cancellable here.
+		results, _ := scan.ScanDir(context.Background(), path, nil, false)
+		for _, r := range results {
 			if anyHigh(r.Findings) {
 				return true
 			}

@@ -65,6 +65,13 @@ func stdoutIsTTY() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
+// stderrIsTTY reports whether stderr is a terminal — gates progress output so a
+// piped/CI run never gets carriage-return spam.
+func stderrIsTTY() bool {
+	fi, err := os.Stderr.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
 // newestJSON returns up to n .json files in dir, newest (by mtime) first.
 func newestJSON(dir string, n int) []string {
 	entries, err := os.ReadDir(dir)
