@@ -124,7 +124,11 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			missing := findMissing(want, gatherSnapshot(cmd.Context(), env, false))
+			snap := gatherSnapshot(cmd.Context(), env, false)
+			if cerr := cmd.Context().Err(); cerr != nil {
+				return ExitError{Code: 130} // cancelled mid-collect — a partial snapshot gives a bogus verdict
+			}
+			missing := findMissing(want, snap)
 
 			ids := make([]string, 0, len(missing))
 			for id := range missing {

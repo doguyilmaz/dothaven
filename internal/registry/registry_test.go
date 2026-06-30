@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"runtime"
 	"strings"
 	"testing"
@@ -71,7 +72,7 @@ func TestCollect(t *testing.T) {
 		},
 	}
 
-	snap := Collect(env, home, true, Entries)
+	snap := Collect(context.Background(), env, home, true, Entries)
 
 	// File → content
 	if c := snap["shell.zshrc"].Content; c == nil || !strings.Contains(*c, "alias ll") {
@@ -129,7 +130,7 @@ func TestFileMetadataLineCount(t *testing.T) {
 	for content, want := range cases {
 		env := &sys.Fake{HomeDir: home, Files: map[string]string{home + "/.p10k.zsh": content}}
 		e := []Entry{{ID: "terminal.p10k", BackupDest: "x", Kind: FileMetadata, Paths: map[string]string{runtime.GOOS: "~/.p10k.zsh"}}}
-		snap := Collect(env, home, false, e)
+		snap := Collect(context.Background(), env, home, false, e)
 		if got := snap["terminal.p10k"].Pairs["lines"]; got != want {
 			t.Errorf("content %q: lines=%q, want %q", content, got, want)
 		}

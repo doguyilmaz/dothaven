@@ -3,6 +3,7 @@
 package registry
 
 import (
+	"context"
 	"encoding/json"
 	"runtime"
 	"sort"
@@ -263,10 +264,15 @@ func ResolvePath(e Entry, home string) string {
 	return strings.Replace(tmpl, "~", home, 1)
 }
 
-// Collect reads every entry that exists on disk into a snapshot.
-func Collect(env sys.Env, home string, redact bool, entries []Entry) snapshot.Snapshot {
+// Collect reads every entry that exists on disk into a snapshot. It checks ctx
+// between entries so a cancelled run (Ctrl-C) stops the file-read pass promptly
+// rather than reading every remaining source.
+func Collect(ctx context.Context, env sys.Env, home string, redact bool, entries []Entry) snapshot.Snapshot {
 	out := snapshot.Snapshot{}
 	for _, e := range entries {
+		if ctx.Err() != nil {
+			break
+		}
 		path := ResolvePath(e, home)
 		if path == "" {
 			continue
