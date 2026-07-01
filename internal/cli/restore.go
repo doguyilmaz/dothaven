@@ -63,7 +63,7 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 			interactive := !force && tui.Interactive()
 			snapDir := ""
 			if force || interactive {
-				snapDir = filepath.Join(env.ResolveOutputDir(""), "pre-restore-"+sys.Timestamp(time.Now()))
+				snapDir = filepath.Join(env.DataDir(), "pre-restore-"+sys.Timestamp(time.Now()))
 			}
 			opts := restore.ExecuteOptions{Force: force, SnapshotDir: snapDir}
 			if interactive {
@@ -146,9 +146,9 @@ func newStatusCmd(env *sys.OS) *cobra.Command {
 		Short: "Summarize the latest backup against the live machine",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backupDir := latestBackup(env.ResolveOutputDir(""))
+			backupDir := latestBackup(env.DataDir())
 			if backupDir == "" {
-				fmt.Println("No backup found. Run 'dothaven backup' first.")
+				fmt.Printf("No backup found in %s. Run 'dothaven backup' first.\n", env.DataDir())
 				return nil
 			}
 			plan, err := restore.BuildPlan(backupDir, env.Home(), targetsFor(env))
@@ -210,10 +210,10 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 			if len(args) > 0 {
 				backupDir, _ = filepath.Abs(args[0])
 			} else {
-				backupDir = latestBackup(env.ResolveOutputDir(""))
+				backupDir = latestBackup(env.DataDir())
 			}
 			if backupDir == "" {
-				fmt.Println("No backup found. Run 'dothaven backup' first.")
+				fmt.Printf("No backup found in %s. Run 'dothaven backup' first.\n", env.DataDir())
 				return nil
 			}
 			plan, err := restore.BuildPlan(backupDir, env.Home(), targetsFor(env))

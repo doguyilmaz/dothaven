@@ -1,4 +1,4 @@
-# status summarizes the latest backup (in ~/Downloads) against the live machine
+# status summarizes the latest backup (in ~/.local/share/dothaven) against the live machine
 exec dothaven status
 stdout 'Last backup:'
 stdout 'files tracked:'
@@ -6,5 +6,5 @@ stdout 'backup-box-20240101000000'
 
 -- .zshrc --
 alias ll='ls -la'
--- Downloads/backup-box-20240101000000/shell/.zshrc --
+-- .local/share/dothaven/backup-box-20240101000000/shell/.zshrc --
 alias ll='ls -la'

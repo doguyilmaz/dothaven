@@ -65,7 +65,7 @@ The output directory is resolved in this order:
 1. An explicit `-o` / `--output` directory always wins.
 2. Otherwise, if the working directory is a git repository, the file is written
    to `<cwd>/reports`.
-3. Otherwise it falls back to `~/Downloads`.
+3. Otherwise it falls back to `~/.local/share/dothaven`.
 
 The filename is `<hostname>-<UTC timestamp>.json`, where the timestamp is 14
 digits in `YYYYMMDDHHMMSS` form.

@@ -279,7 +279,7 @@ Useful flags (from `internal/cli/collect.go`):
 - `--no-redact` — keep raw values (skip secret redaction).
 - `--slim` — truncate long file contents to 10 lines.
 - `-o`, `--output` — output directory. The default is `./reports` when run inside a
-  git repository, otherwise `~/Downloads`; an explicit `-o` always wins.
+  git repository, otherwise `~/.local/share/dothaven`; an explicit `-o` always wins.
 
 By default `collect` redacts secrets and prints a redaction summary; `doctor` runs
 the same pipeline without redaction for local inspection.

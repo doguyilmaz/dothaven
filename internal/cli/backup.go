@@ -95,7 +95,12 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 				only = chosen
 			}
 
-			dir := env.ResolveOutputDir(output)
+			// Backups go to the stable DataDir (not the cwd-aware ResolveOutputDir),
+			// so restore/status/diff always find them; --output still overrides.
+			dir := output
+			if dir == "" {
+				dir = env.DataDir()
+			}
 			host, _ := os.Hostname()
 			if host == "" {
 				host = "machine"
@@ -180,7 +185,7 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 	}
 	c.Flags().BoolVar(&noRedact, "no-redact", false, "keep raw values (skip secret redaction)")
 	c.Flags().BoolVar(&archive, "archive", false, "create a .tar.gz instead of a directory")
-	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/Downloads)")
+	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ~/.local/share/dothaven)")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories (comma-separated)")
 	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories (comma-separated)")
 	return c

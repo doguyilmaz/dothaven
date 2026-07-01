@@ -83,7 +83,7 @@ go build ./cmd/dothaven
 
 ## A first run
 
-`collect` takes inventory and writes a timestamped JSON snapshot. The output location is resolved automatically: an explicit `-o` always wins, otherwise dothaven writes to `./reports` when the current directory is a git repository, and falls back to `~/Downloads` when it is not.
+`collect` takes inventory and writes a timestamped JSON snapshot. The output location is resolved automatically: an explicit `-o` always wins, otherwise dothaven writes to `./reports` when the current directory is a git repository, and falls back to `~/.local/share/dothaven` when it is not.
 
 ```bash
 $ dothaven collect

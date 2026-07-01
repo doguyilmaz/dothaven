@@ -223,7 +223,7 @@ Relevant flags:
 
 | Flag           | Effect                                                                 |
 | -------------- | --------------------------------------------------------------------- |
-| `-o`, `--output` | Output directory. Default: `./reports` in a git repo, else `~/Downloads`. |
+| `-o`, `--output` | Output directory. Default: `./reports` in a git repo, else `~/.local/share/dothaven`. |
 | `--no-redact`  | Keep raw values (skip secret redaction).                              |
 | `--slim`       | Truncate long file contents to 10 lines.                             |
 

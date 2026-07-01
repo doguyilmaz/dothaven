@@ -60,6 +60,45 @@ func TestRunNilContextNoPanic(t *testing.T) {
 	}
 }
 
+func TestDataDir(t *testing.T) {
+	o := &OS{home: "/home/u"}
+
+	t.Setenv("XDG_DATA_HOME", "/xdg")
+	if got := o.DataDir(); got != "/xdg/dothaven" {
+		t.Errorf("DataDir with XDG = %q, want /xdg/dothaven", got)
+	}
+
+	t.Setenv("XDG_DATA_HOME", "")
+	if got := o.DataDir(); got != "/home/u/.local/share/dothaven" {
+		t.Errorf("DataDir fallback = %q, want ~/.local/share/dothaven", got)
+	}
+}
+
+func TestResolveOutputDir(t *testing.T) {
+	o := &OS{home: "/home/u"}
+	t.Setenv("XDG_DATA_HOME", "")
+
+	if got := o.ResolveOutputDir("/explicit"); got != "/explicit" {
+		t.Errorf("explicit path = %q, want /explicit", got)
+	}
+	// In a non-repo cwd it falls back to DataDir, never ~/Downloads.
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(t.TempDir())
+	cwd, _ := os.Getwd() // resolved (macOS /var -> /private/var)
+	if got := o.ResolveOutputDir(""); got != "/home/u/.local/share/dothaven" {
+		t.Errorf("non-repo fallback = %q, want ~/.local/share/dothaven", got)
+	}
+	// Inside a repo it uses ./reports (cwd-local inspection output).
+	if err := os.MkdirAll(filepath.Join(cwd, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(cwd, ".git", "HEAD"), []byte("ref: x\n"), 0o644)
+	if got := o.ResolveOutputDir(""); got != filepath.Join(cwd, "reports") {
+		t.Errorf("repo output = %q, want %s/reports", got, cwd)
+	}
+}
+
 func TestTimestampUTC(t *testing.T) {
 	got := Timestamp(time.Date(2026, 6, 4, 17, 47, 21, 0, time.UTC))
 	if got != "20260604174721" {

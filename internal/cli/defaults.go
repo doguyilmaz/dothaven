@@ -86,7 +86,7 @@ func newDefaultsExportCmd(env *sys.OS) *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/Downloads)")
+	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/.local/share/dothaven)")
 	return c
 }
 
