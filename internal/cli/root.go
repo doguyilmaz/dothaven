@@ -71,7 +71,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		newDefaultsCmd(env), newServicesCmd(env))
 	add("apply", newMigrateCmd(env), newRestoreCmd(env))
 	add("inspect",
-		newStatusCmd(env), newDiffCmd(env), newDoctorCmd(env),
+		newReadyCmd(env), newStatusCmd(env), newDiffCmd(env), newDoctorCmd(env),
 		newCompareCmd(env), newListCmd(env))
 	add("secrets", newScanCmd(env), newSecurityCmd(env))
 

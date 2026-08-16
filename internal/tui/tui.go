@@ -88,6 +88,7 @@ func MainMenu() (string, error) {
 		// to a chezmoi apply that overwrites $HOME and runs an install script.
 		// The ones that write say so.
 		Options(
+			menuOption("Am I safe to wipe this Mac?", "ready", "finds unpushed work — read-only"),
 			menuOption("What's changed?", "status", "latest backup vs this machine — read-only"),
 			menuOption("Check setup (chezmoi + age)", "init", "verify chezmoi + age are ready — read-only"),
 			menuOption("Scan for secrets", "scan", "check this folder for keys and tokens — read-only"),

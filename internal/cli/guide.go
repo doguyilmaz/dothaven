@@ -106,6 +106,7 @@ type asker func(title, desc string, choices []tui.Choice) (string, error)
 // runGuide walks the question tree.
 func runGuide(f machineFacts, ask asker) (*plan, error) {
 	goal, err := ask("What brings you here?", "Pick the closest one.", []tui.Choice{
+		{Label: "I'm about to wipe or replace this Mac", Value: "wipe", Hint: "check nothing is lost, then save it"},
 		{Label: "Save this Mac's setup", Value: "save", Hint: "so you can get it back, or move it"},
 		{Label: "Set up this Mac from a saved one", Value: "setup", Hint: "new or wiped machine"},
 		{Label: "See what changed", Value: "inspect", Hint: "compare against a backup or another Mac"},
@@ -116,6 +117,8 @@ func runGuide(f machineFacts, ask asker) (*plan, error) {
 	}
 
 	switch goal {
+	case "wipe":
+		return guideWipe(f, ask)
 	case "save":
 		return guideSave(f, ask)
 	case "setup":
@@ -126,6 +129,34 @@ func runGuide(f machineFacts, ask asker) (*plan, error) {
 		return guideAudit(ask)
 	}
 	return nil, nil
+}
+
+// guideWipe is the path with the only irreversible mistake in it. Config can be
+// rebuilt; a stash that existed on one disk cannot. So the order is fixed:
+// find unsaved work first, and only then talk about backups.
+func guideWipe(f machineFacts, ask asker) (*plan, error) {
+	p := &plan{reason: "Config is replaceable and code is not, so unsaved work comes first. `ready` checks every repository for changes, commits and stashes that exist on no remote."}
+	p.add("dothaven ready", "Lists anything a wipe would destroy. Exits 2 while something is at risk.")
+
+	where, err := ask("Once that's clean, where should the setup go?", "", []tui.Choice{
+		{Label: "Onto the new Mac", Value: "remote", Hint: "you'll set that one up from this"},
+		{Label: "Just keep a copy", Value: "local", Hint: "insurance, same machine or an external disk"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if where == "local" {
+		p.add("dothaven backup", "Timestamped copy in your data directory. Copy that folder off the Mac too.")
+		return p, nil
+	}
+	if !f.chezmoiInstalled || !f.ageReady {
+		p.add("dothaven init", "Checks chezmoi and age, which is how config reaches another Mac.")
+		p.warn("Set that up before wiping.", "It needs the old Mac, which is the one you're about to erase.")
+		return p, nil
+	}
+	p.add("dothaven chezmoi-export", "Preview what travels, and which files get encrypted.")
+	p.add("dothaven chezmoi-export --apply", "Then push your chezmoi repo — that's what the new Mac pulls.")
+	return p, nil
 }
 
 func guideSave(f machineFacts, ask asker) (*plan, error) {

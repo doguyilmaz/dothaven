@@ -191,3 +191,33 @@ func TestEveryPlanExplainsItself(t *testing.T) {
 		}
 	}
 }
+
+// The wipe path is the one with an irreversible mistake in it. `ready` must
+// come before anything else, every time — a backup taken after the disk is
+// erased is not a backup.
+func TestGuideChecksForUnsavedWorkBeforeAnythingElse(t *testing.T) {
+	for _, where := range []string{"local", "remote"} {
+		p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: true},
+			scripted(t, "wipe", where))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.steps[0].cmd != "dothaven ready" {
+			t.Errorf("%s: first step is %q, want `dothaven ready`", where, p.steps[0].cmd)
+		}
+	}
+}
+
+func TestGuideWipeStopsWhenChezmoiIsNotReady(t *testing.T) {
+	p, err := runGuide(machineFacts{}, scripted(t, "wipe", "remote"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := planText(p)
+	if strings.Contains(got, "--apply") {
+		t.Errorf("nothing should be exported before encryption exists:\n%s", got)
+	}
+	if !strings.Contains(got, "dothaven init") {
+		t.Errorf("want init, got:\n%s", got)
+	}
+}
