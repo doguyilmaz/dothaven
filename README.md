@@ -14,8 +14,8 @@ dothaven inventories what's on your machine (shell, git, editors, SSH, cloud CLI
 ## Install
 
 ```bash
-# Homebrew
-brew install doguyilmaz/tap/dothaven
+# Homebrew (signed and notarized)
+brew install --cask doguyilmaz/tap/dothaven
 
 # Go
 go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest
