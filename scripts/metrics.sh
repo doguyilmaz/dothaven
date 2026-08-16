@@ -35,6 +35,9 @@ releases=$(gh api "repos/$REPO/releases" --paginate)
 
 bold "Downloads by platform"
 rule
+# Read identical counts across several platforms as automated mirrors walking
+# every asset once per release, not as people choosing them. Real use shows up
+# as one platform pulling clear of the rest.
 jq -r '[.[].assets[] | select(.name | endswith(".tar.gz"))]
     | group_by(.name | sub("^dothaven_"; "") | sub("\\.tar\\.gz$"; ""))
     | sort_by(-([.[].download_count] | add))
