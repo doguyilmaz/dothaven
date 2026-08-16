@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -119,14 +120,37 @@ func firstToken(s string) string {
 
 func newDoctorCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
-		Use:   "doctor <snapshot.json>",
+		Use:   "doctor [snapshot.json]",
 		Short: "Snapshot vs this machine — what is not installed",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		// A drift result returns a non-zero exit (CI-friendly), which is a normal
 		// outcome — not an error to print. The report is already on stdout.
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			want, err := parseSnapshotFile(env, args[0])
+			// Defaults to the newest snapshot, like status and diff default to
+			// the newest backup. Requiring the path made the one command you
+			// reach for on a fresh machine the one that answered with cobra's
+			// "accepts 1 arg(s), received 0".
+			path := ""
+			if len(args) > 0 {
+				path = args[0]
+			} else {
+				// Where collect can have put one: the repo-local reports dir,
+				// the current directory (collect -o .), then the stable data dir.
+				var found []string
+				for _, dir := range []string{filepath.Join(cwd(), "reports"), cwd(), env.DataDir()} {
+					if found = newestJSON(dir, 1); len(found) > 0 {
+						break
+					}
+				}
+				if len(found) == 0 {
+					fmt.Println("No snapshot found. Run 'dothaven collect' first, or pass a path.")
+					return nil
+				}
+				path = found[0]
+				fmt.Printf("Using newest snapshot: %s\n\n", filepath.Base(path))
+			}
+			want, err := parseSnapshotFile(env, path)
 			if err != nil {
 				return err
 			}

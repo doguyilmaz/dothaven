@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/scan"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -27,7 +25,7 @@ func scanTarget(ctx context.Context, target string) ([]scan.Result, error) {
 	}
 	if info.IsDir() {
 		var scanned int64
-		stop := startScanProgress(&scanned)
+		stop := startProgress("scanning", &scanned, 0)
 		results, err := scan.ScanDir(ctx, abs, &scanned, true)
 		stop()
 		return results, err
@@ -36,36 +34,6 @@ func scanTarget(ctx context.Context, target string) ([]scan.Result, error) {
 		return []scan.Result{*r}, nil
 	}
 	return nil, nil
-}
-
-// startScanProgress streams a throttled file count to stderr while a directory
-// scan runs, so a long scan never looks frozen. It is a no-op when stderr isn't
-// a terminal (keeps piped/CI output clean). The returned func stops the ticker
-// and clears the line.
-func startScanProgress(scanned *int64) func() {
-	if !stderrIsTTY() {
-		return func() {}
-	}
-	done := make(chan struct{})
-	finished := make(chan struct{})
-	go func() {
-		defer close(finished)
-		t := time.NewTicker(150 * time.Millisecond)
-		defer t.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-t.C:
-				fmt.Fprintf(os.Stderr, "\rscanning… %d files", atomic.LoadInt64(scanned))
-			}
-		}
-	}()
-	return func() {
-		close(done)
-		<-finished // wait for the ticker to stop before clearing, so no late tick re-prints
-		fmt.Fprint(os.Stderr, "\r\033[K")
-	}
 }
 
 var severityRank = map[scan.Severity]int{scan.High: 3, scan.Medium: 2, scan.Low: 1}

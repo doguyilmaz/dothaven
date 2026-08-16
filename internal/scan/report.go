@@ -31,8 +31,20 @@ func FormatReport(s Summary) string {
 	if len(s.Results) == 0 {
 		return ""
 	}
+	// Sorted worst-first. Unsorted, a HIGH sat between two LOWs and the reader
+	// had to scan every row to find the ones that matter; the whole point of a
+	// severity is that it orders your attention.
+	rows := append([]Result(nil), s.Results...)
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := severityRank[topFinding(rows[i]).Pattern.Severity], severityRank[topFinding(rows[j]).Pattern.Severity]
+		if a != b {
+			return a > b
+		}
+		return rows[i].Path < rows[j].Path
+	})
+
 	lines := []string{"\n⚠ Sensitivity report:"}
-	for _, r := range s.Results {
+	for _, r := range rows {
 		top := topFinding(r)
 		label := "included"
 		switch r.Action {

@@ -27,6 +27,11 @@ type Pattern struct {
 	Severity Severity
 	Action   Action
 	re       *regexp.Regexp
+	// keyword rules fire on a word plus a delimiter, so they also match code
+	// that merely mentions the word — `token ==` in a shell parser is not a
+	// secret. Their matches are checked by valueLooksReal before reporting.
+	// Structural rules (a PEM header, an AWS key's shape) need no such check.
+	keyword bool
 }
 
 type Finding struct {

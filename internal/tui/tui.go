@@ -108,6 +108,30 @@ func MainMenu() (string, error) {
 	return choice, nil
 }
 
+// Choice is one answer to a guided question. Hint is the muted line beside it,
+// which is where the difference between two similar-sounding answers goes.
+type Choice struct{ Label, Value, Hint string }
+
+// ErrAborted reports that the user pressed Esc or Ctrl-C. Callers treat it as
+// "never mind", not as a failure.
+var ErrAborted = huh.ErrUserAborted
+
+// Ask presents one question and returns the chosen value.
+func Ask(title, description string, choices []Choice) (string, error) {
+	opts := make([]huh.Option[string], 0, len(choices))
+	for _, c := range choices {
+		opts = append(opts, menuOption(c.Label, c.Value, c.Hint))
+	}
+	// The bound value must not match any option, or huh skips rendering the
+	// options before the matched one until a keypress (huh#679).
+	var choice string
+	sel := huh.NewSelect[string]().Title(title).Description(description).Options(opts...).Value(&choice)
+	if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+		return "", err
+	}
+	return choice, nil
+}
+
 // Confirm asks a yes/no question.
 func Confirm(prompt string) (bool, error) {
 	var v bool

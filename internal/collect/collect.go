@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -19,6 +20,9 @@ type Ctx struct {
 	Env     sys.Env
 	Home    string
 	Redact  bool
+	// Done, when non-nil, is incremented as each collector finishes, so a
+	// caller can show progress without knowing what the collectors do.
+	Done *int64
 }
 
 // A Collector gathers some sections. It must not abort the run on failure — it
@@ -55,6 +59,9 @@ func RunCollectors(c Ctx, collectors []Collector) snapshot.Snapshot {
 				}
 			}()
 			results[i] = col(c)
+			if c.Done != nil {
+				atomic.AddInt64(c.Done, 1)
+			}
 		}(i, col)
 	}
 	wg.Wait()

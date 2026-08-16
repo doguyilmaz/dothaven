@@ -22,6 +22,13 @@ func mk(id, label string, sev Severity, action Action, re string) Pattern {
 	return Pattern{ID: id, Label: label, Severity: sev, Action: action, re: regexp.MustCompile(re)}
 }
 
+// kw is mk for keyword rules — see Pattern.keyword.
+func kw(id, label string, sev Severity, action Action, re string) Pattern {
+	p := mk(id, label, sev, action, re)
+	p.keyword = true
+	return p
+}
+
 func build() {
 	patterns = []Pattern{
 		// HIGH — private keys & certs (skip whole file)
@@ -34,12 +41,12 @@ func build() {
 		// HIGH — generic env-style secrets. The `["']?` before the delimiter lets
 		// these fire on JSON (`"token": "v"`) as well as shell/ini (`TOKEN=v`); a
 		// quote between the keyword and the colon otherwise defeats the match.
-		mk("generic-secret", "secret value", High, Redact, `\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b["']?\s*[=:]\s*\S+`),
-		mk("generic-api-key", "API key", High, Redact, `(?i)(API_KEY|APIKEY)["']?\s*[=:]\s*\S+`),
-		mk("secret-keyword", "secret value", High, Redact, `(?i)\b(password|passwd|secret|token|client[_-]?secret|secret[_-]?key|api[_-]?key|apikey|api[_-]?secret|api[_-]?token|access[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|personal[_-]?access[_-]?token|private[_-]?key)\b["']?\s*[=:]\s*\S+`),
+		kw("generic-secret", "secret value", High, Redact, `\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b["']?\s*[=:]\s*\S+`),
+		kw("generic-api-key", "API key", High, Redact, `(?i)(API_KEY|APIKEY)["']?\s*[=:]\s*\S+`),
+		kw("secret-keyword", "secret value", High, Redact, `(?i)\b(password|passwd|secret|token|client[_-]?secret|secret[_-]?key|api[_-]?key|apikey|api[_-]?secret|api[_-]?token|access[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|personal[_-]?access[_-]?token|private[_-]?key)\b["']?\s*[=:]\s*\S+`),
 
 		// HIGH — auth tokens & prefixed keys
-		mk("auth-token-npm", "npm auth token", High, Redact, `(?i)\b_(authToken|auth|password)\s*=\s*\S+`),
+		kw("auth-token-npm", "npm auth token", High, Redact, `(?i)\b_(authToken|auth|password)\s*=\s*\S+`),
 		mk("bearer-token", "bearer token", High, Redact, `Bearer\s+[A-Za-z0-9\-._~+/]{20,}=*`),
 		mk("github-token", "GitHub token", High, Redact, `\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b`),
 		mk("npm-token", "npm token", High, Redact, `\bnpm_[A-Za-z0-9]{36,}\b`),

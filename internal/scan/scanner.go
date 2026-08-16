@@ -46,15 +46,26 @@ var skipDirs = map[string]bool{
 // include); no findings → include.
 func ScanContent(path, content string) Result {
 	pats := Patterns() // hoisted out of the line loop
+	// Binary content is matched only against key-material rules; see looksBinary.
+	binary := looksBinary(content)
 	var findings []Finding
 	for i, line := range strings.Split(content, "\n") {
 		if len(line) > maxLineLen {
 			continue // minified/data line — not where secrets live, and costly to scan
 		}
 		for _, p := range pats {
-			if loc := p.re.FindStringIndex(line); loc != nil {
-				findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(line[loc[0]:loc[1]], 40)})
+			if binary && p.Action != Skip {
+				continue
 			}
+			loc := p.re.FindStringIndex(line)
+			if loc == nil {
+				continue
+			}
+			match := line[loc[0]:loc[1]]
+			if p.keyword && !valueLooksReal(match) {
+				continue
+			}
+			findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(match, 40)})
 		}
 	}
 	action := Include

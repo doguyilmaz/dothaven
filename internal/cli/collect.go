@@ -43,12 +43,17 @@ func defaultCollectors() []collect.Collector {
 // gatherSnapshot runs the full collector pipeline against the live machine. The
 // context (from the command, signal-aware) bounds and cancels the run.
 func gatherSnapshot(ctx context.Context, env *sys.OS, redact bool) snapshot.Snapshot {
+	collectors := defaultCollectors()
+	var done int64
+	stop := startProgress("inventorying", &done, len(collectors))
+	defer stop()
 	return collect.RunCollectors(collect.Ctx{
 		Context: ctx,
 		Env:     env,
 		Home:    env.Home(),
 		Redact:  redact,
-	}, defaultCollectors())
+		Done:    &done,
+	}, collectors)
 }
 
 const slimMaxLines = 10
