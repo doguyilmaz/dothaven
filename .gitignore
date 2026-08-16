@@ -30,3 +30,6 @@ docs/.hugo_build.lock
 # Local Claude settings (per-developer)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Local audit notes, not part of the project
+AUDIT.md
