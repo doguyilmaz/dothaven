@@ -143,7 +143,7 @@ func printRestorePlan(plan restore.Plan) {
 func newStatusCmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Summarize the latest backup against the live machine",
+		Short: "Latest backup vs this machine — one-screen summary",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupDir := latestBackup(env.DataDir())
@@ -203,7 +203,7 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 	var section string
 	c := &cobra.Command{
 		Use:   "diff [backup-path]",
-		Short: "Compare a backup against the live machine, grouped by category",
+		Short: "Backup vs this machine — file by file",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupDir := ""

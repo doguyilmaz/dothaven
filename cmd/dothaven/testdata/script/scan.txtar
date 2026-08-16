@@ -1,7 +1,13 @@
 # scan flags a secret and reports a clean file as such
-exec dothaven scan secret.txt
+# A HIGH finding exits 2, so a hook or CI job can gate on it.
+! exec dothaven scan secret.txt
 stdout '\[HIGH\] GitHub token'
 stdout 'Sensitivity report'
+stderr 'Exiting 2'
+
+# --no-fail keeps the report and drops the verdict.
+exec dothaven scan --no-fail secret.txt
+stdout '\[HIGH\] GitHub token'
 
 exec dothaven scan clean.txt
 stdout 'No sensitive data found'

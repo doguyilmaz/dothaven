@@ -6,6 +6,14 @@ stdout 'Exported 1 domain'
 exists $WORK/out/macos-defaults/com.googlecode.iterm2.plist
 ! exists $WORK/out/macos-defaults/com.apple.Terminal.plist
 
-exec dothaven defaults import $WORK/out
+exec dothaven defaults import --dry-run $WORK/out
+stdout 'Will replace preferences'
+! stdout '✔'
+
+# --yes is required off a terminal; without it the import refuses.
+! exec dothaven defaults import $WORK/out
+stderr 'Refusing to continue'
+
+exec dothaven defaults import --yes $WORK/out
 stdout 'com.googlecode.iterm2'
 stdout 'Imported 1 domain'

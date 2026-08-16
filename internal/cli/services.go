@@ -110,7 +110,8 @@ func newServicesExportCmd(env *sys.OS) *cobra.Command {
 }
 
 func newServicesImportCmd(env *sys.OS) *cobra.Command {
-	return &cobra.Command{
+	var dryRun, assumeYes bool
+	c := &cobra.Command{
 		Use:   "import <dir>",
 		Short: "Import Homebrew service config into this machine's $(brew --prefix)/etc",
 		Args:  cobra.ExactArgs(1),
@@ -128,7 +129,18 @@ func newServicesImportCmd(env *sys.OS) *cobra.Command {
 			if b, err := env.ReadFile(filepath.Join(dir, servicesPrefixFile)); err == nil {
 				oldPrefix = strings.TrimSpace(string(b))
 			}
-			n := 0
+
+			// Walked first, so --dry-run lists the same files the write pass
+			// would touch, and so an overwrite is visible before it happens
+			// rather than reported after. These land outside $HOME, in
+			// Homebrew's own tree — nginx and mysql configs are not something
+			// to replace silently.
+			type item struct {
+				rel, dest string
+				content   string
+				exists    bool
+			}
+			var plan []item
 			walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 				if err != nil || d.IsDir() {
 					return nil
@@ -141,19 +153,58 @@ func newServicesImportCmd(env *sys.OS) *cobra.Command {
 				if rerr != nil {
 					return nil
 				}
-				content := rewriteServicePrefix(string(raw), oldPrefix, newPrefix)
-				if werr := sys.WriteFile(filepath.Join(newPrefix, "etc", rel), content); werr != nil {
-					return werr
-				}
-				fmt.Printf("  ✔ %s\n", rel)
-				n++
+				dest := filepath.Join(newPrefix, "etc", rel)
+				_, statErr := os.Stat(dest)
+				plan = append(plan, item{
+					rel:     rel,
+					dest:    dest,
+					content: rewriteServicePrefix(string(raw), oldPrefix, newPrefix),
+					exists:  statErr == nil,
+				})
 				return nil
 			})
 			if walkErr != nil {
 				return walkErr
 			}
+			if len(plan) == 0 {
+				fmt.Printf("No service config found in %s — nothing to import.\n", dir)
+				return nil
+			}
+
+			overwrites := 0
+			fmt.Printf("Will write %d file(s) into %s:\n", len(plan), filepath.Join(newPrefix, "etc"))
+			for _, it := range plan {
+				if it.exists {
+					overwrites++
+					fmt.Printf("  overwrite  %s\n", it.rel)
+				} else {
+					fmt.Printf("  new        %s\n", it.rel)
+				}
+			}
+			if overwrites > 0 {
+				fmt.Printf("\n%d existing file(s) would be replaced. Keep a copy if you need one.\n", overwrites)
+			}
+			if dryRun {
+				fmt.Println("\nNothing written (--dry-run). Re-run without it to import.")
+				return nil
+			}
+			if err := confirmWrite(os.Stderr, "Write these service configs into Homebrew's etc?", assumeYes); err != nil {
+				return err
+			}
+
+			n := 0
+			for _, it := range plan {
+				if werr := sys.WriteFile(it.dest, it.content); werr != nil {
+					return werr
+				}
+				fmt.Printf("  ✔ %s\n", it.rel)
+				n++
+			}
 			fmt.Printf("Imported %d service config(s) into %s. Restart the affected services.\n", n, filepath.Join(newPrefix, "etc"))
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "list the files that would be written, write nothing")
+	c.Flags().BoolVar(&assumeYes, "yes", false, "skip the confirmation (required off a terminal)")
+	return c
 }

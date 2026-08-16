@@ -8,7 +8,13 @@ exists $WORK/out/services/nginx/nginx.conf
 exists $WORK/out/services/.brew-prefix
 
 env BREW_PREFIX=$WORK/brew2
-exec dothaven services import $WORK/out
+exec dothaven services import --dry-run $WORK/out
+stdout 'Will write'
+
+! exec dothaven services import $WORK/out
+stderr 'Refusing to continue'
+
+exec dothaven services import --yes $WORK/out
 stdout 'nginx/nginx.conf'
 exists $WORK/brew2/etc/nginx/nginx.conf
 

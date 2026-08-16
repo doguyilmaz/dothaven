@@ -63,6 +63,11 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 	if ferr != nil || sub == nil {
 		return ferr
 	}
+	// A parent command (defaults, services) carries no RunE; calling it would
+	// be a nil dereference rather than an error the menu could recover from.
+	if sub.RunE == nil {
+		return sub.Help()
+	}
 	sub.SetContext(cmd.Context())
 	// restore needs a path argument — feed it the latest backup.
 	if action == "restore" {

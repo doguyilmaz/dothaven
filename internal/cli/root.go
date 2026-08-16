@@ -10,38 +10,71 @@ import (
 
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/doguyilmaz/dothaven/internal/tui"
 	"github.com/spf13/cobra"
 )
 
 // NewRoot builds the root command with every subcommand wired in.
 func NewRoot(env *sys.OS, version string) *cobra.Command {
 	root := &cobra.Command{
-		Use:     "dothaven",
-		Short:   "Discover, back up, and migrate your machine's dev config",
-		Long:    "dothaven inventories your machine's dev configuration, scans for secrets, and feeds\nchezmoi (age-encrypted) for migration across machines.",
+		Use:   "dothaven",
+		Short: "Discover, back up, and migrate your machine's dev config",
+		Long: "dothaven inventories your machine's dev config, scans it for secrets, and moves\n" +
+			"it to another machine.\n\n" +
+			"Two ways to keep a copy — pick by whether it has to leave this Mac:\n" +
+			"  backup           a timestamped folder here. Quick, local, no setup.\n" +
+			"  chezmoi-export   into your chezmoi repo, secrets age-encrypted. Syncs machines.\n\n" +
+			"Run `dothaven` with no arguments for a menu. Anything that changes files you\n" +
+			"already have asks first and takes --dry-run; backup and export only ever add.",
 		Version: version,
 		// Subcommand errors are returned via RunE; don't dump usage on them.
 		SilenceUsage:  true,
 		SilenceErrors: false,
+		Args:          cobra.NoArgs,
 	}
-	root.AddCommand(
-		newTUICmd(env),
-		newCollectCmd(env),
-		newDoctorCmd(env),
-		newBackupCmd(env),
-		newRestoreCmd(env),
-		newStatusCmd(env),
-		newDiffCmd(env),
-		newChezmoiExportCmd(env),
-		newMigrateCmd(env),
-		newDefaultsCmd(env),
-		newServicesCmd(env),
-		newInitCmd(env),
-		newScanCmd(env),
-		newSecurityCmd(env),
-		newCompareCmd(env),
-		newListCmd(env),
+	// Bare `dothaven` on a terminal opens the menu instead of printing help.
+	// Someone who cannot remember which of the verbs they want is exactly the
+	// person the menu is for, and help is what they get today. Off a terminal
+	// it still prints help, because a pipe cannot drive a menu.
+	root.RunE = func(cmd *cobra.Command, _ []string) error {
+		if !tui.Interactive() {
+			return cmd.Help()
+		}
+		sub, _, err := cmd.Find([]string{"tui"})
+		if err != nil {
+			return cmd.Help()
+		}
+		sub.SetContext(cmd.Context())
+		return sub.RunE(sub, nil)
+	}
+	// Grouped, because a flat list of eighteen verbs is the reason this tool
+	// reads as complicated. The groups are the jobs someone actually has —
+	// set up a machine, save a config, put one back — not the internal shape
+	// of the code. Registration lives here so the grouping stays in one place
+	// rather than being spread across eighteen constructors.
+	root.AddGroup(
+		&cobra.Group{ID: "start", Title: "Start here:"},
+		&cobra.Group{ID: "save", Title: "Save this machine's config:"},
+		&cobra.Group{ID: "apply", Title: "Set up or repair a machine:"},
+		&cobra.Group{ID: "inspect", Title: "See what would change (read-only):"},
+		&cobra.Group{ID: "secrets", Title: "Secrets:"},
 	)
+	add := func(group string, cmds ...*cobra.Command) {
+		for _, c := range cmds {
+			c.GroupID = group
+			root.AddCommand(c)
+		}
+	}
+	add("start", newTUICmd(env), newInitCmd(env))
+	add("save",
+		newBackupCmd(env), newChezmoiExportCmd(env), newCollectCmd(env),
+		newDefaultsCmd(env), newServicesCmd(env))
+	add("apply", newMigrateCmd(env), newRestoreCmd(env))
+	add("inspect",
+		newStatusCmd(env), newDiffCmd(env), newDoctorCmd(env),
+		newCompareCmd(env), newListCmd(env))
+	add("secrets", newScanCmd(env), newSecurityCmd(env))
+
 	return root
 }
 

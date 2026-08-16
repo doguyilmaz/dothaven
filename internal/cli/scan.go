@@ -89,10 +89,16 @@ func formatDetailed(results []scan.Result) string {
 }
 
 func newScanCmd(_ *sys.OS) *cobra.Command {
-	return &cobra.Command{
+	var noFail bool
+	c := &cobra.Command{
 		Use:   "scan [path]",
-		Short: "Scan a file or directory for sensitive data (console)",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Scan a file or directory for secrets (exits 2 if any are HIGH)",
+		Long: "Scans for secrets and prints what it finds.\n\n" +
+			"Exits 2 when anything HIGH turns up, so this can gate a commit hook or a CI\n" +
+			"job — a scanner that always exits 0 can only ever be read by a human, and\n" +
+			"the point of scanning is to catch what a human missed. Use --no-fail for a\n" +
+			"report without the verdict.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			target := "."
 			if len(args) > 0 {
@@ -106,10 +112,15 @@ func newScanCmd(_ *sys.OS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			any := false
+			any, high := false, 0
 			for _, r := range results {
 				if len(r.Findings) > 0 {
 					any = true
+				}
+				for _, f := range r.Findings {
+					if f.Pattern.Severity == scan.High {
+						high++
+					}
 				}
 			}
 			if !any {
@@ -118,9 +129,15 @@ func newScanCmd(_ *sys.OS) *cobra.Command {
 			}
 			fmt.Println(formatDetailed(results))
 			fmt.Println(scan.FormatReport(scan.Summarize(results)))
+			if high > 0 && !noFail {
+				fmt.Fprintf(os.Stderr, "\n%d HIGH severity finding(s). Exiting 2 — pass --no-fail to ignore.\n", high)
+				return ExitError{Code: 2}
+			}
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&noFail, "no-fail", false, "always exit 0, even with HIGH findings")
+	return c
 }
 
 func newSecurityCmd(_ *sys.OS) *cobra.Command {

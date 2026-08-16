@@ -91,7 +91,8 @@ func newDefaultsExportCmd(env *sys.OS) *cobra.Command {
 }
 
 func newDefaultsImportCmd(env *sys.OS) *cobra.Command {
-	return &cobra.Command{
+	var dryRun, assumeYes bool
+	c := &cobra.Command{
 		Use:   "import <dir>",
 		Short: "Import previously exported macOS defaults",
 		Args:  cobra.ExactArgs(1),
@@ -106,21 +107,49 @@ func newDefaultsImportCmd(env *sys.OS) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("no defaults to import in %s", dir)
 			}
-			n := 0
+
+			// Planned first so --dry-run reports exactly what the write pass
+			// would do, rather than a second guess at it.
+			type item struct{ domain, path string }
+			var plan []item
 			for _, name := range names {
-				if !strings.HasSuffix(name, ".plist") {
+				if strings.HasSuffix(name, ".plist") {
+					plan = append(plan, item{defaultsDomainFromFile(name), filepath.Join(dir, name)})
+				}
+			}
+			if len(plan) == 0 {
+				fmt.Printf("No .plist files in %s — nothing to import.\n", dir)
+				return nil
+			}
+
+			fmt.Printf("Will replace preferences for %d domain(s):\n", len(plan))
+			for _, it := range plan {
+				fmt.Printf("  %s\n", it.domain)
+			}
+			if dryRun {
+				fmt.Println("\nNothing written (--dry-run). Re-run without it to import.")
+				return nil
+			}
+			// `defaults import` replaces a domain wholesale, so this overwrites
+			// whatever those apps currently have.
+			if err := confirmWrite(os.Stderr, "Replace these preference domains on this machine?", assumeYes); err != nil {
+				return err
+			}
+
+			n := 0
+			for _, it := range plan {
+				if out, err := runShell(ctx, "defaults", "import", it.domain, it.path); err != nil {
+					fmt.Fprintf(os.Stderr, "  ✗ %s: %v %s\n", it.domain, err, out)
 					continue
 				}
-				domain := defaultsDomainFromFile(name)
-				if out, err := runShell(ctx, "defaults", "import", domain, filepath.Join(dir, name)); err != nil {
-					fmt.Fprintf(os.Stderr, "  ✗ %s: %v %s\n", domain, err, out)
-					continue
-				}
-				fmt.Printf("  ✔ %s\n", domain)
+				fmt.Printf("  ✔ %s\n", it.domain)
 				n++
 			}
 			fmt.Printf("Imported %d domain(s). Restart the affected apps to pick up the new prefs.\n", n)
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "list the domains that would be replaced, write nothing")
+	c.Flags().BoolVar(&assumeYes, "yes", false, "skip the confirmation (required off a terminal)")
+	return c
 }

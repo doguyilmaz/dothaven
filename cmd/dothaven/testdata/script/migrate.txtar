@@ -1,6 +1,19 @@
 # migrate applies the chezmoi source on a ready machine and points at verification
 env CHEZMOI_SOURCE=$WORK/source
-exec dothaven migrate
+
+# --dry-run previews through `chezmoi diff` and writes nothing.
+exec dothaven migrate --dry-run
+stdout 'Would apply'
+! stdout 'Applying chezmoi source'
+
+# Off a terminal there is nobody to confirm to, so it refuses rather than
+# applying. This is the whole point: migrate overwrites $HOME and runs the
+# install script, and it used to do that unprompted whenever stdin was a pipe.
+! exec dothaven migrate
+stderr 'Refusing to continue'
+! stdout 'Applying chezmoi source'
+
+exec dothaven migrate --yes
 stdout 'Applying chezmoi source'
 stdout 'Applied'
 stdout 'chezmoi diff'

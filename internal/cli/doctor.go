@@ -120,7 +120,7 @@ func firstToken(s string) string {
 func newDoctorCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "doctor <snapshot.json>",
-		Short: "Compare a snapshot against this machine; list what's missing",
+		Short: "Snapshot vs this machine — what is not installed",
 		Args:  cobra.ExactArgs(1),
 		// A drift result returns a non-zero exit (CI-friendly), which is a normal
 		// outcome — not an error to print. The report is already on stdout.

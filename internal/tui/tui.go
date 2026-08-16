@@ -83,13 +83,18 @@ func MainMenu() (string, error) {
 	sel := huh.NewSelect[string]().
 		Title("dothaven").
 		Description("pick an action").
+		// Ordered least to most destructive, and the cursor starts at the top.
+		// "Set up this machine" used to sit there: two keypresses from launch
+		// to a chezmoi apply that overwrites $HOME and runs an install script.
+		// The ones that write say so.
 		Options(
-			menuOption("Set up this machine (chezmoi apply)", "migrate", "chezmoi apply + reinstall packages"),
+			menuOption("What's changed?", "status", "latest backup vs this machine — read-only"),
+			menuOption("Check setup (chezmoi + age)", "init", "verify chezmoi + age are ready — read-only"),
+			menuOption("Scan for secrets", "scan", "check this folder for keys and tokens — read-only"),
 			menuOption("Back up configs", "backup", "create a new local config backup"),
 			menuOption("Export to chezmoi (age-encrypted)", "chezmoi-export", "stage configs; secrets encrypted"),
-			menuOption("Restore from the latest backup", "restore", "apply the latest backup to ~"),
-			menuOption("Check setup (chezmoi + age)", "init", "verify chezmoi + age are ready"),
-			menuOption("Status of the latest backup", "status", "diff the latest backup vs ~ (read-only)"),
+			menuOption("Restore from the latest backup", "restore", "WRITES to ~ — asks before each conflict"),
+			menuOption("Set up this machine (chezmoi apply)", "migrate", "WRITES to ~ and runs your install script"),
 			menuOption("Quit", "quit", ""),
 		).
 		Value(&choice)

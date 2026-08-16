@@ -29,13 +29,18 @@ Running dothaven needs nothing else. The `chezmoi-export` and `init` commands ad
 ## Quick start
 
 ```bash
-dothaven collect                 # inventory the machine → timestamped JSON snapshot
-dothaven scan ~                  # scan a path for secrets (console)
-dothaven security ~              # write a Markdown security report
-dothaven chezmoi-export          # dry-run: plan plain vs --encrypt per file
+dothaven                         # menu — start here if you're not sure
+dothaven scan ~                  # scan for secrets (exits 2 if any are HIGH)
+dothaven backup                  # timestamped copy of your config, on this Mac
+dothaven chezmoi-export          # plan what would go to chezmoi, plain vs encrypted
 dothaven chezmoi-export --apply  # execute (needs chezmoi + age)
-dothaven doctor snapshot.json    # on a new machine: what's still missing?
+dothaven status                  # latest backup vs this machine
+dothaven migrate --dry-run       # on a new Mac: what chezmoi would apply
 ```
+
+Anything that changes files you already have asks first and takes `--dry-run`;
+`backup` and the exports only ever add. Off a terminal there is nobody to ask,
+so those commands refuse unless you pass `--yes`.
 
 ## The hybrid model
 

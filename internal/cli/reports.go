@@ -13,7 +13,7 @@ import (
 func newCompareCmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:   "compare [file1] [file2]",
-		Short: "Diff two JSON snapshots (newest two in reports/ if omitted)",
+		Short: "Snapshot vs snapshot — what changed between two",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			var files []string
@@ -94,7 +94,7 @@ func formatSection(name string, s snapshot.Section) string {
 func newListCmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list <section>",
-		Short: "Print a section (fuzzy-matched) from the most recent report",
+		Short: "Print one section of the latest snapshot",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			query := args[0]

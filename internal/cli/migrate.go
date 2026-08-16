@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/doguyilmaz/dothaven/internal/sys"
-	"github.com/doguyilmaz/dothaven/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +13,7 @@ import (
 // script), and points at the verification step — so a user on an empty laptop
 // doesn't have to remember the multi-command sequence.
 func newMigrateCmd(env *sys.OS) *cobra.Command {
+	var dryRun, assumeYes bool
 	c := &cobra.Command{
 		Use:           "migrate",
 		Short:         "Set up this machine from your chezmoi source (prereqs → apply → verify)",
@@ -38,16 +38,29 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 				fmt.Fprintln(os.Stderr, "  Place your age key (see `dothaven init`), or continue to apply non-secret files only.")
 			}
 
-			// chezmoi apply writes into $HOME — confirm on a terminal first.
-			if tui.Interactive() {
-				ok, err := tui.Confirm("Apply your chezmoi source to this machine now?")
+			// Show first, write second. `chezmoi diff` is the same comparison
+			// chezmoi apply acts on, so this is a real preview rather than a
+			// summary that could disagree with what follows.
+			if dryRun {
+				fmt.Println("Would apply the following (chezmoi diff):")
+				out, err := runShell(ctx, "chezmoi", "diff")
 				if err != nil {
-					return err
+					fmt.Fprintf(os.Stderr, "✗ chezmoi diff failed: %v\n%s\n", err, out)
+					return ExitError{Code: 1}
 				}
-				if !ok {
-					fmt.Println("Aborted.")
-					return nil
+				if out == "" {
+					fmt.Println("  (nothing — this machine already matches your source)")
+				} else {
+					fmt.Println(out)
 				}
+				fmt.Println("Re-run without --dry-run to apply.")
+				return nil
+			}
+
+			// Writes into $HOME and runs your install script.
+			if err := confirmWrite(os.Stderr,
+				"Apply your chezmoi source to this machine now?", assumeYes); err != nil {
+				return err
 			}
 
 			fmt.Println("\nApplying chezmoi source… (this also runs your install script)")
@@ -64,5 +77,7 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "show what chezmoi would change, write nothing")
+	c.Flags().BoolVar(&assumeYes, "yes", false, "skip the confirmation (required off a terminal)")
 	return c
 }
