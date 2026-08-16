@@ -36,6 +36,7 @@ func defaultCollectors() []collect.Collector {
 		collect.RuntimesCollector,
 		collect.EditorsExtCollector,
 		collect.FontsCollector,
+		collect.ScheduledCollector,
 		collect.DotfilesSweepCollector,
 	}
 }

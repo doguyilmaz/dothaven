@@ -180,6 +180,11 @@ var Entries = []Entry{
 	{ID: "shell.inputrc", Name: ".inputrc", Category: "shell", Kind: File, BackupDest: "shell/.inputrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.inputrc", "linux": "~/.inputrc"}},
 
 	// Networking / git extras
+	// Scheduled work: launchd agents are how a Mac runs things in the
+	// background, and nothing reminds you they exist until they stop.
+	{ID: "schedule.launchagents", Name: "launchd agents", Category: "schedule", Kind: Dir, BackupDest: "schedule/LaunchAgents", Sensitivity: Medium,
+		Paths: map[string]string{"darwin": "~/Library/LaunchAgents"}},
+
 	{ID: "net.curlrc", Name: ".curlrc", Category: "net", Kind: File, BackupDest: "net/.curlrc", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.curlrc", "linux": "~/.curlrc"}},
 	{ID: "net.wgetrc", Name: ".wgetrc", Category: "net", Kind: File, BackupDest: "net/.wgetrc", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.wgetrc", "linux": "~/.wgetrc"}},
 	{ID: "git.attributes", Name: ".gitattributes_global", Category: "git", Kind: File, BackupDest: "git/.gitattributes_global", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.gitattributes_global", "linux": "~/.gitattributes_global", "windows": "%USERPROFILE%/.gitattributes_global"}},
