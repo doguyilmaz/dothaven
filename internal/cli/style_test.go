@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/doguyilmaz/dothaven/internal/sys"
 )
 
 // A long path used to push the detail column out of line, which is what made a
@@ -68,5 +70,28 @@ func TestHeaderNamesTheAction(t *testing.T) {
 	got := header("What's changed?")
 	if !strings.Contains(got, "What's changed?") {
 		t.Errorf("a separator that does not name the action solves half the problem: %q", got)
+	}
+}
+
+// TestMenuActionsResolve keeps the menu honest. An action string that does not
+// resolve falls through to Help() at runtime and looks like a broken menu
+// entry, which nothing else would catch — the strings are only read by cobra.
+func TestMenuActionsResolve(t *testing.T) {
+	root := NewRoot(sys.Real(), "0.0.0")
+	for action := range actionTitles {
+		fields := strings.Fields(action)
+		sub, _, err := root.Find(fields)
+		if err != nil || sub == nil {
+			t.Errorf("menu action %q does not resolve: %v", action, err)
+			continue
+		}
+		if want := fields[len(fields)-1]; sub.Name() != want {
+			t.Errorf("menu action %q resolved to %q, want %q", action, sub.Name(), want)
+		}
+		// A parent command has no RunE; the menu would show help instead of
+		// doing the thing the label promises.
+		if sub.RunE == nil {
+			t.Errorf("menu action %q resolves to a command with no RunE", action)
+		}
 	}
 }

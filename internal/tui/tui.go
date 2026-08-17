@@ -93,8 +93,10 @@ func MainMenu() (string, error) {
 			menuOption("Check setup (chezmoi + age)", "init", "verify chezmoi + age are ready — read-only"),
 			menuOption("Scan for secrets", "scan", "check this folder for keys and tokens — read-only"),
 			menuOption("Back up configs", "backup", "create a new local config backup"),
+			menuOption("Save this Mac's own settings", "defaults export", "scrolling, keys, Dock, Finder — read-only"),
 			menuOption("Export to chezmoi (age-encrypted)", "chezmoi-export", "stage configs; secrets encrypted"),
 			menuOption("Restore from the latest backup", "restore", "WRITES to ~ — asks before each conflict"),
+			menuOption("Put this Mac's settings back", "defaults import", "CHANGES system settings — asks first"),
 			menuOption("Set up this machine (chezmoi apply)", "migrate", "WRITES to ~ and runs your install script"),
 			menuOption("Quit", "quit", ""),
 		).

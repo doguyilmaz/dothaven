@@ -281,3 +281,27 @@ func TestEveryPlanExplainsItself(t *testing.T) {
 		}
 	}
 }
+
+// A backup copies files. It does not copy the Mac's own settings — those live
+// in cfprefsd, not in any file a backup walks — so the guide has to say so, or
+// the new machine arrives with the scroll direction flipped back.
+func TestGuideBackupCoversMacSettings(t *testing.T) {
+	p, err := runGuide(machineFacts{}, scripted(t, "backup", "frontend", "local"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := planText(p); !strings.Contains(got, "dothaven defaults export") {
+		t.Errorf("want the Mac's own settings captured, got:\n%s", got)
+	}
+}
+
+func TestGuideRestorePutsMacSettingsBack(t *testing.T) {
+	p, err := runGuide(machineFacts{latestBackup: "/b/backup-1"},
+		scripted(t, "clone", "all", "new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := planText(p); !strings.Contains(got, "dothaven defaults import") {
+		t.Errorf("want the Mac's own settings restored, got:\n%s", got)
+	}
+}

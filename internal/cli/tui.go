@@ -3,6 +3,8 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/sys"
 	"github.com/doguyilmaz/dothaven/internal/tui"
@@ -69,6 +71,9 @@ var actionTitles = map[string]string{
 	"chezmoi-export": "Export to chezmoi",
 	"restore":        "Restore from the latest backup",
 	"migrate":        "Set up this machine",
+
+	"defaults export": "Save this Mac's own settings",
+	"defaults import": "Put this Mac's settings back",
 }
 
 // runTUIAction dispatches one menu choice to its sibling command. Calling RunE
@@ -76,7 +81,9 @@ var actionTitles = map[string]string{
 // the signal-aware context explicitly — without it cmd.Context() is nil and any
 // timeout derivation panics.
 func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
-	sub, _, ferr := cmd.Root().Find([]string{action})
+	// Fields, not a single word: the menu also offers subcommands like
+	// "defaults export", and Find resolves the whole path.
+	sub, _, ferr := cmd.Root().Find(strings.Fields(action))
 	if ferr != nil || sub == nil {
 		return ferr
 	}
@@ -99,6 +106,15 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 			return nil
 		}
 		return sub.RunE(sub, []string{latest})
+	}
+	// So does `defaults import` — feed it wherever the export writes.
+	if action == "defaults import" {
+		dir := filepath.Join(env.ResolveOutputDir(""), "macos-defaults")
+		if !env.Exists(dir) {
+			fmt.Printf("No exported settings in %s. Run \"Save this Mac's own settings\" first.\n", dir)
+			return nil
+		}
+		return sub.RunE(sub, []string{dir})
 	}
 	return sub.RunE(sub, nil)
 }

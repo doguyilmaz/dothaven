@@ -198,6 +198,7 @@ func guideBackup(ask asker) (*plan, error) {
 
 	p := &plan{reason: "A backup copies your config files as they are. It does not reinstall anything — that is what a chezmoi setup does on the other side."}
 	p.add("dothaven backup", "Timestamped copy. Secrets are redacted and private keys are never written into it.")
+	p.add("dothaven defaults export", "The Mac itself: scrolling direction, key repeat, hot corners, Finder options. None of it is in a file a backup would find.")
 	if profile == "backend" || profile == "all" {
 		p.add("dothaven services export", "Homebrew service configs are not part of a normal backup.")
 	}
@@ -254,9 +255,11 @@ func guideClone(f machineFacts, ask asker) (*plan, error) {
 	case f.chezmoiInstalled && f.sourceReady:
 		p.add("dothaven migrate --dry-run", "Shows exactly what lands in your home folder. Writes nothing.")
 		p.add("dothaven migrate", "Applies it, and runs your install script.")
+		p.add("dothaven defaults import <export-dir>", "chezmoi carries files; this carries the Mac's own settings.")
 	case f.latestBackup != "":
 		p.add("dothaven restore --dry-run "+f.latestBackup, "Lists every file it would write, and every conflict.")
 		p.add("dothaven restore "+f.latestBackup, "Asks about each conflict, and keeps a pre-restore snapshot.")
+		p.add("dothaven defaults import "+f.latestBackup, "Puts the Mac's own settings back — the ones no dotfile holds.")
 	default:
 		p.add("dothaven init", "Says whether chezmoi and age are ready on this machine.")
 		p.warn("Nothing to restore from yet.", "Bring a chezmoi repo or a backup folder across from the old machine first.")
