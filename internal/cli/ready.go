@@ -42,7 +42,7 @@ func newReadyCmd(env *sys.OS) *cobra.Command {
 				roots = defaultRepoRoots(env)
 			}
 
-			fmt.Println("Looking for work that only exists on this Mac…")
+			fmt.Println(dim("Looking for work that only exists on this Mac…"))
 			found := gitwork.Find(ctx, roots, depth)
 			if ctx.Err() != nil {
 				return ExitError{Code: 130}
@@ -77,7 +77,7 @@ func newReadyCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if len(orphans) > 0 {
-				fmt.Printf("\n%s with no remote — these exist ONLY on this Mac:\n", plural(len(orphans), "repository"))
+				fmt.Printf("\n%s\n", bold(fmt.Sprintf("%s with no remote — these exist ONLY on this Mac:", plural(len(orphans), "repository"))))
 				for _, r := range orphans {
 					detail := plural(r.Unsaved, "commit")
 					if r.Dirty > 0 {
@@ -86,12 +86,12 @@ func newReadyCmd(env *sys.OS) *cobra.Command {
 					if r.Stashes > 0 {
 						detail += ", " + plural(r.Stashes, "stash")
 					}
-					fmt.Printf("  ✗ %-44s %s\n", short(r.Path), detail)
+					fmt.Printf("  %s %s  %s\n", danger("✗"), padTo(short(r.Path), pathCol), dim(detail))
 				}
 			}
 
 			if len(risky2) > 0 {
-				fmt.Printf("\n%s with work not pushed anywhere:\n", plural(len(risky2), "repository"))
+				fmt.Printf("\n%s\n", bold(fmt.Sprintf("%s with work not pushed anywhere:", plural(len(risky2), "repository"))))
 				for _, r := range risky2 {
 					var parts []string
 					if r.Dirty > 0 {
@@ -103,13 +103,13 @@ func newReadyCmd(env *sys.OS) *cobra.Command {
 					if r.Stashes > 0 {
 						parts = append(parts, plural(r.Stashes, "stash"))
 					}
-					fmt.Printf("  ⚠ %-44s %s\n", short(r.Path), strings.Join(parts, ", "))
+					fmt.Printf("  %s %s  %s\n", warn("⚠"), padTo(short(r.Path), pathCol), dim(strings.Join(parts, ", ")))
 				}
 			}
 			atRisk := len(orphans) + len(risky2)
 
 			fmt.Println()
-			fmt.Printf("%d repositories checked.\n", len(found))
+			fmt.Println(dim(fmt.Sprintf("%d repositories checked.", len(found))))
 
 			// A backup older than the machine's own config is a backup that
 			// would restore a machine you no longer have.
@@ -117,16 +117,16 @@ func newReadyCmd(env *sys.OS) *cobra.Command {
 			fmt.Println(backupNote)
 
 			if atRisk == 0 && !backupStale {
-				fmt.Println("\n✅ Safe to wipe — everything here exists somewhere else.")
+				fmt.Println("\n" + good("✅ Safe to wipe — everything here exists somewhere else."))
 				return nil
 			}
 			if atRisk > 0 {
-				fmt.Printf("\n❌ Not safe to wipe: %s hold work that exists nowhere else.\n", plural(atRisk, "repository"))
+				fmt.Printf("\n%s\n", danger(fmt.Sprintf("❌ Not safe to wipe: %s hold work that exists nowhere else.", plural(atRisk, "repository"))))
 				if len(orphans) > 0 {
-					fmt.Println("   The ✗ ones have no remote at all — add one and push, or copy the folder off this Mac.")
+					fmt.Printf("   %s no remote at all — add one and push, or copy the folder off this Mac.\n", danger("✗"))
 				}
 				if len(risky2) > 0 {
-					fmt.Println("   For the ⚠ ones: commit and push. A stash is not pushed by pushing a branch.")
+					fmt.Printf("   %s commit and push. A stash is not pushed by pushing a branch.\n", warn("⚠"))
 				}
 			}
 			return ExitError{Code: 2}
@@ -140,6 +140,11 @@ func newReadyCmd(env *sys.OS) *cobra.Command {
 // defaultRepoRoots are the places developers keep code. $HOME itself is
 // deliberately not one: walking it costs seconds and finds the same repos
 // through a slower path.
+// pathCol is the width the repository column is held to. Long paths are
+// shortened from the middle rather than allowed to shove the detail column out
+// of line, which is what made a list of twenty repositories unreadable.
+const pathCol = 44
+
 func defaultRepoRoots(env *sys.OS) []string {
 	home := env.Home()
 	var roots []string
@@ -162,17 +167,17 @@ func defaultRepoRoots(env *sys.OS) []string {
 func backupFreshness(env *sys.OS) (string, bool) {
 	latest := latestBackup(env.DataDir())
 	if latest == "" {
-		return "  ⚠ No backup on this Mac yet — run `dothaven backup`.", true
+		return fmt.Sprintf("  %s No backup on this Mac yet — run %s.", warn("⚠"), kbd("dothaven backup")), true
 	}
 	fi, err := os.Stat(latest)
 	if err != nil {
-		return "  ⚠ No backup on this Mac yet — run `dothaven backup`.", true
+		return fmt.Sprintf("  %s No backup on this Mac yet — run %s.", warn("⚠"), kbd("dothaven backup")), true
 	}
 	age := time.Since(fi.ModTime())
 	if age > 7*24*time.Hour {
-		return fmt.Sprintf("  ⚠ Newest backup is %d days old — run `dothaven backup`.", int(age.Hours()/24)), true
+		return fmt.Sprintf("  %s Newest backup is %d days old — run %s.", warn("⚠"), int(age.Hours()/24), kbd("dothaven backup")), true
 	}
-	return fmt.Sprintf("  ✓ Newest backup is %s old.", humanAge(age)), false
+	return fmt.Sprintf("  %s Newest backup is %s old.", good("✓"), humanAge(age)), false
 }
 
 func humanAge(d time.Duration) string {

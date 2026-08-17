@@ -58,7 +58,7 @@ func newCheckCmd(env *sys.OS) *cobra.Command {
 			wg.Wait()
 			stop()
 
-			var broken, unchecked, ok []health.Result
+			var broken, unchecked, fine []health.Result
 			for _, r := range results {
 				switch r.Status {
 				case health.Broken:
@@ -66,7 +66,7 @@ func newCheckCmd(env *sys.OS) *cobra.Command {
 				case health.Unchecked:
 					unchecked = append(unchecked, r)
 				default:
-					ok = append(ok, r)
+					fine = append(fine, r)
 				}
 			}
 			sort.Slice(broken, func(i, j int) bool { return broken[i].Path < broken[j].Path })
@@ -80,28 +80,28 @@ func newCheckCmd(env *sys.OS) *cobra.Command {
 			}
 
 			for _, r := range broken {
-				fmt.Printf("  ✗ %-40s %s\n", short(r.Path), r.Detail)
+				fmt.Printf("  %s %s  %s\n", danger("✗"), padTo(short(r.Path), pathCol), dim(r.Detail))
 			}
 			if showAll {
-				for _, r := range ok {
-					fmt.Printf("  ✓ %-40s %s\n", short(r.Path), r.Format)
+				for _, r := range fine {
+					fmt.Printf("  %s %s  %s\n", good("✓"), padTo(short(r.Path), pathCol), dim(r.Format))
 				}
 				for _, r := range unchecked {
-					fmt.Printf("  – %-40s %s\n", short(r.Path), r.Detail)
+					fmt.Printf("  %s %s  %s\n", dim("–"), padTo(short(r.Path), pathCol), dim(r.Detail))
 				}
 			}
 
-			fmt.Printf("\n%d checked, %d unchecked", len(ok)+len(broken), len(unchecked))
+			fmt.Printf("\n%s", dim(fmt.Sprintf("%d checked, %d unchecked", len(fine)+len(broken), len(unchecked))))
 			if !showAll && len(unchecked) > 0 {
 				fmt.Print(" (--all to list them)")
 			}
 			fmt.Println(".")
 
 			if len(broken) == 0 {
-				fmt.Println("✅ Every config that could be parsed, parsed.")
+				fmt.Println(good("✅ Every config that could be parsed, parsed."))
 				return nil
 			}
-			fmt.Printf("❌ %s broken. Fix these before they reach another machine.\n", plural(len(broken), "file"))
+			fmt.Println(danger(fmt.Sprintf("❌ %s broken. Fix these before they reach another machine.", plural(len(broken), "file"))))
 			return ExitError{Code: 2}
 		},
 	}

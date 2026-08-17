@@ -369,24 +369,24 @@ func guideSee(ask asker) (*plan, error) {
 
 func printPlan(p plan) {
 	fmt.Println()
-	fmt.Println("Here's what I'd do:")
+	fmt.Println(bold("Here's what I'd do:"))
 	fmt.Println()
 	n := 0
 	for _, s := range p.steps {
 		if s.warn {
-			fmt.Printf("  ⚠  %s\n     %s\n\n", s.cmd, s.why)
+			fmt.Printf("  %s  %s\n     %s\n\n", warn("⚠"), warn(s.cmd), dim(s.why))
 			continue
 		}
 		n++
-		fmt.Printf("  %d. %s\n     %s\n\n", n, s.cmd, s.why)
+		fmt.Printf("  %s %s\n     %s\n\n", dim(fmt.Sprintf("%d.", n)), kbd(s.cmd), dim(s.why))
 	}
 	if p.reason != "" {
-		fmt.Printf("Why: %s\n", p.reason)
+		fmt.Printf("%s %s\n", bold("Why:"), p.reason)
 	}
 	if len(p.notes) > 0 {
-		fmt.Println("\nWorth knowing:")
+		fmt.Println("\n" + bold("Worth knowing:"))
 		for _, note := range p.notes {
-			fmt.Printf("  • %s\n", note)
+			fmt.Printf("  %s %s\n", dim("•"), note)
 		}
 	}
 }

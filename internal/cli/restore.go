@@ -164,7 +164,7 @@ func newStatusCmd(env *sys.OS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupDir := latestBackup(env.DataDir())
 			if backupDir == "" {
-				fmt.Printf("No backup found in %s. Run 'dothaven backup' first.\n", env.DataDir())
+				fmt.Printf("No backup found in %s. Run %s first.\n", dim(env.DataDir()), kbd("dothaven backup"))
 				return nil
 			}
 			plan, err := restore.BuildPlan(backupDir, env.Home(), targetsFor(env))
@@ -172,16 +172,20 @@ func newStatusCmd(env *sys.OS) *cobra.Command {
 				return err
 			}
 			t := restore.Tally(plan.Entries)
-			fmt.Printf("Last backup: %s (%s)\n", backupAge(backupDir), filepath.Base(backupDir))
-			fmt.Printf("  %d files tracked: %d modified, %d unchanged\n", len(plan.Entries), t.Conflict, t.Same)
+			fmt.Printf("%s %s %s\n", bold("Last backup:"), backupAge(backupDir), dim("("+filepath.Base(backupDir)+")"))
+			modified := fmt.Sprintf("%d modified", t.Conflict)
+			if t.Conflict > 0 {
+				modified = warn(modified)
+			}
+			fmt.Printf("  %d files tracked: %s, %s\n", len(plan.Entries), modified, dim(fmt.Sprintf("%d unchanged", t.Same)))
 			if t.New > 0 {
-				fmt.Printf("  %d not on machine (new in backup)\n", t.New)
+				fmt.Println(dim(fmt.Sprintf("  %d not on machine (new in backup)", t.New)))
 			}
 			if t.Redacted > 0 {
-				fmt.Printf("  %d redacted\n", t.Redacted)
+				fmt.Println(dim(fmt.Sprintf("  %d redacted", t.Redacted)))
 			}
 			if t.Conflict > 0 {
-				fmt.Println("\nModified since backup:")
+				fmt.Println("\n" + bold("Modified since backup:"))
 				mods := make([]string, 0, t.Conflict)
 				for _, e := range plan.Entries {
 					if e.Status == restore.StatusConflict {
@@ -190,11 +194,12 @@ func newStatusCmd(env *sys.OS) *cobra.Command {
 				}
 				sort.Strings(mods)
 				for _, m := range mods {
-					fmt.Printf("  %s\n", m)
+					fmt.Printf("  %s %s\n", warn("~"), m)
 				}
+				fmt.Printf("\n%s\n", dim("These differ from the backup. Run "+kbd("dothaven backup")+" to capture them."))
 			}
 			if t.Conflict == 0 && t.New == 0 {
-				fmt.Println("\nEverything up to date.")
+				fmt.Println("\n" + good("✓ Everything up to date."))
 			}
 			return nil
 		},
@@ -229,7 +234,7 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 				backupDir = latestBackup(env.DataDir())
 			}
 			if backupDir == "" {
-				fmt.Printf("No backup found in %s. Run 'dothaven backup' first.\n", env.DataDir())
+				fmt.Printf("No backup found in %s. Run %s first.\n", dim(env.DataDir()), kbd("dothaven backup"))
 				return nil
 			}
 			plan, err := restore.BuildPlan(backupDir, env.Home(), targetsFor(env))

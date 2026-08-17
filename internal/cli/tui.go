@@ -54,6 +54,23 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 	return c
 }
 
+// actionTitles name each menu choice in the output it produces.
+//
+// Running two actions in a row printed one undifferentiated wall: nothing said
+// where the first ended, and nothing said which choice had produced what. The
+// menu knows the answer; it just was not saying it.
+var actionTitles = map[string]string{
+	"ready":          "Am I safe to wipe this Mac?",
+	"status":         "What's changed?",
+	"init":           "Check setup (chezmoi + age)",
+	"scan":           "Scan for secrets",
+	"check":          "Are my config files valid?",
+	"backup":         "Back up configs",
+	"chezmoi-export": "Export to chezmoi",
+	"restore":        "Restore from the latest backup",
+	"migrate":        "Set up this machine",
+}
+
 // runTUIAction dispatches one menu choice to its sibling command. Calling RunE
 // directly bypasses cobra's lifecycle (including context propagation), so we set
 // the signal-aware context explicitly — without it cmd.Context() is nil and any
@@ -63,6 +80,11 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 	if ferr != nil || sub == nil {
 		return ferr
 	}
+	title := actionTitles[action]
+	if title == "" {
+		title = action
+	}
+	printHeader(title)
 	// A parent command (defaults, services) carries no RunE; calling it would
 	// be a nil dereference rather than an error the menu could recover from.
 	if sub.RunE == nil {
