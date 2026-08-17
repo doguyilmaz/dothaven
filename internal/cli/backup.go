@@ -63,7 +63,7 @@ func formatCategories(perCat map[string]int) string {
 }
 
 func newBackupCmd(env *sys.OS) *cobra.Command {
-	var noRedact, archive bool
+	var noRedact, archive, encrypt bool
 	var output string
 	var only, skip []string
 	c := &cobra.Command{
@@ -72,6 +72,9 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			redact := !noRedact
+			if encrypt {
+				archive = true // there is nothing to encrypt but the archive
+			}
 
 			// A backup is the safety net before wiping a machine — remind the user
 			// (on a terminal) that it captures saved config, not unsaved editor work.
@@ -147,7 +150,22 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 					return err
 				}
 				_ = os.RemoveAll(backupDir)
+
+				// Encryption last, so a failure leaves the plain archive rather
+				// than nothing. The plain copy is removed only once the
+				// encrypted one exists.
+				if encrypt {
+					encPath := archivePath + ".age"
+					fmt.Println("Encrypting with age — choose a passphrase you can retrieve later.")
+					if err := backup.Encrypt(cmd.Context(), archivePath, encPath); err != nil {
+						fmt.Fprintf(os.Stderr, "\n✗ %v\n  The unencrypted archive is still at %s\n", err, archivePath)
+						return ExitError{Code: 1}
+					}
+					_ = os.Remove(archivePath)
+					archivePath = encPath
+				}
 				fmt.Printf("Archive saved to: %s\n  %d files across: %s\n", archivePath, res.TotalFiles, summary)
+				fmt.Printf("Restore it with: dothaven restore %s\n", archivePath)
 			} else {
 				fmt.Printf("Backup saved to: %s\n  %d files across: %s\n", backupDir, res.TotalFiles, summary)
 			}
@@ -185,6 +203,7 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 	}
 	c.Flags().BoolVar(&noRedact, "no-redact", false, "keep raw values (skip secret redaction)")
 	c.Flags().BoolVar(&archive, "archive", false, "create a .tar.gz instead of a directory")
+	c.Flags().BoolVar(&encrypt, "encrypt", false, "encrypt the archive with age (prompts for a passphrase); implies --archive")
 	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ~/.local/share/dothaven)")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories (comma-separated)")
 	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories (comma-separated)")

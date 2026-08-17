@@ -36,6 +36,8 @@ dothaven scan ~                  # scan for secrets (exits 2 if any are HIGH)
 dothaven backup                  # timestamped copy of your config, on this Mac
 dothaven chezmoi-export          # plan what would go to chezmoi, plain vs encrypted
 dothaven chezmoi-export --apply  # execute (needs chezmoi + age)
+dothaven check                   # do my config files still parse?
+dothaven backup --archive --encrypt   # one age-encrypted file you can carry
 dothaven status                  # latest backup vs this machine
 dothaven migrate --dry-run       # on a new Mac: what chezmoi would apply
 ```
@@ -66,6 +68,7 @@ dothaven decides *what* to encrypt; chezmoi *performs* it. It is not itself an e
 | `collect` | Inventory the machine into a JSON snapshot |
 | `doctor` | Diff a snapshot against this machine (non-zero exit on drift) |
 | `guide` | Answer a few questions, get the commands that fit |
+| `check` | Parse every tracked config; report the broken ones |
 | `ready` | Before a wipe: uncommitted, unpushed and stashed work |
 | `scan` / `security` | Find secrets (console / Markdown report) |
 | `backup` / `restore` | Copy tracked config files out and back, with a redaction gate |

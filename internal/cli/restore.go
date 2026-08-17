@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/doguyilmaz/dothaven/internal/backup"
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/restore"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -39,9 +42,22 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "restore <backup-path>",
 		Short: "Restore files from a backup into your home directory",
-		Args:  cobra.ExactArgs(1),
+		Long: "Accepts a backup directory, a .tar.gz, or an age-encrypted .tar.gz.age.\n" +
+			"An archive is unpacked to a temporary directory that is removed afterwards.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupPath, _ := filepath.Abs(args[0])
+
+			// `backup --archive` produced a file that `restore` could not read,
+			// which made it a backup format the tool could create and not use.
+			if backup.IsArchive(backupPath) {
+				unpacked, cleanup, uerr := unpackBackup(cmd.Context(), backupPath)
+				if uerr != nil {
+					return uerr
+				}
+				defer cleanup()
+				backupPath = unpacked
+			}
 			plan, err := restore.BuildPlan(backupPath, env.Home(), targetsFor(env))
 			if err != nil {
 				return err
@@ -281,4 +297,39 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 	}
 	c.Flags().StringVar(&section, "section", "", "only show this category")
 	return c
+}
+
+// unpackBackup extracts an archive to a temporary directory and returns the
+// backup directory inside it, plus a cleanup function.
+//
+// The temporary directory is created with 0700: an archive holds config that
+// was redacted for a backup, not for other users on the machine, and /tmp is
+// readable by everyone.
+func unpackBackup(ctx context.Context, path string) (string, func(), error) {
+	tmp, err := os.MkdirTemp("", "dothaven-restore-")
+	if err != nil {
+		return "", func() {}, err
+	}
+	cleanup := func() { _ = os.RemoveAll(tmp) }
+	if err := os.Chmod(tmp, 0o700); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+
+	archivePath := path
+	if backup.IsEncrypted(path) {
+		fmt.Println("Decrypting with age — enter the passphrase used to create it.")
+		archivePath = filepath.Join(tmp, "backup.tar.gz")
+		if err := backup.Decrypt(ctx, path, archivePath); err != nil {
+			cleanup()
+			return "", func() {}, err
+		}
+	}
+
+	dir, err := backup.Extract(archivePath, tmp)
+	if err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return dir, cleanup, nil
 }
