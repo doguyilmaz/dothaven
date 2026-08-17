@@ -163,3 +163,26 @@ func TestLatestBackupAndAge(t *testing.T) {
 		t.Error("missing path → unknown age")
 	}
 }
+
+func TestPlural(t *testing.T) {
+	tests := []struct {
+		n    int
+		unit string
+		want string
+	}{
+		{1, "domain", "1 domain"},
+		{2, "domain", "2 domains"},
+		// -ies only after a consonant. "key" pluralised as "keies" shipped in
+		// the defaults summary before this was fixed.
+		{3, "repository", "3 repositories"},
+		{4, "key", "4 keys"},
+		{5, "day", "5 days"},
+		{6, "branch", "6 branches"},
+		{0, "setting", "0 settings"},
+	}
+	for _, tt := range tests {
+		if got := plural(tt.n, tt.unit); got != tt.want {
+			t.Errorf("plural(%d, %q) = %q, want %q", tt.n, tt.unit, got, tt.want)
+		}
+	}
+}

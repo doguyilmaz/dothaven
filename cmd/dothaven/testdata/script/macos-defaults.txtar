@@ -1,19 +1,42 @@
-# `defaults export` captures curated macOS app prefs (only domains with keys);
-# `defaults import` replays them. Driven through a fake `defaults`.
+# `defaults export` captures macOS prefs two ways: curated app domains as whole
+# plists, and every domain key-by-key into prefs.json. `defaults import` replays
+# both, writing only the core system domains unless --all is passed. Driven
+# through a fake `defaults`.
 exec dothaven defaults export -o $WORK/out
 stdout 'iTerm2'
-stdout 'Exported 1 domain'
+stdout '1 app domain as plists'
 exists $WORK/out/macos-defaults/com.googlecode.iterm2.plist
 ! exists $WORK/out/macos-defaults/com.apple.Terminal.plist
 
+# The per-key pass reaches domains the curated plist list never touches, and
+# captures the type each key needs to be written back with.
+exists $WORK/out/macos-defaults/prefs.json
+stdout '2 portable settings'
+grep '"key": "Theme"' $WORK/out/macos-defaults/prefs.json
+grep '"key": "com.apple.swipescrolldirection"' $WORK/out/macos-defaults/prefs.json
+grep '"type": "bool"' $WORK/out/macos-defaults/prefs.json
+grep '"action": "apply"' $WORK/out/macos-defaults/prefs.json
+
+# By default only core system domains are written; iTerm2's key is application
+# state and is held back.
 exec dothaven defaults import --dry-run $WORK/out
+stdout 'System preferences'
+stdout 'Will set 1 preference'
+stdout 'NSGlobalDomain'
+stdout '1 setting in other domains held back'
 stdout 'Will replace preferences'
 ! stdout '✔'
+
+# --all reaches past the core domains.
+exec dothaven defaults import --dry-run --all $WORK/out
+stdout 'Will set 2 preferences'
+! stdout 'held back'
 
 # --yes is required off a terminal; without it the import refuses.
 ! exec dothaven defaults import $WORK/out
 stderr 'Refusing to continue'
 
 exec dothaven defaults import --yes $WORK/out
+stdout 'Set 1 preference'
 stdout 'com.googlecode.iterm2'
 stdout 'Imported 1 domain'

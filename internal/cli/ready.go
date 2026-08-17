@@ -197,7 +197,9 @@ func plural(n int, unit string) string {
 	if n == 1 {
 		return fmt.Sprintf("1 %s", unit)
 	}
-	if strings.HasSuffix(unit, "y") {
+	// -ies only after a consonant: "repository" pluralises that way, "key" and
+	// "day" do not.
+	if l := len(unit); l >= 2 && unit[l-1] == 'y' && !strings.ContainsRune("aeiou", rune(unit[l-2])) {
 		return fmt.Sprintf("%d %sies", n, strings.TrimSuffix(unit, "y"))
 	}
 	if strings.HasSuffix(unit, "h") {

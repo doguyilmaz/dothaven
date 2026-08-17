@@ -41,14 +41,26 @@ func fakeBrew() {
 // reports keys; every other domain exports an empty dict (skipped on export).
 func fakeDefaults() {
 	args := os.Args[1:]
-	if len(args) < 2 {
+	if len(args) == 0 {
+		os.Exit(0)
+	}
+	if len(args) < 2 && args[0] != "domains" {
 		os.Exit(0)
 	}
 	switch args[0] {
+	case "domains":
+		fmt.Println("com.googlecode.iterm2, com.apple.Terminal")
+	case "write":
+		fmt.Println("wrote")
 	case "export":
-		if args[1] == "com.googlecode.iterm2" {
+		switch args[1] {
+		case "com.googlecode.iterm2":
 			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Theme</key><string>Dark</string></dict></plist>`)
-		} else {
+		// A core domain, so the per-key pass has something it would apply by
+		// default — iTerm2's is held back as application state.
+		case "NSGlobalDomain":
+			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.swipescrolldirection</key><false/></dict></plist>`)
+		default:
 			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>`)
 		}
 	case "import":

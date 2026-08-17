@@ -486,23 +486,40 @@ Two paired commands for config that doesn't live in a `~/.dotfile`: macOS app pr
 
 ### defaults
 
-Capture and restore curated macOS app preferences.
+Capture and restore macOS preferences — both whole app domains and individual system settings.
 
 ```text
 dothaven defaults export [-o dir]
-dothaven defaults import <dir>
+dothaven defaults import <dir> [--all]
 ```
 
-`export` runs `defaults export` for a curated allowlist of app domains (iTerm2, Terminal.app, Rectangle, Hammerspoon, AltTab), writing each to an owner-only `.plist` under `<dir>/macos-defaults/`; domains with no preferences are skipped. `import` replays them with `defaults import` — the safe round-trip for `cfprefsd`-managed prefs, since a raw file copy is silently ignored. System domains (Dock/Finder/keyboard) are intentionally excluded: they mix portable keys with host-specific ones (display/Spaces UUIDs, absolute paths) that would corrupt a new machine, and need per-key curation.
+Two mechanisms, because they are good at different things.
+
+**Whole-domain plists.** `export` runs `defaults export` for a curated allowlist of app domains (iTerm2, Terminal.app, Rectangle, Hammerspoon, AltTab) into owner-only `.plist` files under `<dir>/macos-defaults/`, and `import` replays them with `defaults import` — the safe round-trip for `cfprefsd`-managed prefs, since a raw file copy is silently ignored. This preserves nested structure such as terminal profiles, which a per-key replay cannot.
+
+**Per-key system settings.** `export` also reads *every* preference domain on the machine (several hundred) and classifies each key into `<dir>/macos-defaults/prefs.json`. This is what carries natural scroll, key repeat, hot corners, Dock size, keyboard shortcuts and Finder options to a new Mac. Reading is free, so the capture is deliberately wide; what gets *written back* is not.
+
+Each key lands in one of three buckets:
+
+| Bucket | Meaning |
+| --- | --- |
+| `apply` | A portable scalar. Replayed with `defaults write <domain> <key> -<type> <value>`. |
+| `review` | A real setting whose value names the old machine — an absolute path, a UUID. Captured and shown, never written. |
+| _dropped_ | App state, not a setting: window frames, recent items, migration markers, launch counters, and anything that is not a single value (dictionaries, arrays, data blobs), which is where display and Spaces identifiers live. |
+
+Values are run through the same secret scanner as every other captured file, so a token sitting in an app's preferences is redacted or dropped rather than written to disk.
+
+By default `import` writes only the **core system domains** — `NSGlobalDomain`, Finder, Dock, trackpad and mouse drivers, `symbolichotkeys`, `WindowManager`, `universalaccess`, `screencapture`, and a handful more. Everything else is captured but held back, because on a real machine the wide list is dominated by application internals: several hundred keys belonging to Outlook, Xcode or a menu-bar widget that nobody chose. `--all` writes those too.
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for the `macos-defaults/` plists. |
-| `--dry-run` (import) | `false` | List the preference domains that would be replaced. Writes nothing. |
+| `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for `macos-defaults/`. |
+| `--dry-run` (import) | `false` | List what would be written. Writes nothing. |
+| `--all` (import) | `false` | Also write settings outside the core system domains. |
 | `--yes` (import) | `false` | Skip the confirmation. Required off a terminal. |
 
 {{< callout type="warning" >}}
-`defaults import` replaces a preference domain wholesale — whatever those apps currently have is overwritten. It lists the domains first and asks; off a terminal it refuses unless `--yes` is passed.
+`defaults import` replaces an app preference domain wholesale, and writes system keys one at a time. It summarises both first and asks; off a terminal it refuses unless `--yes` is passed. Log out and back in for everything to take effect.
 {{< /callout >}}
 
 ### services
