@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -131,6 +132,48 @@ func TestScripts(t *testing.T) {
 		Setup: func(e *testscript.Env) error {
 			e.Setenv("HOME", e.WorkDir)
 			return nil
+		},
+		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			// filemode asserts a file's permission bits. `stat` spells this
+			// differently on macOS and Linux, and the assertion has to hold on
+			// both — a permission test that only runs in CI is not a
+			// permission test.
+			// globpath resolves a single-match glob into an env var. Backups
+			// are named for the host and the minute they were taken, so a
+			// script cannot spell the path it just created.
+			"globpath": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: globpath <ENVVAR> <glob>")
+				}
+				matches, err := filepath.Glob(ts.MkAbs(args[1]))
+				if err != nil {
+					ts.Fatalf("bad glob %q: %v", args[1], err)
+				}
+				if len(matches) != 1 {
+					ts.Fatalf("glob %q matched %d files, want exactly 1: %v", args[1], len(matches), matches)
+				}
+				ts.Setenv(args[0], matches[0])
+			},
+			"filemode": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: filemode <octal> <file>")
+				}
+				want, err := strconv.ParseUint(args[0], 8, 32)
+				if err != nil {
+					ts.Fatalf("bad mode %q: %v", args[0], err)
+				}
+				fi, err := os.Stat(ts.MkAbs(args[1]))
+				if err != nil {
+					ts.Fatalf("%v", err)
+				}
+				got := fi.Mode().Perm()
+				switch {
+				case neg && got == os.FileMode(want):
+					ts.Fatalf("%s is %04o, expected it not to be", args[1], got)
+				case !neg && got != os.FileMode(want):
+					ts.Fatalf("%s is %04o, want %04o", args[1], got, want)
+				}
+			},
 		},
 	})
 }

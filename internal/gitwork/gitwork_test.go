@@ -2,6 +2,9 @@ package gitwork
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -109,12 +112,70 @@ func TestInspectReturnsOnlyRepositoriesWorthActingOn(t *testing.T) {
 	}
 }
 
-func TestFindSkipsDependencyTrees(t *testing.T) {
-	// node_modules vendors thousands of repos that are not the user's work.
-	for _, name := range []string{"node_modules", "vendor", "Library", ".cache"} {
-		if !skipDirs[name] {
-			t.Errorf("%s should be skipped when looking for repositories", name)
+// node_modules vendors thousands of repositories that are not the user's work,
+// and reporting them would bury the ones that are.
+//
+// Asserted by walking a real tree, not by reading the skipDirs map back: a
+// version of Find that never consulted the map would satisfy that, and it is
+// the walk that has to skip them.
+func TestFindSkipsVendoredRepositories(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{
+		"mine/.git",
+		"node_modules/somepkg/.git",
+		"nested/vendor/lib/.git",
+		"nested/deep/also-mine/.git",
+	} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
 		}
+	}
+
+	got := Find(context.Background(), []string{root}, 6)
+	var names []string
+	for _, p := range got {
+		rel, _ := filepath.Rel(root, p)
+		names = append(names, rel)
+	}
+	sort.Strings(names)
+
+	want := []string{"mine", "nested/deep/also-mine"}
+	if len(names) != len(want) {
+		t.Fatalf("found %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Errorf("found %v, want %v", names, want)
+			break
+		}
+	}
+}
+
+// A repository deeper than the limit is not reported, so a home directory full
+// of nested checkouts cannot turn a pre-wipe check into a minutes-long walk.
+func TestFindRespectsTheDepthLimit(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "a/b/c/d/e/.git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := Find(context.Background(), []string{root}, 2); len(got) != 0 {
+		t.Errorf("depth 2 should not reach a/b/c/d/e, got %v", got)
+	}
+	if got := Find(context.Background(), []string{root}, 8); len(got) != 1 {
+		t.Errorf("depth 8 should reach it, got %v", got)
+	}
+}
+
+// Find must not descend into a repository's own .git, which contains
+// directories that would otherwise look like more repositories.
+func TestFindDoesNotRecurseIntoDotGit(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "repo/.git/modules/sub/.git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := Find(context.Background(), []string{root}, 8)
+	if len(got) != 1 || filepath.Base(got[0]) != "repo" {
+		t.Errorf("got %v, want just the outer repo", got)
 	}
 }
 
