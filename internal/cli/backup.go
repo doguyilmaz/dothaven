@@ -164,10 +164,10 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 					_ = os.Remove(archivePath)
 					archivePath = encPath
 				}
-				fmt.Printf("Archive saved to: %s\n  %d files across: %s\n", archivePath, res.TotalFiles, summary)
-				fmt.Printf("Restore it with: dothaven restore %s\n", archivePath)
+				fmt.Printf("%s %s\n  %s\n", bold("Archive saved to:"), archivePath, dim(fmt.Sprintf("%d files across: %s", res.TotalFiles, summary)))
+				fmt.Printf("Restore it with: %s\n", kbd("dothaven restore "+archivePath))
 			} else {
-				fmt.Printf("Backup saved to: %s\n  %d files across: %s\n", backupDir, res.TotalFiles, summary)
+				fmt.Printf("%s %s\n  %s\n", bold("Backup saved to:"), backupDir, dim(fmt.Sprintf("%d files across: %s", res.TotalFiles, summary)))
 			}
 
 			if len(res.SkippedSensitive) > 0 {

@@ -25,7 +25,7 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 			state := probeInitState(ctx, env)
 
 			if !state.ChezmoiInstalled {
-				fmt.Fprintln(os.Stderr, "chezmoi isn't installed. Run `dothaven init` first (brew install chezmoi).")
+				fmt.Fprintf(os.Stderr, "chezmoi isn't installed. Run %s first (brew install chezmoi).\n", kbd("dothaven init"))
 				return ExitError{Code: 1}
 			}
 			if !state.SourceInitialized {
@@ -34,7 +34,7 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 				return ExitError{Code: 1}
 			}
 			if !state.AgeKeyConfigured {
-				fmt.Fprintln(os.Stderr, "⚠ age encryption isn't configured — encrypted files won't decrypt on this machine.")
+				fmt.Fprintln(os.Stderr, warn("⚠ age encryption isn't configured — encrypted files won't decrypt on this machine."))
 				fmt.Fprintln(os.Stderr, "  Place your age key (see `dothaven init`), or continue to apply non-secret files only.")
 			}
 
@@ -71,9 +71,9 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 				fmt.Println(out)
 			}
 
-			fmt.Println("\n✓ Applied. Next:")
-			fmt.Println("  chezmoi diff                  # review what's managed")
-			fmt.Println("  dothaven doctor <snapshot>    # check installable parity, if you have a snapshot")
+			fmt.Println("\n" + good("✓ Applied.") + " Next:")
+			fmt.Printf("  %s  %s\n", kbd("chezmoi diff"), dim("# review what's managed"))
+			fmt.Printf("  %s  %s\n", kbd("dothaven doctor"), dim("# what is still missing here"))
 			return nil
 		},
 	}

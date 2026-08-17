@@ -148,7 +148,7 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 					return nil
 				}
 				path = found[0]
-				fmt.Printf("Using newest snapshot: %s\n\n", filepath.Base(path))
+				fmt.Printf("%s\n\n", dim("Using newest snapshot: "+filepath.Base(path)))
 			}
 			want, err := parseSnapshotFile(env, path)
 			if err != nil {
@@ -167,7 +167,7 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 			sort.Strings(ids)
 
 			if len(ids) == 0 {
-				fmt.Println("✅ Parity — everything installable in the snapshot is present on this machine.")
+				fmt.Println(good("✅ Parity — everything installable in the snapshot is present on this machine."))
 				return nil
 			}
 
