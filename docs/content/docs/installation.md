@@ -37,6 +37,18 @@ The resulting `dothaven` binary lands in the current directory. Move it somewher
   {{< /tab >}}
 {{< /tabs >}}
 
+## Updating
+
+```bash
+dothaven upgrade
+```
+
+`upgrade` (also spelled `update`) works out how dothaven was installed and runs that installer's own upgrade — `brew update && brew upgrade --cask dothaven` for a Homebrew install, `go install …@latest` for a Go one. Pass `--check` to see what is available without changing anything.
+
+dothaven never replaces its own binary: Homebrew tracks the version it installed, so overwriting that file behind its back leaves `brew outdated` describing something that is no longer there.
+
+On a terminal, dothaven also checks once a day for a newer release and prints a one-line notice on stderr. Set `DOTHAVEN_NO_UPDATE_CHECK=1` to turn that off. See [the update notice](../commands#the-update-notice) for exactly what it requests.
+
 ## Supported platforms
 
 Release builds are static (`CGO_ENABLED=0`) and cross-compiled for:

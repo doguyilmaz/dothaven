@@ -74,6 +74,26 @@ func TestDataDir(t *testing.T) {
 	}
 }
 
+func TestCacheDir(t *testing.T) {
+	o := &OS{home: "/home/u"}
+
+	t.Setenv("XDG_CACHE_HOME", "/xdgcache")
+	if got := o.CacheDir(); got != "/xdgcache/dothaven" {
+		t.Errorf("CacheDir with XDG = %q, want /xdgcache/dothaven", got)
+	}
+
+	t.Setenv("XDG_CACHE_HOME", "")
+	if got := o.CacheDir(); got != "/home/u/.cache/dothaven" {
+		t.Errorf("CacheDir fallback = %q, want ~/.cache/dothaven", got)
+	}
+
+	// Disposable bookkeeping must not share a directory with backups and
+	// snapshots — see TestUpdateCacheIsNotInTheDataDir for why.
+	if o.CacheDir() == o.DataDir() {
+		t.Error("CacheDir and DataDir are the same directory")
+	}
+}
+
 func TestResolveOutputDir(t *testing.T) {
 	o := &OS{home: "/home/u"}
 	t.Setenv("XDG_DATA_HOME", "")

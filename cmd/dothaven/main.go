@@ -42,8 +42,7 @@ func main() {
 		os.Exit(code)
 	}()
 
-	root := cli.NewRoot(sys.Real(), version)
-	if err := root.ExecuteContext(ctx); err != nil {
+	if err := cli.Execute(ctx, sys.Real(), version); err != nil {
 		var ee cli.ExitError
 		if errors.As(err, &ee) {
 			os.Exit(ee.Code)

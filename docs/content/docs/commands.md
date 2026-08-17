@@ -528,6 +528,63 @@ dothaven services import <dir>
 
 ---
 
+## Keeping dothaven current
+
+### upgrade
+
+Update dothaven to the latest release.
+
+```text
+dothaven upgrade [--check] [--yes]
+```
+
+Also spelled `dothaven update`. Checks GitHub for the newest release, works out how this copy of dothaven was installed, and runs that installer's upgrade.
+
+| Installed with | What `upgrade` runs                                             |
+| -------------- | --------------------------------------------------------------- |
+| Homebrew       | `brew update && brew upgrade --cask dothaven`                     |
+| `go install`   | `go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest`   |
+| Anything else  | Nothing — it prints the release page to replace the binary from   |
+
+`brew update` comes first because the tap is a git clone that only refreshes on update: upgrading against a stale clone reports "already installed" for a version that has been published for hours.
+
+**Flags:** `--check` reports what is available and changes nothing; `--yes` skips the confirmation prompt.
+
+```bash
+$ dothaven upgrade
+⇡ dothaven 0.4.0 → 0.5.0
+
+Homebrew installed this, so Homebrew replaces it:
+  brew update && brew upgrade --cask dothaven
+
+Run it now? [y/N]
+```
+
+{{< callout type="info" >}}
+dothaven never overwrites its own binary. Homebrew records which version it put in the Caskroom, so a binary that replaces itself leaves that record describing a file which no longer exists — `brew outdated` keeps reporting the old version, and the next real `brew upgrade` throws the replacement away. Delegating also means the download is verified against the cask's pinned checksum by the tool that pinned it.
+{{< /callout >}}
+
+### The update notice
+
+Once a day at most, dothaven checks whether a newer release exists and prints a single line on **stderr** when there is one:
+
+```text
+⇡ dothaven 0.5.0 is available (you have 0.4.0) — run `dothaven upgrade`
+```
+
+Nothing is ever added to stdout, because snapshot output is parsed JSON. The check is skipped entirely when:
+
+- stderr is not a terminal (a piped or redirected run, so `dothaven collect > snap.json` stays clean)
+- `CI` is set
+- the binary is a development build, which has no version to compare
+- `DOTHAVEN_NO_UPDATE_CHECK` is set to anything at all
+
+{{< callout type="info" >}}
+The check requests one URL — `https://github.com/doguyilmaz/dothaven/releases/latest` — and reads the version out of the redirect it answers with. No response body is downloaded, the redirect is never followed, and nothing identifying the machine is sent beyond a `dothaven/<version>` user agent. The answer is cached in `$XDG_CACHE_HOME/dothaven/update-check.json` (else `~/.cache/dothaven/`), separate from the data directory where backups and snapshots live, and a failed check is silent. Deleting the cache is always safe.
+{{< /callout >}}
+
+---
+
 ## See also
 
 {{< cards >}}

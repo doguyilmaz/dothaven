@@ -164,6 +164,22 @@ func (o *OS) DataDir() string {
 	return filepath.Join(o.home, ".local", "share", "dothaven")
 }
 
+// CacheDir is where dothaven keeps disposable bookkeeping
+// ($XDG_CACHE_HOME/dothaven, else ~/.cache/dothaven). Deliberately not DataDir:
+// that one holds backups and snapshots, where a file rewritten on every command
+// would be mistaken for the newest snapshot by doctor's no-argument fallback,
+// and would create the directory 0755 before backup could create it 0700 —
+// MkdirAll does not tighten a directory that already exists.
+//
+// Everything here can be deleted at any time; the only cost is a redundant
+// check on the next run.
+func (o *OS) CacheDir() string {
+	if x := os.Getenv("XDG_CACHE_HOME"); x != "" {
+		return filepath.Join(x, "dothaven")
+	}
+	return filepath.Join(o.home, ".cache", "dothaven")
+}
+
 // ResolveOutputDir decides where cwd-local inspection outputs land (collect
 // snapshots, service/defaults exports): an explicit path wins; inside a git repo
 // → <cwd>/reports (handy while working in a project); otherwise the stable

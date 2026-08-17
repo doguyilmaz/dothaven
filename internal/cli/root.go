@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -74,8 +75,29 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		newReadyCmd(env), newCheckCmd(env), newStatusCmd(env), newDiffCmd(env), newDoctorCmd(env),
 		newCompareCmd(env), newListCmd(env))
 	add("secrets", newScanCmd(env), newSecurityCmd(env))
+	// Ungrouped, so it lands under "Additional Commands" beside help and
+	// completion: it is about the tool, not about anything on this machine.
+	root.AddCommand(newUpgradeCmd(env, version))
 
 	return root
+}
+
+// Execute builds the command tree, runs it, and prints a pending update notice
+// afterwards.
+//
+// The check runs alongside the command rather than before it, so on anything
+// that does real work it costs nothing at all. The notice prints after the
+// output, not ahead of it: "here is what to do about this" belongs at the end,
+// where the reader already is.
+func Execute(ctx context.Context, env *sys.OS, version string) error {
+	root := NewRoot(env, version)
+	var probe *updateProbe
+	if !suppressNotice(root, os.Args[1:]) {
+		probe = startUpdateCheck(ctx, env, version)
+	}
+	err := root.ExecuteContext(ctx)
+	probe.finish(os.Stderr, version)
+	return err
 }
 
 // ExitError carries a desired process exit code without a printed message. A
