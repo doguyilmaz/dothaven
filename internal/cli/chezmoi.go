@@ -53,7 +53,13 @@ func templatizeSource(ctx context.Context, src, home string) {
 		return
 	}
 	if out, changed := chezmoi.Templatize(string(raw), home); changed {
-		_ = os.WriteFile(sp, []byte(out), 0o644)
+		// Not fatal — the verbatim copy is still valid — but not silent
+		// either: without the template the file keeps this machine's home
+		// path baked in, which fails on the next machine under a different
+		// username, and does so long after this command finished.
+		if err := os.WriteFile(sp, []byte(out), 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ could not templatize %s (kept verbatim): %v\n", src, err)
+		}
 	}
 }
 

@@ -149,6 +149,13 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 				if err := os.Rename(tmp, archivePath); err != nil {
 					return err
 				}
+				// tar honours the umask, so the archive landed 0644 while every
+				// other output here is 0600 — the same config, packaged
+				// world-readable. An archive is also the copy most likely to be
+				// carried onto shared storage.
+				if err := os.Chmod(archivePath, 0o600); err != nil {
+					return err
+				}
 				_ = os.RemoveAll(backupDir)
 
 				// Encryption last, so a failure leaves the plain archive rather
@@ -160,6 +167,9 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 					if err := backup.Encrypt(cmd.Context(), archivePath, encPath); err != nil {
 						fmt.Fprintf(os.Stderr, "\n✗ %v\n  The unencrypted archive is still at %s\n", err, archivePath)
 						return ExitError{Code: 1}
+					}
+					if err := os.Chmod(encPath, 0o600); err != nil {
+						return err
 					}
 					_ = os.Remove(archivePath)
 					archivePath = encPath

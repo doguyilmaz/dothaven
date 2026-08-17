@@ -91,7 +91,10 @@ func newCheckCmd(env *sys.OS) *cobra.Command {
 				}
 			}
 
-			fmt.Printf("\n%s", dim(fmt.Sprintf("%d checked, %d unchecked", len(fine)+len(broken), len(unchecked))))
+			if len(broken) > 0 {
+				fmt.Println()
+			}
+			fmt.Printf("%s", dim(fmt.Sprintf("%d checked, %d unchecked", len(fine)+len(broken), len(unchecked))))
 			if !showAll && len(unchecked) > 0 {
 				fmt.Print(" (--all to list them)")
 			}
