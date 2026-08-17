@@ -9,6 +9,7 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,26 +76,40 @@ func Check(ctx context.Context, run Runner, path string) Result {
 		if strings.Contains(filepath.Base(path), "zsh") {
 			shell = "zsh"
 		}
-		if out, err := run(ctx, shell, "-n", path); err != nil {
-			r.Status, r.Detail = Broken, trimDetail(out)
-			return r
-		}
+		out, err := run(ctx, shell, "-n", path)
+		return verdict(r, out, err)
 	case "git":
-		if out, err := run(ctx, "git", "config", "--file", path, "--list"); err != nil {
-			r.Status, r.Detail = Broken, trimDetail(out)
-			return r
-		}
+		out, err := run(ctx, "git", "config", "--file", path, "--list")
+		return verdict(r, out, err)
 	case "ssh":
 		// -G resolves the config for a host without connecting, which parses
 		// the whole file and reports the first syntax error.
-		if out, err := run(ctx, "ssh", "-F", path, "-G", "dothaven-syntax-check"); err != nil {
-			r.Status, r.Detail = Broken, trimDetail(out)
-			return r
-		}
+		out, err := run(ctx, "ssh", "-F", path, "-G", "dothaven-syntax-check")
+		return verdict(r, out, err)
 	default:
 		r.Status = Unchecked
 		r.Detail = "no parser for this format"
 	}
+	return r
+}
+
+// verdict turns a validator's outcome into a status, separating "this file is
+// wrong" from "this machine cannot tell".
+//
+// A missing validator is not a broken file. A Linux box without zsh installed
+// would otherwise report every .zshrc as broken — a health check that invents
+// faults is worse than one that admits it cannot see, because the first thing
+// it costs you is the habit of reading it.
+func verdict(r Result, out string, err error) Result {
+	if err == nil {
+		return r
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		r.Status = Unchecked
+		r.Detail = "no parser for this format on this machine"
+		return r
+	}
+	r.Status, r.Detail = Broken, trimDetail(out)
 	return r
 }
 
