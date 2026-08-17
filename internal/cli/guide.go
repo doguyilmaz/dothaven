@@ -160,7 +160,7 @@ func profileNotes(profile string) []string {
 		}
 	case "mobile":
 		return []string{
-			"Xcode's version is recorded, but simulators, Android AVDs and SDK packages are not: they are large and rebuildable. `dothaven collect` lists what you had so you can recreate them.",
+			"Simulator runtimes, Android AVDs and SDK packages are recorded as a list, not copied — they are gigabytes and rebuild from a name. `dothaven list mobile` shows what you had.",
 			"Signing certificates and provisioning profiles live in the Keychain and are NOT captured. Export those from Xcode yourself, or re-download them — this is the one that stops a build on the new machine.",
 			"CocoaPods and Gradle caches are excluded on purpose; they rebuild from your lockfiles.",
 		}
