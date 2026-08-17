@@ -32,25 +32,95 @@ func planText(p *plan) string {
 	return b.String()
 }
 
-func TestGuideKeepsALocalCopyLocal(t *testing.T) {
-	p, err := runGuide(machineFacts{}, scripted(t, "save", "local"))
+func noteText(p *plan) string { return strings.Join(p.notes, "\n") }
+
+// fullText is everything the user actually reads: commands, reasons and notes.
+func fullText(p *plan) string {
+	var b strings.Builder
+	for _, s := range p.steps {
+		b.WriteString(s.cmd + "\n" + s.why + "\n")
+	}
+	b.WriteString(p.reason + "\n" + noteText(p))
+	return b.String()
+}
+
+func TestGuideBackupStaysLocal(t *testing.T) {
+	p, err := runGuide(machineFacts{}, scripted(t, "backup", "frontend", "local"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := planText(p)
 	if !strings.Contains(got, "dothaven backup") {
-		t.Errorf("want a plain backup, got:\n%s", got)
+		t.Errorf("want a backup, got:\n%s", got)
 	}
 	if strings.Contains(got, "chezmoi") {
 		t.Errorf("nothing has to leave this Mac, so chezmoi is setup for nothing:\n%s", got)
 	}
 }
 
-// The most important branch: secrets are travelling and encryption isn't ready.
-// Exporting here would write credentials in the clear.
+// The profile question has to change something, or it is a question for its
+// own sake. Backend work has service configs a plain backup misses.
+func TestProfileChangesThePlanNotJustTheProse(t *testing.T) {
+	backend, _ := runGuide(machineFacts{}, scripted(t, "backup", "backend", "local"))
+	frontend, _ := runGuide(machineFacts{}, scripted(t, "backup", "frontend", "local"))
+
+	if !strings.Contains(planText(backend), "services export") {
+		t.Errorf("backend work needs Homebrew service configs:\n%s", planText(backend))
+	}
+	if strings.Contains(planText(frontend), "services export") {
+		t.Errorf("frontend work does not:\n%s", planText(frontend))
+	}
+}
+
+// Every profile must warn about what does NOT travel. That is the thing people
+// discover on the new machine, when it is expensive.
+func TestEveryProfileSaysWhatDoesNotTravel(t *testing.T) {
+	for _, profile := range []string{"backend", "frontend", "mobile", "devops", "data", "all"} {
+		notes := profileNotes(profile)
+		if len(notes) == 0 {
+			t.Errorf("%s: no notes at all", profile)
+			continue
+		}
+		joined := strings.ToLower(strings.Join(notes, " "))
+		var statesAnExclusion bool
+		for _, marker := range []string{"not ", "never", "excluded", "out of scope", "do not"} {
+			if strings.Contains(joined, marker) {
+				statesAnExclusion = true
+			}
+		}
+		if !statesAnExclusion {
+			t.Errorf("%s: notes never say what is excluded: %v", profile, notes)
+		}
+	}
+}
+
+// Signing certificates are the mobile-specific thing that stops a build on the
+// new machine, and nothing else in the tool would mention them.
+func TestMobileProfileWarnsAboutSigningCertificates(t *testing.T) {
+	p, err := runGuide(machineFacts{}, scripted(t, "backup", "mobile", "local"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := strings.ToLower(noteText(p))
+	for _, want := range []string{"keychain", "simulator"} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("mobile notes should mention %q:\n%s", want, noteText(p))
+		}
+	}
+}
+
+func TestDevopsProfileWarnsAboutCredentialsInConfigs(t *testing.T) {
+	p, _ := runGuide(machineFacts{}, scripted(t, "backup", "devops", "local"))
+	if !strings.Contains(strings.ToLower(noteText(p)), "credential") {
+		t.Errorf("kubeconfigs and cloud CLI configs hold credentials:\n%s", noteText(p))
+	}
+}
+
+// The most important branch: credentials are travelling and encryption is not
+// ready. Exporting here would write them in the clear.
 func TestGuideRefusesToExportSecretsBeforeEncryptionExists(t *testing.T) {
 	p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: false},
-		scripted(t, "save", "remote", "yes"))
+		scripted(t, "clone", "devops", "old", "yes"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,120 +133,140 @@ func TestGuideRefusesToExportSecretsBeforeEncryptionExists(t *testing.T) {
 	}
 }
 
-// An age key that exists only on this Mac is a single point of total loss:
-// everything encrypted with it becomes unrecoverable if the Mac does.
-func TestGuidePutsTheAgeKeyBackupBeforeEncrypting(t *testing.T) {
-	p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: true},
-		scripted(t, "save", "remote", "yes", "no"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !p.steps[0].warn {
-		t.Fatalf("the key warning must come first, got %q", p.steps[0].cmd)
-	}
-	if strings.Contains(planText(p), "--apply") {
-		t.Error("should not offer to encrypt anything until the key is safe")
-	}
-}
-
 func TestGuideExportsWhenEverythingIsReady(t *testing.T) {
 	p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: true},
-		scripted(t, "save", "remote", "yes", "yes"))
+		scripted(t, "clone", "backend", "old", "yes"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := planText(p)
-	if !strings.Contains(got, "dothaven chezmoi-export --apply") {
+	if !strings.Contains(got, "chezmoi-export --apply") {
 		t.Errorf("want the real export, got:\n%s", got)
 	}
-	// Preview before write, every time.
 	if strings.Index(got, "chezmoi-export\n") > strings.Index(got, "--apply") {
 		t.Error("the preview should come before the apply")
 	}
 }
 
-func TestGuideInstallsChezmoiWhenMissing(t *testing.T) {
-	p, err := runGuide(machineFacts{}, scripted(t, "setup", "chezmoi"))
-	if err != nil {
-		t.Fatal(err)
+// Without credentials there is nothing to encrypt, so chezmoi is setup for
+// nothing — a plain backup carried across is simpler.
+func TestGuideSkipsChezmoiWhenNoCredentialsTravel(t *testing.T) {
+	p, _ := runGuide(machineFacts{}, scripted(t, "clone", "frontend", "old", "no"))
+	if strings.Contains(planText(p), "chezmoi") {
+		t.Errorf("no credentials means no encryption to set up:\n%s", planText(p))
 	}
-	got := planText(p)
-	for _, want := range []string{"brew install chezmoi", "chezmoi init", "migrate --dry-run"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in:\n%s", want, got)
+}
+
+func TestGuideOnTheNewMachinePicksBySource(t *testing.T) {
+	withRepo, _ := runGuide(machineFacts{chezmoiInstalled: true, sourceReady: true},
+		scripted(t, "clone", "all", "new"))
+	if !strings.Contains(planText(withRepo), "migrate --dry-run") {
+		t.Errorf("a chezmoi repo means migrate:\n%s", planText(withRepo))
+	}
+
+	withBackup, _ := runGuide(machineFacts{latestBackup: "/data/backup-x"},
+		scripted(t, "clone", "all", "new"))
+	got := planText(withBackup)
+	if !strings.Contains(got, "restore --dry-run /data/backup-x") {
+		t.Errorf("a backup folder means restore, with the path it found:\n%s", got)
+	}
+
+	withNothing, _ := runGuide(machineFacts{}, scripted(t, "clone", "all", "new"))
+	if strings.Contains(planText(withNothing), "dothaven restore ") {
+		t.Errorf("nothing to restore from — do not suggest restoring:\n%s", planText(withNothing))
+	}
+}
+
+// The wipe path holds the only irreversible mistake, so `ready` comes first
+// every time: a backup taken after the disk is erased is not a backup.
+func TestGuideChecksForUnsavedWorkBeforeAnythingElse(t *testing.T) {
+	for _, after := range []string{"same", "remote"} {
+		p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: true},
+			scripted(t, "wipe", after))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.steps[0].cmd != "dothaven ready" {
+			t.Errorf("%s: first step is %q, want `dothaven ready`", after, p.steps[0].cmd)
 		}
 	}
-	if strings.Index(got, "--dry-run") > strings.Index(got, "dothaven migrate\n") {
-		t.Error("the dry run should come before the real migrate")
+}
+
+// Reinstalling the same machine is the case where the backup is on the disk
+// being erased — worth saying out loud.
+func TestGuideWipeSameMachineWarnsTheBackupIsOnThatDisk(t *testing.T) {
+	p, _ := runGuide(machineFacts{}, scripted(t, "wipe", "same"))
+	var warned bool
+	for _, s := range p.steps {
+		if s.warn && strings.Contains(strings.ToLower(s.cmd), "off this machine") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("want a warning to copy the backup off the disk:\n%s", planText(p))
 	}
 }
 
-// Telling someone to restore from a backup that isn't there is worse than
-// saying so — they'd run it, see nothing, and not know why.
-func TestGuideSaysSoWhenThereIsNoBackup(t *testing.T) {
-	p, err := runGuide(machineFacts{latestBackup: ""}, scripted(t, "setup", "backup"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !p.steps[0].warn {
-		t.Fatalf("want a warning, got %q", p.steps[0].cmd)
-	}
-	if strings.Contains(planText(p), "dothaven restore ") {
-		t.Error("suggested restoring from a backup that does not exist")
-	}
-}
-
-func TestGuideRestoresFromTheBackupItFound(t *testing.T) {
-	p, err := runGuide(machineFacts{latestBackup: "/data/backup-mac-123"},
-		scripted(t, "setup", "backup"))
+func TestGuideHealthCoversAllThreeKinds(t *testing.T) {
+	p, err := runGuide(machineFacts{}, scripted(t, "health", "all"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := planText(p)
-	if !strings.Contains(got, "/data/backup-mac-123") {
-		t.Errorf("the path it found should be in the command, got:\n%s", got)
-	}
-	if !strings.Contains(got, "--dry-run") {
-		t.Errorf("restore writes to $HOME; preview first:\n%s", got)
+	for _, want := range []string{"dothaven check", "dothaven scan", "dothaven ready"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("health should include %q:\n%s", want, got)
+		}
 	}
 }
 
-func TestGuideAuditSuggestsAGateForAProject(t *testing.T) {
-	p, err := runGuide(machineFacts{}, scripted(t, "audit", "here", "console"))
+func TestGuideCompareNeedsSnapshotsFromBothMachines(t *testing.T) {
+	p, err := runGuide(machineFacts{}, scripted(t, "compare"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := planText(p)
-	if !strings.Contains(got, "dothaven scan .") {
-		t.Errorf("want a scan of this folder, got:\n%s", got)
-	}
-	if !strings.Contains(got, "git commit") {
-		t.Errorf("a project scan is worth wiring into a commit, got:\n%s", got)
+	got := fullText(p)
+	if !strings.Contains(got, "BOTH") {
+		t.Errorf("comparing machines needs a snapshot from each:\n%s", got)
 	}
 }
 
-func TestGuideInspectNeedsSomethingToCompareAgainst(t *testing.T) {
-	p, err := runGuide(machineFacts{latestBackup: ""}, scripted(t, "inspect", "backup"))
+// A private repo that holds credentials must not be built before encryption
+// exists: git remembers what was committed in the clear.
+func TestGuideRepoWarnsBeforeCommittingSecretsUnencrypted(t *testing.T) {
+	p, err := runGuide(machineFacts{chezmoiInstalled: true, sourceReady: true, ageReady: false},
+		scripted(t, "repo", "yes"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !p.steps[0].warn {
-		t.Errorf("want a warning when there is no backup, got %q", p.steps[0].cmd)
+	var warned bool
+	for _, s := range p.steps {
+		if s.warn && strings.Contains(strings.ToLower(s.why), "git remembers") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("want a warning about committing secrets in plain text:\n%s", planText(p))
+	}
+	if !strings.Contains(strings.ToLower(noteText(p)), "private") {
+		t.Errorf("the repo must be private:\n%s", noteText(p))
 	}
 }
 
-// Every plan has to explain itself; advice you can't check is advice you can't
-// trust.
+// Every plan has to explain itself; advice you cannot check is advice you
+// cannot trust.
 func TestEveryPlanExplainsItself(t *testing.T) {
 	paths := [][]string{
-		{"save", "local"},
-		{"save", "remote", "no"},
-		{"save", "remote", "yes", "yes"},
-		{"setup", "chezmoi"},
-		{"setup", "unsure"},
-		{"inspect", "snapshot"},
-		{"inspect", "two"},
-		{"audit", "home", "file"},
+		{"backup", "backend", "local"},
+		{"backup", "mobile", "portable"},
+		{"clone", "data", "old", "no"},
+		{"clone", "all", "new"},
+		{"wipe", "same"},
+		{"health", "devops"},
+		{"compare"},
+		{"repo", "no"},
+		{"see", "frontend"},
+		{"see", "all"},
 	}
 	for _, answers := range paths {
 		p, err := runGuide(machineFacts{latestBackup: "/b"}, scripted(t, answers...))
@@ -189,35 +279,5 @@ func TestEveryPlanExplainsItself(t *testing.T) {
 		if len(p.steps) == 0 {
 			t.Errorf("%v: no steps", answers)
 		}
-	}
-}
-
-// The wipe path is the one with an irreversible mistake in it. `ready` must
-// come before anything else, every time — a backup taken after the disk is
-// erased is not a backup.
-func TestGuideChecksForUnsavedWorkBeforeAnythingElse(t *testing.T) {
-	for _, where := range []string{"local", "remote"} {
-		p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: true},
-			scripted(t, "wipe", where))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if p.steps[0].cmd != "dothaven ready" {
-			t.Errorf("%s: first step is %q, want `dothaven ready`", where, p.steps[0].cmd)
-		}
-	}
-}
-
-func TestGuideWipeStopsWhenChezmoiIsNotReady(t *testing.T) {
-	p, err := runGuide(machineFacts{}, scripted(t, "wipe", "remote"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := planText(p)
-	if strings.Contains(got, "--apply") {
-		t.Errorf("nothing should be exported before encryption exists:\n%s", got)
-	}
-	if !strings.Contains(got, "dothaven init") {
-		t.Errorf("want init, got:\n%s", got)
 	}
 }

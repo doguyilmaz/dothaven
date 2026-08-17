@@ -377,7 +377,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				return ExitError{Code: 1}
 			}
 
-			fmt.Println("\nDone. Review with `chezmoi diff`, then commit your private chezmoi source repo.")
+			printChezmoiHandoff(ctx, sourcePath)
 			return nil
 		},
 	}
@@ -386,4 +386,43 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories/groups (comma-separated)")
 	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories/groups (comma-separated)")
 	return c
+}
+
+// printChezmoiHandoff says where the files went and what to do next.
+//
+// The old ending was "Done. Review with `chezmoi diff`, then commit your
+// private chezmoi source repo" — true, and useless to anyone who did not
+// already know where that repo is, how to get a shell in it, or that nothing
+// has left this machine until it is pushed. Adding files to a local repo feels
+// like finishing, which is exactly why the gap needs naming.
+func printChezmoiHandoff(ctx context.Context, sourcePath string) {
+	if sourcePath == "" {
+		sourcePath, _ = runShell(ctx, "chezmoi", "source-path")
+	}
+	fmt.Println("\nDone. Your chezmoi source repo is at:")
+	fmt.Printf("  %s\n", sourcePath)
+
+	remote, _ := runShell(ctx, "git", "-C", sourcePath, "remote")
+	branch, _ := runShell(ctx, "git", "-C", sourcePath, "branch", "--show-current")
+	if branch == "" {
+		branch = "main"
+	}
+
+	fmt.Println("\nNext, here:")
+	fmt.Println("  chezmoi diff                      # what would change on this machine")
+	fmt.Println("  chezmoi cd                        # opens a shell in the repo above")
+	fmt.Println("  git add -A && git commit -m 'update dotfiles'")
+
+	if strings.TrimSpace(remote) == "" {
+		fmt.Println("\n  ⚠ No git remote yet — nothing has left this machine.")
+		fmt.Println("      git remote add origin <your-private-repo>")
+		fmt.Printf("      git push -u origin %s\n", branch)
+		fmt.Println("    Private, not public: even encrypted files show which services you use.")
+	} else {
+		fmt.Printf("  git push                          # ← until this, it is still only on this Mac\n")
+	}
+
+	fmt.Println("\nThen, on the other machine:")
+	fmt.Println("  chezmoi init --apply <your-private-repo>")
+	fmt.Println("  dothaven doctor                   # what is still missing there")
 }
