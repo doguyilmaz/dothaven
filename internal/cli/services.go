@@ -197,7 +197,7 @@ func newServicesImportCmd(env *sys.OS) *cobra.Command {
 				if werr := sys.WriteFile(it.dest, it.content); werr != nil {
 					return werr
 				}
-				fmt.Printf("  ✔ %s\n", it.rel)
+				fmt.Printf("  %s %s\n", good("✔"), it.rel)
 				n++
 			}
 			fmt.Printf("Imported %d service config(s) into %s. Restart the affected services.\n", n, filepath.Join(newPrefix, "etc"))

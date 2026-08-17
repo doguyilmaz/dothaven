@@ -139,10 +139,10 @@ func newDefaultsImportCmd(env *sys.OS) *cobra.Command {
 			n := 0
 			for _, it := range plan {
 				if out, err := runShell(ctx, "defaults", "import", it.domain, it.path); err != nil {
-					fmt.Fprintf(os.Stderr, "  ✗ %s: %v %s\n", it.domain, err, out)
+					fmt.Fprintf(os.Stderr, "  %s %s: %v %s\n", danger("✗"), it.domain, err, out)
 					continue
 				}
-				fmt.Printf("  ✔ %s\n", it.domain)
+				fmt.Printf("  %s %s\n", good("✔"), it.domain)
 				n++
 			}
 			fmt.Printf("Imported %d domain(s). Restart the affected apps to pick up the new prefs.\n", n)

@@ -244,7 +244,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if conflicts := chezmoi.SettingsSyncConflicts(plan, env.Exists); len(conflicts) > 0 {
-				fmt.Println("\n⚠ Editor Settings Sync looks active — chezmoi and the editor's cloud sync will")
+				fmt.Println(warn("\n⚠ Editor Settings Sync looks active — chezmoi and the editor's cloud sync will"))
 				fmt.Println("  both rewrite these, causing drift. Disable one (chezmoi-managed or Settings Sync):")
 				for _, c := range conflicts {
 					fmt.Printf("    %s\n", c)
@@ -256,7 +256,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if !apply {
-				fmt.Println("\nDry-run. Re-run with --apply to execute (requires chezmoi + a configured age key).")
+				fmt.Printf("\n%s Re-run with %s to execute.\n", dim("Dry-run."), kbd("--apply"))
 				return nil
 			}
 
@@ -275,7 +275,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					configured = ageEncryptionRe.Match(b)
 				}
 				if !configured {
-					fmt.Fprintln(os.Stderr, "\n✗ This plan encrypts secrets, but age encryption is not configured in chezmoi.toml.")
+					fmt.Fprintln(os.Stderr, danger("\n✗ This plan encrypts secrets, but age encryption is not configured in chezmoi.toml."))
 					fmt.Fprintln(os.Stderr, "  Run `dothaven init`, configure your age key, then re-run with --apply.")
 					return ExitError{Code: 1}
 				}
@@ -305,7 +305,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				if err := os.WriteFile(ignorePath, []byte(chezmoi.MergeChezmoiignore(existing, chezmoi.GnupgIgnorePatterns())), 0o644); err != nil {
 					return err
 				}
-				fmt.Println("  ✔ .chezmoiignore (gnupg runtime cruft)")
+				fmt.Printf("  %s .chezmoiignore %s\n", good("✔"), dim("(gnupg runtime cruft)"))
 			}
 
 			fmt.Println("")
@@ -319,7 +319,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					addArgs = []string{"add", "--template", p.Src}
 				}
 				if out, err := runShell(ctx, "chezmoi", addArgs...); err != nil {
-					fmt.Fprintf(os.Stderr, "  ✗ %s: %v %s\n", p.Src, err, out)
+					fmt.Fprintf(os.Stderr, "  %s %s: %v %s\n", danger("✗"), p.Src, err, out)
 					failed++
 					if p.Encrypt {
 						failedEncrypted++
@@ -336,13 +336,13 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				case p.Template:
 					prefix = "templated "
 				}
-				fmt.Printf("  ✔ %s%s\n", prefix, p.Src)
+				fmt.Printf("  %s %s%s\n", good("✔"), prefix, p.Src)
 			}
 
 			if wantInstallScript {
 				manifest := gatherInstallManifest(ctx, env, pin)
 				if dupes := chezmoi.CrossManagerDuplicates(manifest); len(dupes) > 0 {
-					fmt.Fprintf(os.Stderr, "  ⚠ installed by multiple managers (review for PATH shadowing): %s\n", strings.Join(dupes, ", "))
+					fmt.Fprintf(os.Stderr, "  %s installed by multiple managers (review for PATH shadowing): %s\n", warn("⚠"), strings.Join(dupes, ", "))
 				}
 				if !wantBrew {
 					manifest.Brewfile = ""
@@ -359,19 +359,19 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				}
 				if script, ok := chezmoi.BuildPackageInstallScript(manifest); ok && sourcePath != "" {
 					if err := os.WriteFile(sourcePath+"/run_onchange_install-packages.sh", []byte(script), 0o755); err != nil {
-						fmt.Fprintf(os.Stderr, "  ✗ install script: %v\n", err)
+						fmt.Fprintf(os.Stderr, "  %s install script: %v\n", danger("✗"), err)
 						failed++
 					} else {
-						fmt.Println("  ✔ run_onchange_install-packages.sh")
+						fmt.Printf("  %s run_onchange_install-packages.sh\n", good("✔"))
 					}
 				}
 			}
 
 			if failed > 0 {
 				if failedEncrypted > 0 {
-					fmt.Fprintf(os.Stderr, "\n✗ %d operation(s) failed — %d were encrypted secrets that were NOT carried.\n", failed, failedEncrypted)
+					fmt.Fprintln(os.Stderr, danger(fmt.Sprintf("\n✗ %d operation(s) failed — %d were encrypted secrets that were NOT carried.", failed, failedEncrypted)))
 				} else {
-					fmt.Fprintf(os.Stderr, "\n✗ %d operation(s) failed.\n", failed)
+					fmt.Fprintln(os.Stderr, danger(fmt.Sprintf("\n✗ %d operation(s) failed.", failed)))
 				}
 				fmt.Fprintln(os.Stderr, "Fix the errors above, then re-run `dothaven chezmoi-export --apply`.")
 				return ExitError{Code: 1}
