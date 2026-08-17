@@ -27,7 +27,16 @@ func topFinding(r Result) Finding {
 
 // FormatReport renders the inline console summary printed after collect/backup.
 // Empty when there are no findings.
-func FormatReport(s Summary) string {
+// ReportOptions controls how the report is rendered. Colour is a parameter
+// rather than something this package detects, so the decision stays with the
+// layer that knows where the output is going — the same shape snapshot.Format
+// already uses.
+type ReportOptions struct{ Color bool }
+
+// FormatReport renders the sensitivity report. Severity is the one thing worth
+// colouring here: it is why the report exists, and a HIGH in a list of thirty
+// LOWs is what the reader is scanning for.
+func FormatReport(s Summary, o ReportOptions) string {
 	if len(s.Results) == 0 {
 		return ""
 	}
@@ -43,6 +52,20 @@ func FormatReport(s Summary) string {
 		return rows[i].Path < rows[j].Path
 	})
 
+	var red, yellow, dim, reset string
+	if o.Color {
+		red, yellow, dim, reset = "\x1b[31m", "\x1b[33m", "\x1b[2m", "\x1b[0m"
+	}
+	severityColor := func(sev Severity) string {
+		switch sev {
+		case High:
+			return red
+		case Medium:
+			return yellow
+		}
+		return dim
+	}
+
 	lines := []string{"\n⚠ Sensitivity report:"}
 	for _, r := range rows {
 		top := topFinding(r)
@@ -53,7 +76,9 @@ func FormatReport(s Summary) string {
 		case Skip:
 			label = "skipped"
 		}
-		lines = append(lines, fmt.Sprintf("  %-6s %-30s %s — %s", top.Pattern.Severity, r.Path, top.Pattern.Label, label))
+		sev := top.Pattern.Severity
+		lines = append(lines, fmt.Sprintf("  %s%-6s%s %-30s %s%s — %s%s",
+			severityColor(sev), sev, reset, r.Path, dim, top.Pattern.Label, label, reset))
 	}
 	var parts []string
 	if s.Redacted > 0 {

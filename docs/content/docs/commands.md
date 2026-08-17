@@ -28,6 +28,37 @@ Snapshot files are named `<hostname>-<timestamp>.json`; backups are named `backu
 
 ---
 
+## Start here
+
+### guide
+
+Answer a few questions, get the exact commands to run.
+
+```text
+dothaven guide
+```
+
+Asks what you are trying to do (back up, set up a new computer, reinstall, health check, compare two machines, make a private repo, see what you have) and what kind of work you do (backend, frontend, mobile, devops, data). It answers with an ordered list of commands, a one-line reason for each, a `Why` for the plan, and notes about what your kind of work should know does **not** travel. It then offers to run the first step.
+
+It deliberately does **not** ask what it can detect — whether chezmoi is installed, whether age is configured, whether a backup exists. Those are read from disk. A question whose answer is already known wastes attention and can be answered wrong.
+
+**Arguments:** none. Requires an interactive terminal.
+
+This command has no flags.
+
+```bash
+$ dothaven guide
+? What do you want to do?  › Reinstall or replace this computer
+? Once that's clean, what happens to the setup?  › It moves to another computer
+
+Here's what I'd do:
+
+  1. dothaven ready
+     Every repository, checked for changes, commits and stashes that exist on no remote.
+```
+
+---
+
 ## Capture
 
 These commands read your machine and write artifacts: a snapshot, a backup, or a security report.
@@ -71,7 +102,11 @@ Walks a path looking for secrets and prints findings line-by-line with severity,
 
 **Arguments:** optional single `path` (file or directory). Defaults to `.`.
 
-This command has no flags.
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--no-fail` | `false` | Always exit 0, even with HIGH findings. |
+
+**Exit code:** `2` when anything HIGH is found, so it can gate a commit hook or a CI job (`dothaven scan . && git commit`). A scanner that always exits 0 can only be read by a human, and the point of scanning is to catch what a human missed.
 
 ```bash
 $ dothaven scan ~/.aws/credentials
@@ -106,6 +141,69 @@ Security report written to: audit.md
 ## Inspect
 
 These commands read existing snapshots (or the live machine) and report — they never write.
+
+### ready
+
+Is this Mac safe to wipe? Checks for work that exists nowhere else.
+
+```text
+dothaven ready [--depth N] [--root PATH]
+```
+
+Walks your code directories for git repositories and reports uncommitted changes, commits that are on no remote, and stashes. Repositories with **no remote at all** are listed separately: every commit in them exists only on this machine, and the fix is not "push" but "give it somewhere to be pushed to". Also reports how old the newest backup is.
+
+Nothing is fetched, so it is fast and works offline — which also means it judges against the remote state git last saw.
+
+**Arguments:** none.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--depth` | `4` | How far below each root to look for repositories. |
+| `--root` | common code directories | Where to look. Repeatable. Defaults to `~/Developer`, `~/Projects`, `~/src`, `~/code`, `~/work` and similar, falling back to `$HOME`. |
+
+**Exit code:** `2` when anything is at risk, so it can gate a wipe script (`dothaven ready && diskutil eraseDisk ...`).
+
+```bash
+$ dothaven ready
+2 repositories with no remote — these exist ONLY on this Mac:
+  ✗ ~/Developer/old-prototype                   412 commits, 3 files uncommitted
+
+1 repository with work not pushed anywhere:
+  ⚠ ~/Developer/api                             2 files uncommitted, 5 commits unpushed, 1 stash
+
+36 repositories checked.
+  ✓ Newest backup is 2 hours old.
+
+❌ Not safe to wipe: 3 repositories hold work that exists nowhere else.
+```
+
+### check
+
+Are my config files still valid? Parses each one.
+
+```text
+dothaven check [--all]
+```
+
+Checks every tracked config file that exists on this machine, using the parser that owns its format: `encoding/json` for JSON, `zsh -n` / `bash -n` for shell files, `git config --file` and `ssh -G` for their own configs.
+
+No YAML or TOML library is bundled. A config is correct when the program that reads it accepts it, so asking that program is both more accurate than a re-implementation and nothing extra to trust. Formats with no parser to hand are reported as **unchecked** rather than assumed fine. JSON containing comments (jsonc, which editors allow) is unchecked, not broken.
+
+**Arguments:** none.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--all` | `false` | Also list files that passed and files nothing could check. |
+
+**Exit code:** `2` when anything is broken, so it can gate a backup or a commit.
+
+```bash
+$ dothaven check
+  ✗ ~/.config/Code/User/settings.json      invalid character '}' looking for beginning of object key string
+
+15 checked, 13 unchecked (--all to list them).
+❌ 1 file broken. Fix these before they reach another machine.
+```
 
 ### list
 
@@ -198,6 +296,7 @@ Collects the registry's backup targets from your home directory, redacts secrets
 | --- | --- | --- |
 | `--no-redact` | `false` | Keep raw values (skip secret redaction). |
 | `--archive` | `false` | Create a `.tar.gz` instead of a directory. |
+| `--encrypt` | `false` | Encrypt the archive with [age](https://age-encryption.org), prompting for a passphrase. Implies `--archive`. |
 | `-o`, `--output` | _(resolved)_ | Output directory. Default: `~/.local/share/dothaven` (stable, cwd-independent). |
 | `--only` | _(none)_ | Only these categories (comma-separated). |
 | `--skip` | _(none)_ | Skip these categories (comma-separated). |
@@ -237,6 +336,10 @@ Dry run — no files will be changed:
 
   2 files total: 1 new, 1 conflicts
 ```
+
+`restore` accepts a backup **directory**, a `.tar.gz`, or an age-encrypted `.tar.gz.age`. An archive is unpacked into a temporary directory (mode `0700`) that is removed afterwards; an encrypted one prompts for its passphrase first. Entries that would escape the extraction directory, and symlinks, are refused rather than written.
+
+---
 
 ### status
 
@@ -366,7 +469,14 @@ The clean-machine happy path — one command for the moment you're staring at an
 
 **Arguments:** none.
 
-This command has no flags.
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--dry-run` | `false` | Show what chezmoi would change, via `chezmoi diff`. Writes nothing. |
+| `--yes` | `false` | Skip the confirmation. Required off a terminal. |
+
+{{< callout type="warning" >}}
+`migrate` overwrites files in `$HOME` and runs your install script. On a terminal it asks first; off one — piped, in a script, over SSH without a TTY — it **refuses** unless `--yes` is passed. A pipe cannot answer a question, and silence is not consent.
+{{< /callout >}}
 
 ---
 
@@ -388,6 +498,12 @@ dothaven defaults import <dir>
 | Flag | Default | Description |
 | --- | --- | --- |
 | `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for the `macos-defaults/` plists. |
+| `--dry-run` (import) | `false` | List the preference domains that would be replaced. Writes nothing. |
+| `--yes` (import) | `false` | Skip the confirmation. Required off a terminal. |
+
+{{< callout type="warning" >}}
+`defaults import` replaces a preference domain wholesale — whatever those apps currently have is overwritten. It lists the domains first and asks; off a terminal it refuses unless `--yes` is passed.
+{{< /callout >}}
 
 ### services
 
@@ -403,6 +519,12 @@ dothaven services import <dir>
 | Flag | Default | Description |
 | --- | --- | --- |
 | `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for the `services/` tree. |
+| `--dry-run` (import) | `false` | List the files that would be written, marking which already exist. Writes nothing. |
+| `--yes` (import) | `false` | Skip the confirmation. Required off a terminal. |
+
+{{< callout type="warning" >}}
+`services import` writes into `$(brew --prefix)/etc` — outside `$HOME`, in Homebrew's own tree. It lists every file first and marks the ones it would **overwrite**, then asks; off a terminal it refuses unless `--yes` is passed.
+{{< /callout >}}
 
 ---
 

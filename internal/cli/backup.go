@@ -194,7 +194,7 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if redact {
-				if report := scan.FormatReport(scan.Summarize(res.ScanResults)); strings.TrimSpace(report) != "" {
+				if report := scan.FormatReport(scan.Summarize(res.ScanResults), scan.ReportOptions{Color: colorOn()}); strings.TrimSpace(report) != "" {
 					fmt.Println(report)
 				}
 			}

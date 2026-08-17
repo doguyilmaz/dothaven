@@ -130,7 +130,7 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 			fmt.Printf("Report saved to: %s\n", path)
 
 			if redact {
-				if report := scan.FormatReport(scan.Summarize(scanResults)); strings.TrimSpace(report) != "" {
+				if report := scan.FormatReport(scan.Summarize(scanResults), scan.ReportOptions{Color: colorOn()}); strings.TrimSpace(report) != "" {
 					fmt.Println(report)
 				}
 			}

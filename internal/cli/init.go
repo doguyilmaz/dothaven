@@ -75,13 +75,13 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 
 			fmt.Print("dothaven init — chezmoi + age bootstrap\n\n")
 			for _, s := range steps {
-				mark := "→"
+				mark, title := warn("→"), s.Title
 				if s.Done {
-					mark = "✓"
+					mark, title = good("✓"), dim(s.Title)
 				}
-				fmt.Printf("  %s %s\n", mark, s.Title)
+				fmt.Printf("  %s %s\n", mark, title)
 				if !s.Done && s.Command != "" {
-					fmt.Printf("      %s\n", s.Command)
+					fmt.Printf("      %s\n", kbd(s.Command))
 				}
 				if s.Note != "" {
 					fmt.Printf("      ⚠ %s\n", s.Note)
@@ -95,7 +95,7 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 
 			// Non-interactive (piped/CI): just print guidance.
 			if !tui.Interactive() {
-				fmt.Println("\nRun the commands above, then re-run `dothaven init`.")
+				fmt.Printf("\nRun the commands above, then re-run %s.\n", kbd("dothaven init"))
 				return nil
 			}
 
@@ -116,7 +116,7 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 				case "age-key":
 					fmt.Println("  → Generate your age key yourself, then re-run init:")
 					fmt.Printf("      %s\n", s.Command)
-					fmt.Println("    ⚠ Back it up offline — losing it means encrypted files can't be decrypted.")
+					fmt.Println(warn("    ⚠ Back it up offline — losing it means encrypted files can't be decrypted."))
 				case "source":
 					fallback := chezmoi.RepoURL(state.User)
 					url, err := tui.Input("Private repo URL", fallback)
@@ -132,7 +132,7 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 					}
 				}
 			}
-			fmt.Println("\nWhen every step is ✓, run: dothaven chezmoi-export")
+			fmt.Printf("\nWhen every step is %s, run: %s\n", good("✓"), kbd("dothaven chezmoi-export"))
 			return nil
 		},
 	}

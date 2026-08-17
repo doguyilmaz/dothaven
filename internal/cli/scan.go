@@ -44,13 +44,25 @@ func formatDetailed(results []scan.Result) string {
 		if len(r.Findings) == 0 {
 			continue
 		}
-		lines = append(lines, "\n"+r.Path)
+		lines = append(lines, "\n"+bold(r.Path))
 		sorted := append([]scan.Finding(nil), r.Findings...)
 		sort.SliceStable(sorted, func(i, j int) bool {
 			return severityRank[sorted[i].Pattern.Severity] > severityRank[sorted[j].Pattern.Severity]
 		})
 		for _, f := range sorted {
-			lines = append(lines, fmt.Sprintf("  L%d [%s] %s: %s", f.Line, f.Pattern.Severity, f.Pattern.Label, f.Match))
+			// Severity carries the colour; the match itself stays plain so a
+			// secret is never harder to read than the label describing it.
+			sev := string(f.Pattern.Severity)
+			switch f.Pattern.Severity {
+			case scan.High:
+				sev = danger(sev)
+			case scan.Medium:
+				sev = warn(sev)
+			default:
+				sev = dim(sev)
+			}
+			lines = append(lines, fmt.Sprintf("  %s [%s] %s: %s",
+				dim(fmt.Sprintf("L%d", f.Line)), sev, f.Pattern.Label, f.Match))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -92,13 +104,13 @@ func newScanCmd(_ *sys.OS) *cobra.Command {
 				}
 			}
 			if !any {
-				fmt.Println("No sensitive data found.")
+				fmt.Println(good("✓ No sensitive data found."))
 				return nil
 			}
 			fmt.Println(formatDetailed(results))
-			fmt.Println(scan.FormatReport(scan.Summarize(results)))
+			fmt.Println(scan.FormatReport(scan.Summarize(results), scan.ReportOptions{Color: colorOn()}))
 			if high > 0 && !noFail {
-				fmt.Fprintf(os.Stderr, "\n%d HIGH severity finding(s). Exiting 2 — pass --no-fail to ignore.\n", high)
+				fmt.Fprintf(os.Stderr, "\n%s\n", danger(fmt.Sprintf("%d HIGH severity finding(s). Exiting 2 — pass --no-fail to ignore.", high)))
 				return ExitError{Code: 2}
 			}
 			return nil
