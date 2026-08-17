@@ -57,6 +57,11 @@ func listPrefDomains(ctx context.Context) []string {
 
 // capturePrefs reads and classifies every domain.
 func capturePrefs(ctx context.Context, domains []string) ([]macprefs.Entry, macprefs.Counts) {
+	// No domains means no `defaults` tool — this is not a Mac. Returning here
+	// keeps a progress bar and eight goroutines from being started for nothing.
+	if len(domains) == 0 {
+		return nil, macprefs.Counts{}
+	}
 	var (
 		mu     sync.Mutex
 		all    []macprefs.Entry
@@ -196,6 +201,7 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 			"%s in other domains held back (application state). Pass --all to write them too.",
 			plural(heldBack, "setting"))))
 	}
+	printPrefsReview(entries, all)
 	if dryRun {
 		fmt.Printf("\n%s\n", dim("Dry run — nothing was written."))
 		return nil
@@ -219,6 +225,39 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 			warn("⚠"), plural(failed, "preference"))
 	}
 	return nil
+}
+
+// printPrefsReview lists the settings that were captured and will never be
+// written: their value names the machine they came from — a path into someone
+// else's home directory, an identifier for a display that is not here.
+//
+// They are shown because a value nobody looks at is a value nobody can act on.
+// Captured and then silently dropped is the same as not captured, except it
+// takes up space and gives a false impression of completeness.
+func printPrefsReview(entries []macprefs.Entry, all bool) {
+	var core, other []macprefs.Entry
+	for _, e := range entries {
+		if e.Action != "review" {
+			continue
+		}
+		if all || macprefs.IsCore(e.Domain) {
+			core = append(core, e)
+		} else {
+			other = append(other, e)
+		}
+	}
+	if len(core) == 0 && len(other) == 0 {
+		return
+	}
+
+	fmt.Printf("\n%s %s carried a value from the old machine — set these by hand:\n",
+		warn("⚠"), plural(len(core)+len(other), "setting"))
+	for _, e := range core {
+		fmt.Printf("  %s %s\n", padTo(e.Domain+" "+e.Key, 46), dim(ellipsize(e.Value, 30)))
+	}
+	if len(other) > 0 {
+		fmt.Printf("  %s\n", dim(fmt.Sprintf("…and %d more in non-core domains.", len(other))))
+	}
 }
 
 func countDomains(entries []macprefs.Entry) int {

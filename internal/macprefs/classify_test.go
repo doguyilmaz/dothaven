@@ -69,7 +69,11 @@ func TestClassify(t *testing.T) {
 		// Real settings whose value belongs to the old machine.
 		{"screenshot location", "com.apple.screencapture", "location", Value{String, "/Users/someone/Desktop"}, Review},
 		{"volume path", "com.apple.whatever", "libraryPath", Value{String, "/Volumes/Data/x"}, Review},
-		{"uuid value", "com.apple.whatever", "deviceIdentifier", Value{String, "5F2A9C41-7B3D-4E8A-9C1F-2D6B8E4A7C39"}, Review},
+		// A UUID is never something to go and set by hand, so it is dropped
+		// rather than put on a list of things to do. Listing boot UUIDs as
+		// settings to restore is what this replaced.
+		{"uuid value", "com.apple.whatever", "deviceIdentifier", Value{String, "5F2A9C41-7B3D-4E8A-9C1F-2D6B8E4A7C39"}, Skip},
+		{"boot uuid", "com.apple.CrashReporter", "exceptionProcesses.bootUUID", Value{String, "9DEDB17B-ABED-4A11-B8C1-84BA21E5A3EC"}, Skip},
 	}
 
 	for _, tt := range tests {

@@ -504,8 +504,10 @@ Each key lands in one of three buckets:
 | Bucket | Meaning |
 | --- | --- |
 | `apply` | A portable scalar. Replayed with `defaults write <domain> <key> -<type> <value>`. |
-| `review` | A real setting whose value names the old machine — an absolute path, a UUID. Captured and shown, never written. |
-| _dropped_ | App state, not a setting: window frames, recent items, migration markers, launch counters, and anything that is not a single value (dictionaries, arrays, data blobs), which is where display and Spaces identifiers live. |
+| `review` | A real setting pointing into the old machine's filesystem — where screenshots land, which folder a dialog opens. Captured and listed on import so you can set it by hand; never written. |
+| _dropped_ | Not a setting: window frames, recent items, migration markers, launch counters, bare identifiers (boot and display UUIDs — there is no version of one worth setting here), and anything that is not a single value, which is where Spaces layouts live. |
+
+`dothaven backup` runs the same capture and writes `prefs.json` into the backup folder, so `dothaven defaults import <backup-dir>` restores a machine's settings from a plain backup with no separate export step.
 
 Values are run through the same secret scanner as every other captured file, so a token sitting in an app's preferences is redacted or dropped rather than written to disk.
 

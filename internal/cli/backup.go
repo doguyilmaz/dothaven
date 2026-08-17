@@ -120,6 +120,20 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 				return nil
 			}
 
+			// The Mac's own settings — scroll direction, key repeat, Dock size,
+			// Finder options — are held by cfprefsd, not by any file the sweep
+			// above walks. A backup without them restores a machine that has
+			// all your config and still feels wrong. Written inside the tree so
+			// it travels with the archive, and so `dothaven defaults import
+			// <backup-dir>` finds it.
+			prefEntries, prefCounts := capturePrefs(cmd.Context(), listPrefDomains(cmd.Context()))
+			if len(prefEntries) > 0 {
+				if err := writePrefs(filepath.Join(backupDir, "macos-defaults", prefsFileName),
+					prefEntries, prefCounts); err != nil {
+					return err
+				}
+			}
+
 			// Write a self-describing MANIFEST into the tree (before archiving, so
 			// it travels with the backup) — what's inside, what was excluded, and
 			// how to restore it.

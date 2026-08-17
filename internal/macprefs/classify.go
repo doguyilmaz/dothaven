@@ -54,11 +54,16 @@ var noise = regexp.MustCompile(strings.Join([]string{
 	`[Tt]imestamp`,
 }, "|"))
 
-// hostBound matches a value that names something on the machine it came from:
-// a path into a home directory or a mounted volume, or a UUID. The setting is
-// real, but the value is not.
-var hostBound = regexp.MustCompile(
-	`^(/Users/|/Volumes/|/private/)|^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+// identifier matches a value that only names a thing on the old machine — a
+// boot, display or hardware UUID. Unlike a path, there is no version of it
+// worth setting by hand here, so it is dropped rather than reported.
+var identifier = regexp.MustCompile(
+	`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+
+// hostPath matches a value that points into the old machine's filesystem. The
+// setting is real — where screenshots land, which folder a dialog opens — and
+// the equivalent here is something a person can choose, so it is reported.
+var hostPath = regexp.MustCompile(`^(/Users/|/Volumes/|/private/)`)
 
 // Classify decides what to do with one preference, and says why.
 //
@@ -77,8 +82,11 @@ func Classify(domain, key string, v Value) (Action, string) {
 	if noise.MatchString(key) {
 		return Skip, "app bookkeeping, not a setting"
 	}
-	if hostBound.MatchString(v.S) {
-		return Review, "value names this machine"
+	if identifier.MatchString(v.S) {
+		return Skip, "an identifier, not a setting"
+	}
+	if hostPath.MatchString(v.S) {
+		return Review, "path on the old machine"
 	}
 	return Apply, ""
 }
