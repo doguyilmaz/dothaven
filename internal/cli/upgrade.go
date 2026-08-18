@@ -115,10 +115,17 @@ func newUpgradeCmd(env *sys.OS, version string) *cobra.Command {
 				return err
 			}
 			for _, step := range steps {
-				fmt.Printf("\n%s\n", dim("$ "+strings.Join(step, " ")))
-				if err := runStreaming(ctx, step[0], step[1:]...); err != nil {
-					return fmt.Errorf("%s failed: %w", step[0], err)
+				line := strings.Join(step.Args, " ")
+				fmt.Printf("\n%s\n", dim("$ "+line))
+				err := runStreaming(ctx, step.Args[0], step.Args[1:]...)
+				if err == nil {
+					continue
 				}
+				if !step.Optional {
+					return fmt.Errorf("%s failed: %w", step.Args[0], err)
+				}
+				fmt.Printf("\n%s %s failed, carrying on — it may have nothing to do with dothaven.\n",
+					warn("⚠"), kbd(line))
 			}
 			fmt.Printf("\n%s Done — run %s to confirm.\n", good("✓"), kbd("dothaven --version"))
 			return nil

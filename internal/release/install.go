@@ -60,19 +60,33 @@ func under(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+"/")
 }
 
-// Steps is the argv sequence that upgrades this install, nil when there is none.
-func Steps(m Method) [][]string {
+// Step is one command in an upgrade.
+type Step struct {
+	Args []string
+	// Optional means a failure is worth mentioning but not worth stopping for.
+	Optional bool
+}
+
+// Steps is the sequence that upgrades this install, nil when there is none.
+func Steps(m Method) []Step {
 	switch m {
 	case Homebrew:
-		// `brew update` first, always. The tap is a git clone that only
-		// refreshes on update, so upgrading against a stale clone reports
-		// "already installed" for a version that has been published for hours.
-		return [][]string{
-			{"brew", "update"},
-			{"brew", "upgrade", "--cask", caskName},
+		return []Step{
+			// `brew update` first, always. The tap is a git clone that only
+			// refreshes on update, so upgrading against a stale clone reports
+			// "already installed" for a version that has been published for
+			// hours — the very thing this command exists to fix.
+			//
+			// Optional, because it refreshes *every* tap on the machine: one
+			// tap that has been deleted upstream makes it exit non-zero while
+			// saying nothing about whether dothaven can be upgraded. Treating
+			// that as fatal left the upgrade impossible until the user fixed an
+			// unrelated tap.
+			{Args: []string{"brew", "update"}, Optional: true},
+			{Args: []string{"brew", "upgrade", "--cask", caskName}},
 		}
 	case GoInstall:
-		return [][]string{{"go", "install", ModulePath + "@latest"}}
+		return []Step{{Args: []string{"go", "install", ModulePath + "@latest"}}}
 	}
 	return nil
 }
@@ -86,7 +100,7 @@ func Command(m Method) string {
 	}
 	parts := make([]string, 0, len(steps))
 	for _, s := range steps {
-		parts = append(parts, strings.Join(s, " "))
+		parts = append(parts, strings.Join(s.Args, " "))
 	}
 	return strings.Join(parts, " && ")
 }

@@ -54,22 +54,34 @@ func TestSteps(t *testing.T) {
 	// clone reports "already installed" for a version that has been out for
 	// hours. That is the exact failure this command exists to prevent.
 	got := Steps(Homebrew)
-	want := [][]string{
-		{"brew", "update"},
-		{"brew", "upgrade", "--cask", "dothaven"},
-	}
+	want := []string{"brew update", "brew upgrade --cask dothaven"}
 	if len(got) != len(want) {
 		t.Fatalf("Steps(Homebrew) = %v, want %v", got, want)
 	}
 	for i := range want {
-		if strings.Join(got[i], " ") != strings.Join(want[i], " ") {
-			t.Errorf("Steps(Homebrew)[%d] = %v, want %v", i, got[i], want[i])
+		if strings.Join(got[i].Args, " ") != want[i] {
+			t.Errorf("Steps(Homebrew)[%d] = %v, want %q", i, got[i].Args, want[i])
 		}
 	}
 
-	if got := Steps(GoInstall); len(got) != 1 || got[0][0] != "go" ||
-		!strings.HasSuffix(got[0][len(got[0])-1], "@latest") {
-		t.Errorf("Steps(GoInstall) = %v, want a single `go install ...@latest`", got)
+	// `brew update` refreshes every tap on the machine, so one tap that has
+	// been deleted upstream makes it exit non-zero — with nothing to say about
+	// whether dothaven can be upgraded. Aborting there left the upgrade
+	// impossible until the unrelated tap was fixed.
+	if !got[0].Optional {
+		t.Error("Steps(Homebrew)[0] (brew update) must be optional; an unrelated broken tap fails it")
+	}
+	if got[1].Optional {
+		t.Error("Steps(Homebrew)[1] (the upgrade itself) must not be optional")
+	}
+
+	goSteps := Steps(GoInstall)
+	if len(goSteps) != 1 || goSteps[0].Args[0] != "go" ||
+		!strings.HasSuffix(goSteps[0].Args[len(goSteps[0].Args)-1], "@latest") {
+		t.Errorf("Steps(GoInstall) = %v, want a single `go install ...@latest`", goSteps)
+	}
+	if goSteps[0].Optional {
+		t.Error("the only step there is cannot be optional")
 	}
 
 	// Nothing to run for a loose binary — the command must fall back to
