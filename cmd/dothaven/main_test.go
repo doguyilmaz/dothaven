@@ -21,6 +21,8 @@ func TestMain(m *testing.M) {
 		"chezmoi":  fakeChezmoi,
 		"defaults": fakeDefaults,
 		"brew":     fakeBrew,
+		// A test must never restart the real Dock of the Mac it runs on.
+		"killall": func() { os.Exit(0) },
 	})
 }
 
@@ -51,6 +53,10 @@ func fakeDefaults() {
 	switch args[0] {
 	case "domains":
 		fmt.Println("com.googlecode.iterm2, com.apple.Terminal")
+	case "read":
+		if len(args) >= 3 && args[1] == "com.apple.dock" && args[2] == "persistent-apps" {
+			fmt.Println(`( { "tile-data" = { "file-data" = { "_CFURLString" = "file://` + os.Getenv("DOCK_APP") + `/"; }; }; } )`)
+		}
 	case "write":
 		fmt.Println("wrote")
 	case "export":

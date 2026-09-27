@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -26,6 +27,9 @@ const prefsFileName = "prefs.json"
 type prefsFile struct {
 	Counts  macprefs.Counts  `json:"counts"`
 	Entries []macprefs.Entry `json:"entries"`
+	// Dock is the pinned apps, in order: a nested array the per-key pass
+	// cannot replay, rebuilt on import from the apps that exist there.
+	Dock []string `json:"dock,omitempty"`
 }
 
 // prefsWorkers bounds the fan-out. Each domain costs one `defaults export`, and
@@ -117,16 +121,16 @@ func capturePrefs(ctx context.Context, domains []string) ([]macprefs.Entry, macp
 
 // writePrefs saves the capture. Owner-only: a preference value can hold a token
 // the scanner did not recognise.
-func writePrefs(path string, entries []macprefs.Entry, counts macprefs.Counts) error {
-	b, err := encodePrefs(entries, counts)
+func writePrefs(path string, entries []macprefs.Entry, counts macprefs.Counts, dock []string) error {
+	b, err := encodePrefs(entries, counts, dock)
 	if err != nil {
 		return err
 	}
 	return sys.WriteFileSecure(path, string(b))
 }
 
-func encodePrefs(entries []macprefs.Entry, counts macprefs.Counts) ([]byte, error) {
-	b, err := json.MarshalIndent(prefsFile{Counts: counts, Entries: entries}, "", "  ")
+func encodePrefs(entries []macprefs.Entry, counts macprefs.Counts, dock []string) ([]byte, error) {
+	b, err := json.MarshalIndent(prefsFile{Counts: counts, Entries: entries, Dock: dock}, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -306,18 +310,113 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	}
 
 	var failed int
+	touched := map[string]bool{}
 	for _, e := range todo {
 		args := macprefs.WriteArgs(e)
 		if _, err := runShell(ctx, args[0], args[1:]...); err != nil {
 			failed++
+			continue
 		}
+		touched[e.Domain] = true
 	}
-	fmt.Printf("\n%s Set %s. %s\n", good("✔"), plural(len(todo)-failed, "preference"),
-		dim("Log out and back in for everything to take effect."))
+	restarted := restartForPrefs(ctx, touched)
+	note := "Log out and back in for the rest to take effect."
+	if len(restarted) == 0 {
+		note = "Log out and back in for everything to take effect."
+	}
+	fmt.Printf("\n%s Set %s. %s\n", good("✔"), plural(len(todo)-failed, "preference"), dim(note))
 	if failed > 0 {
 		fmt.Printf("  %s %s could not be written (the app may own the key).\n",
 			warn("⚠"), plural(failed, "preference"))
 	}
+	return nil
+}
+
+// restartForPrefs restarts the parts of the UI that only read their settings at
+// launch, so the change shows now rather than after a log-out. Each is
+// relaunched by macOS immediately; Finder closes its windows, nothing else.
+func restartForPrefs(ctx context.Context, touched map[string]bool) []string {
+	var procs []string
+	if touched["com.apple.dock"] || touched["com.apple.spaces"] {
+		procs = append(procs, "Dock")
+	}
+	if touched["com.apple.finder"] || touched["com.apple.desktopservices"] {
+		procs = append(procs, "Finder")
+	}
+	if touched["com.apple.controlcenter"] || touched["com.apple.menuextra.clock"] || touched["com.apple.screencapture"] {
+		procs = append(procs, "SystemUIServer")
+	}
+	var done []string
+	for _, p := range procs {
+		if _, err := runShell(ctx, "killall", p); err == nil {
+			done = append(done, p)
+		}
+	}
+	if len(done) > 0 {
+		fmt.Printf("  %s restarted %s to pick the changes up\n", dim("•"), strings.Join(done, ", "))
+	}
+	return done
+}
+
+// captureDock reads the Dock's pinned apps.
+func captureDock(ctx context.Context) []string {
+	out, err := runShell(ctx, "defaults", "read", "com.apple.dock", "persistent-apps")
+	if err != nil {
+		return nil
+	}
+	return macprefs.ParseDockApps(out)
+}
+
+// applyDock rebuilds the Dock from the old machine's app list, keeping only
+// apps installed here — a tile for a missing app is a question mark.
+func applyDock(ctx context.Context, apps []string, dryRun, assumeYes bool) error {
+	var have, missing []string
+	for _, a := range apps {
+		if fi, err := os.Stat(a); err == nil && fi.IsDir() {
+			have = append(have, a)
+		} else {
+			missing = append(missing, strings.TrimSuffix(filepath.Base(a), ".app"))
+		}
+	}
+	current := captureDock(ctx)
+	if strings.Join(current, "\x00") == strings.Join(have, "\x00") && len(have) > 0 {
+		fmt.Printf("%s Your Dock already has the same %s.\n", good("✓"), plural(len(have), "app"))
+		return nil
+	}
+	fmt.Printf("Dock: %s from the old machine", plural(len(apps), "app"))
+	if len(have) > 0 {
+		fmt.Printf(", %d installed here", len(have))
+	}
+	fmt.Println(":")
+	names := make([]string, len(have))
+	for i, a := range have {
+		names[i] = strings.TrimSuffix(filepath.Base(a), ".app")
+	}
+	if len(names) > 0 {
+		fmt.Printf("  %s\n", strings.Join(names, " · "))
+	}
+	if len(missing) > 0 {
+		fmt.Printf("  %s %s\n", dim("not installed yet (reinstall first, then import again):"), dim(strings.Join(missing, ", ")))
+	}
+	if len(have) == 0 || dryRun {
+		if dryRun {
+			fmt.Println(dim("  Dry run — the Dock was not changed."))
+		}
+		return nil
+	}
+	if err := confirmWrite(os.Stderr, fmt.Sprintf("Replace your Dock's apps with these %d?", len(have)), assumeYes); err != nil {
+		return err
+	}
+	if _, err := runShell(ctx, "defaults", "write", "com.apple.dock", "persistent-apps", "-array"); err != nil {
+		return fmt.Errorf("could not clear the Dock: %w", err)
+	}
+	for _, a := range have {
+		if _, err := runShell(ctx, "defaults", "write", "com.apple.dock", "persistent-apps", "-array-add", macprefs.DockTile(a)); err != nil {
+			fmt.Fprintf(os.Stderr, "  %s %s: %v\n", warn("⚠"), filepath.Base(a), err)
+		}
+	}
+	restartForPrefs(ctx, map[string]bool{"com.apple.dock": true})
+	fmt.Printf("%s Dock rebuilt with %s.\n", good("✔"), plural(len(have), "app"))
 	return nil
 }
 

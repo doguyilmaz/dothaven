@@ -2,6 +2,8 @@
 # plists, and every domain key-by-key into prefs.json. `defaults import` replays
 # both, writing only the core system domains unless --all is passed. Driven
 # through a fake `defaults`.
+mkdir $WORK/Applications/Editor.app
+env DOCK_APP=$WORK/Applications/Editor.app
 exec dothaven defaults export -o $WORK/out
 stdout 'iTerm2'
 stdout '1 app domain as plists'
@@ -16,6 +18,10 @@ grep '"key": "Theme"' $WORK/out/macos-defaults/prefs.json
 grep '"key": "com.apple.swipescrolldirection"' $WORK/out/macos-defaults/prefs.json
 grep '"type": "bool"' $WORK/out/macos-defaults/prefs.json
 grep '"action": "apply"' $WORK/out/macos-defaults/prefs.json
+
+# The Dock's pinned apps are captured too.
+grep '"dock"' $WORK/out/macos-defaults/prefs.json
+grep 'Editor.app' $WORK/out/macos-defaults/prefs.json
 
 # On the same Mac the setting is already in place: shown as done, not offered.
 exec dothaven defaults import --dry-run $WORK/out
@@ -45,5 +51,14 @@ stderr 'Refusing to continue'
 
 exec dothaven defaults import --yes $WORK/out
 stdout 'Set 1 preference'
+stdout 'Your Dock already has the same 1 app'
 stdout 'com.googlecode.iterm2'
 stdout 'Imported 1 domain'
+
+# A new Mac with a different Dock gets the old one rebuilt — from the apps it
+# actually has.
+env DOCK_APP=/System/Applications/Mail.app
+exec dothaven defaults import --yes $WORK/out
+stdout 'Dock rebuilt with 1 app'
+exec dothaven defaults import --dry-run $WORK/out
+stdout 'Dry run — the Dock was not changed'

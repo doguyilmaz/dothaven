@@ -444,7 +444,7 @@ func writePrefsTo(ctx context.Context, sink backup.Sink) (int, error) {
 	if len(entries) == 0 {
 		return 0, nil
 	}
-	data, err := encodePrefs(entries, counts)
+	data, err := encodePrefs(entries, counts, captureDock(ctx))
 	if err != nil {
 		return 0, err
 	}

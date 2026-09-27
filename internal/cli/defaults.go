@@ -85,7 +85,7 @@ func newDefaultsExportCmd(env *sys.OS) *cobra.Command {
 			domains := listPrefDomains(ctx)
 			entries, counts := capturePrefs(ctx, domains)
 			if len(entries) > 0 {
-				if err := writePrefs(filepath.Join(dir, prefsFileName), entries, counts); err != nil {
+				if err := writePrefs(filepath.Join(dir, prefsFileName), entries, counts, captureDock(ctx)); err != nil {
 					return err
 				}
 			}
@@ -170,6 +170,12 @@ func importDefaults(ctx context.Context, env *sys.OS, dir string, dryRun, assume
 	if prefsErr == nil && len(pf.Entries) > 0 {
 		printHeader("System preferences")
 		if err := applyPrefs(ctx, pf.Entries, dryRun, assumeYes, allDomains); err != nil {
+			return err
+		}
+	}
+	if prefsErr == nil && len(pf.Dock) > 0 {
+		printHeader("Dock")
+		if err := applyDock(ctx, pf.Dock, dryRun, assumeYes); err != nil {
 			return err
 		}
 	}
