@@ -1,14 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="dothaven">
   <title>dothaven</title>
-  <defs>
-    <linearGradient id="dothaven-tile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3d8ff0"/>
-      <stop offset="1" stop-color="#3b3fae"/>
-    </linearGradient>
-  </defs>
-  <!-- A home (~) sheltering a dotfile (.) above the tide of a harbour: ~/. kept safe. -->
-  <rect width="64" height="64" rx="15" fill="url(#dothaven-tile)"/>
-  <path d="M13 32 L32 15 L51 32" fill="none" stroke="#fff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="32" cy="37.5" r="6.8" fill="#fff"/>
-  <path d="M16 50.5 C21 46.5 26 46.5 32 50.5 S43 54.5 48 50.5" fill="none" stroke="#fff" stroke-opacity=".62" stroke-width="4.5" stroke-linecap="round"/>
+  <rect width="64" height="64" rx="14" fill="#0f3a3b"/>
+  <circle cx="31.5" cy="38" r="12.5" fill="none" stroke="#f4efe4" stroke-width="7"/>
+  <path d="M44 13 V50.5" stroke="#f4efe4" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="31.5" cy="38" r="5" fill="#ffb020"/>
 </svg>

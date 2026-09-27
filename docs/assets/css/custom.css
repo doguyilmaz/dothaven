@@ -1,0 +1,12 @@
+/* Brand colours, from the logo: sea teal for links and accents. */
+:root {
+  --primary-hue: 181deg;
+  --primary-saturation: 68%;
+  --primary-lightness: 31%;
+}
+
+.dark {
+  --primary-hue: 175deg;
+  --primary-saturation: 58%;
+  --primary-lightness: 50%;
+}

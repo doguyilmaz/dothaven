@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/static/images/logo.svg" width="96" height="96" alt="dothaven logo: a home sheltering a dot above the tide">
+  <img src="docs/static/images/logo.svg" width="96" height="96" alt="dothaven logo: a lowercase d whose bowl shelters an amber dot">
 </p>
 
 <h1 align="center">dothaven</h1>
