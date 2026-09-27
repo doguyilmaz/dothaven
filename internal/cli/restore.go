@@ -519,7 +519,17 @@ func newStatusCmd(env *sys.OS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupDir := latestBackup(env.DataDir())
 			if backupDir == "" {
-				fmt.Printf("No backup found in %s. Run %s first.\n", dim(env.DataDir()), kbd("dothaven backup"))
+				// An encrypted backup is the recommended kind, and comparing
+				// against it needs its passphrase — so say where it is rather
+				// than claiming there is no backup at all.
+				for _, b := range findBackups(env) {
+					if b.Kind != "folder" {
+						fmt.Printf("%s %s %s\n", bold("Newest backup:"), shortHome(env, b.Path), dim("("+b.Kind+", "+humanAge(time.Since(b.Mod))+" old)"))
+						fmt.Printf("Compare it with this machine: %s\n", kbd("dothaven diff "+shortHome(env, b.Path)))
+						return nil
+					}
+				}
+				fmt.Printf("No backup found. Make one with %s (or %s for a new machine).\n", kbd("dothaven backup"), kbd("dothaven backup --encrypt"))
 				return nil
 			}
 			plan, err := restore.BuildPlan(backupDir, env.Home(), restoreTargets(env))

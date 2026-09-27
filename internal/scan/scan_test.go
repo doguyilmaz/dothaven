@@ -390,3 +390,16 @@ func TestFullScanReadsLongLines(t *testing.T) {
 		t.Error("ScanContentFull missed a token on a long line")
 	}
 }
+
+func TestPreviewNeverShowsTheValue(t *testing.T) {
+	for in, want := range map[string]string{
+		"ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaz9": "ghp_••••z9",
+		"API_KEY=sk_live_abcdefghijklmnop":         "API_KEY=••••op",
+		"token: \"short\"":                         "token:••••",
+		"-----BEGIN OPENSSH PRIVATE KEY-----":      "-----BEGIN OPENSSH PRIVATE KEY-----",
+	} {
+		if got := Preview(in); got != want {
+			t.Errorf("Preview(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -1,3 +1,13 @@
 # status with no backups present
 exec dothaven status
 stdout 'No backup found'
+
+# Only an encrypted backup: status points at it instead of claiming none.
+env DOTHAVEN_PASSPHRASE='correct horse battery staple'
+exec dothaven backup --encrypt --only shell
+exec dothaven status
+stdout 'Newest backup: ~/.local/share/dothaven/backup-.*\.tar\.gz\.age'
+stdout 'dothaven diff'
+
+-- .zshrc --
+alias ll='ls -la'

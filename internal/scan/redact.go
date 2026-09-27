@@ -134,3 +134,25 @@ func RedactSSHConfig(text string) string {
 	text = sshHostRe.ReplaceAllString(text, "${1}"+Marker)
 	return sshIDRe.ReplaceAllString(text, "${1}"+Marker)
 }
+
+// Preview is a finding's match made safe to print: enough to recognise it (the
+// setting's name, a token's prefix, its last two characters), never the value.
+// A scan's output lands in terminal scrollback, CI logs and screen shares.
+func Preview(match string) string {
+	if strings.Contains(match, "PRIVATE KEY") || strings.HasPrefix(match, "(") {
+		return match // a PEM/s-expression header names the kind, not the key
+	}
+	key, val := "", match
+	if i := strings.IndexAny(match, "=:"); i >= 0 && i < len(match)-1 {
+		key, val = match[:i+1], strings.TrimLeft(match[i+1:], " \t\"'")
+	}
+	r := []rune(val)
+	if len(r) <= 8 {
+		return key + "••••"
+	}
+	head := 4
+	if key != "" {
+		head = 0
+	}
+	return key + string(r[:head]) + "••••" + string(r[len(r)-2:])
+}

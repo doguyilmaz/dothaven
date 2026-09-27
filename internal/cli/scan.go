@@ -64,7 +64,7 @@ func formatDetailed(results []scan.Result) string {
 				sev = dim(sev)
 			}
 			lines = append(lines, fmt.Sprintf("  %s [%s] %s: %s",
-				dim(fmt.Sprintf("L%d", f.Line)), sev, f.Pattern.Label, f.Match))
+				dim(fmt.Sprintf("L%d", f.Line)), sev, f.Pattern.Label, scan.Preview(f.Match)))
 		}
 	}
 	return strings.Join(lines, "\n")
