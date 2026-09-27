@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -121,11 +122,11 @@ func firstToken(s string) string {
 
 // loadSnapshotArg reads a snapshot file, or the inventory inside a backup
 // folder or archive.
-func loadSnapshotArg(env *sys.OS, path string) (snapshot.Snapshot, error) {
-	if strings.HasSuffix(path, ".json") {
+func loadSnapshotArg(ctx context.Context, env *sys.OS, path string) (snapshot.Snapshot, error) {
+	if strings.HasSuffix(path, ".json") && !isGitHubSpec(path) {
 		return parseSnapshotFile(env, path)
 	}
-	dir, cleanup, err := openBackup(path)
+	dir, cleanup, err := openBackup(ctx, env, path)
 	defer cleanup()
 	if err != nil {
 		return nil, err
@@ -165,7 +166,7 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 				path = found[0]
 				fmt.Printf("%s\n\n", dim("Using newest snapshot: "+filepath.Base(path)))
 			}
-			want, err := loadSnapshotArg(env, path)
+			want, err := loadSnapshotArg(cmd.Context(), env, path)
 			if err != nil {
 				return err
 			}

@@ -40,7 +40,7 @@ func newReinstallCmd(env *sys.OS) *cobra.Command {
 			if err != nil || path == "" {
 				return ignoreAbort(err)
 			}
-			want, err := loadSnapshotArg(env, path)
+			want, err := loadSnapshotArg(cmd.Context(), env, path)
 			if err != nil {
 				return err
 			}
@@ -56,7 +56,7 @@ func newReinstallCmd(env *sys.OS) *cobra.Command {
 // terminal a pick from the ones on disk.
 func backupArg(env *sys.OS, args []string, title string) (string, error) {
 	if len(args) == 1 {
-		return filepath.Abs(args[0])
+		return absBackupArg(args[0])
 	}
 	if !tui.Interactive() {
 		return "", fmt.Errorf("which backup? pass a path to a backup folder or file")

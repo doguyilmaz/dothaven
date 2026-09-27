@@ -1,0 +1,65 @@
+# GitHub sync end to end against a fake GitHub: create the private repo, push
+# this machine encrypted, recognise an unchanged machine, restore it onto an
+# empty one, keep a second machine in split mode, and refuse a public repo.
+env DOTHAVEN_PASSPHRASE='correct horse battery staple'
+
+# Without any login it says how to sign in.
+! exec dothaven github push --yes --only shell
+stderr 'not signed in'
+env DOTHAVEN_GITHUB_TOKEN=test-token
+
+exec dothaven github status
+stdout 'Signed in as tester'
+stdout 'not created yet'
+
+# Off a terminal, creating a repository needs --yes.
+! exec dothaven github push --only shell,ssh
+stderr 'Refusing to continue'
+
+exec dothaven github push --yes --only shell,ssh --machine oldmac
+stdout 'Created .*tester/dothaven-backup \(private\)'
+stdout 'Pushed 3 files as machines/oldmac'
+stdout 'dothaven restore github'
+exists .config/dothaven/github.json
+
+# Same machine, nothing changed: no second copy in the history.
+exec dothaven github push --only shell,ssh --machine oldmac
+stdout 'Already up to date'
+
+exec dothaven github status
+stdout 'oldmac'
+stdout 'encrypted'
+
+# A new, empty machine restores everything, keys included.
+rm .zshrc .ssh
+exec dothaven restore github
+stdout 'Downloading oldmac'
+stdout 'Restored 3 files'
+grep 'alias ll' .zshrc
+grep 'BEGIN OPENSSH PRIVATE KEY' .ssh/id_ed25519
+
+# Split mode: readable files, plus an encrypted bundle for the key.
+exec dothaven github push --mode split --only shell,ssh --machine laptop
+stdout '2 files readable, 2 files encrypted'
+stdout 'Pushed'
+rm .zshrc .ssh
+! exec dothaven restore github
+stderr 'several machines'
+exec dothaven github pull --machine laptop
+stdout 'Restored 3 files'
+grep 'BEGIN OPENSSH PRIVATE KEY' .ssh/id_ed25519
+grep 'alias ll' .zshrc
+
+# A public repository is never written to.
+! exec dothaven github push --repo tester/public-one --only shell
+stderr 'PUBLIC'
+
+-- .zshrc --
+alias ll='ls -la'
+-- .ssh/config --
+Host box
+  User me
+-- .ssh/id_ed25519 --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAA
+-----END OPENSSH PRIVATE KEY-----

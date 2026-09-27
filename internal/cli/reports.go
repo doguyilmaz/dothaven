@@ -104,7 +104,7 @@ func newListCmd(env *sys.OS) *cobra.Command {
 			var snap snapshot.Snapshot
 			var err error
 			if len(args) == 2 {
-				snap, err = loadSnapshotArg(env, args[1])
+				snap, err = loadSnapshotArg(c.Context(), env, args[1])
 			} else {
 				files := newestSnapshots(env, 1)
 				if len(files) == 0 {

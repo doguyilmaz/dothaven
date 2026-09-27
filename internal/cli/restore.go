@@ -61,7 +61,7 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := ""
 			if len(args) == 1 {
-				path, _ = filepath.Abs(args[0])
+				path, _ = absBackupArg(args[0])
 			} else {
 				if !tui.Interactive() {
 					return fmt.Errorf("which backup? pass a path: dothaven restore <folder|file>")
@@ -122,7 +122,7 @@ func statusMark(s restore.Status) (string, string) {
 }
 
 func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) error {
-	dir, cleanup, err := openBackup(path)
+	dir, cleanup, err := openBackup(cmd.Context(), env, path)
 	defer cleanup()
 	if err != nil {
 		return err
@@ -584,7 +584,7 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupDir := ""
 			if len(args) > 0 {
-				backupDir, _ = filepath.Abs(args[0])
+				backupDir, _ = absBackupArg(args[0])
 			} else {
 				backupDir = latestBackup(env.DataDir())
 			}
@@ -592,7 +592,7 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("No backup found in %s. Run %s first.\n", dim(env.DataDir()), kbd("dothaven backup"))
 				return nil
 			}
-			dir, cleanup, err := openBackup(backupDir)
+			dir, cleanup, err := openBackup(cmd.Context(), env, backupDir)
 			defer cleanup()
 			if err != nil {
 				return err

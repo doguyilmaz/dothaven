@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/doguyilmaz/dothaven/internal/github/githubtest"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
@@ -164,6 +165,19 @@ func TestScripts(t *testing.T) {
 		Dir: "testdata/script",
 		Setup: func(e *testscript.Env) error {
 			e.Setenv("HOME", e.WorkDir)
+			// A fake GitHub per script, and the credential store on disk:
+			// no test may reach github.com or the real keychain.
+			gh := githubtest.New("test-token", "tester")
+			gh.AddRepo("tester/public-one", false)
+			e.Defer(gh.Close)
+			e.Setenv("DOTHAVEN_GITHUB_API", gh.URL)
+			e.Setenv("DOTHAVEN_GITHUB_WEB", gh.URL)
+			e.Setenv("DOTHAVEN_SECRET_STORE", "file")
+			e.Setenv("DOTHAVEN_NO_UPDATE_CHECK", "1")
+			// A real gh login on the test machine must not leak in.
+			e.Setenv("GH_CONFIG_DIR", e.WorkDir+"/.gh-none")
+			e.Setenv("GH_TOKEN", "")
+			e.Setenv("GITHUB_TOKEN", "")
 			return nil
 		},
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){

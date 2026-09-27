@@ -37,6 +37,11 @@ func menuItems() []tui.MenuItem {
 		{Label: "4. Reinstall my apps & packages", Value: "reinstall", Hint: "from a backup's list — Homebrew, npm, …"},
 		{Label: "5. What's still missing here?", Value: "doctor", Hint: "a backup's app list vs this " + m + " — read-only"},
 
+		{Heading: true, Label: "Your private GitHub repo"},
+		{Label: "Save this " + m + " to GitHub", Value: "github push", Hint: "private repo, encrypted by default"},
+		{Label: "Restore from GitHub", Value: "github pull", Hint: "pick a machine, preview, then write"},
+		{Label: "GitHub sign-in & status", Value: "github status", Hint: "who, which repo, which machines"},
+
 		{Heading: true, Label: "Everyday"},
 		{Label: "Quick backup to this " + m, Value: "backup", Hint: "a folder here; secrets redacted"},
 		{Label: "What changed since my last backup?", Value: "status", Hint: "read-only"},
@@ -81,6 +86,9 @@ var actionTitles = map[string]string{
 	"chezmoi-export":  "Export to chezmoi",
 	"migrate":         "Apply chezmoi repo",
 	"guide":           "What should I do?",
+	"github push":     "Save to GitHub",
+	"github pull":     "Restore from GitHub",
+	"github status":   "GitHub",
 }
 
 // newTUICmd is the interactive front door: a menu that runs an action, shows
@@ -163,7 +171,7 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 		if err != nil || p == "" {
 			return err
 		}
-		dir, cleanup, err := openBackup(p)
+		dir, cleanup, err := openBackup(ctx, env, p)
 		defer cleanup()
 		if err != nil {
 			return err

@@ -5,18 +5,22 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
 
+	"github.com/doguyilmaz/dothaven/internal/scan"
 	"github.com/doguyilmaz/dothaven/internal/sys"
 )
 
@@ -25,6 +29,36 @@ import (
 // the same walk, the same gate and the same manifest.
 type Sink interface {
 	Add(dest string, data []byte, exec bool) error
+}
+
+// ClassifyingSink is a Sink that is told, with each file, whether it is
+// sensitive: a credential entry, a file with a secret in it, or anything
+// inside a credential root.
+type ClassifyingSink interface {
+	Sink
+	AddClassified(dest string, data []byte, exec, sensitive bool) error
+}
+
+// SplitSink sends sensitive files to Secret (an encrypted archive) and the rest
+// to Plain — readable, diffable config beside an encrypted bundle of whatever
+// must not be read. Files added without a classification (the inventory, the
+// manifest) are judged by a scan.
+type SplitSink struct {
+	Plain, Secret Sink
+	Secrets       int
+}
+
+func (s *SplitSink) Add(dest string, data []byte, exec bool) error {
+	sensitive := scan.ScanContentFull(dest, string(data)).Action != scan.Include
+	return s.AddClassified(dest, data, exec, sensitive)
+}
+
+func (s *SplitSink) AddClassified(dest string, data []byte, exec, sensitive bool) error {
+	if sensitive {
+		s.Secrets++
+		return s.Secret.Add(dest, data, exec)
+	}
+	return s.Plain.Add(dest, data, exec)
 }
 
 // DirSink writes each file owner-only under Root. Executable files keep their
@@ -263,4 +297,46 @@ func Verify(src string, passphrase func() (string, error)) (int, error) {
 			n++
 		}
 	}
+}
+
+// DigestSink passes files through to an inner sink while fingerprinting what
+// went in: path, content hash and exec bit, nothing time-dependent. Two
+// backups of an unchanged machine have the same Sum even when their encrypted
+// archives share not a byte — which is how a push knows it has nothing to do.
+type DigestSink struct {
+	Inner   Sink
+	Exclude map[string]bool // dests left out of the fingerprint (the MANIFEST's timestamp)
+	lines   []string
+}
+
+func (d *DigestSink) note(dest string, data []byte, exec bool) {
+	if d.Exclude[dest] {
+		return
+	}
+	sum := sha256.Sum256(data)
+	d.lines = append(d.lines, fmt.Sprintf("%s\x00%x\x00%v", dest, sum, exec))
+}
+
+func (d *DigestSink) Add(dest string, data []byte, exec bool) error {
+	d.note(dest, data, exec)
+	return d.Inner.Add(dest, data, exec)
+}
+
+// AddClassified keeps the inner sink's classification: a digest wrapped
+// around a SplitSink must not turn "this is a credential" into "scan it and
+// see".
+func (d *DigestSink) AddClassified(dest string, data []byte, exec, sensitive bool) error {
+	d.note(dest, data, exec)
+	if cs, ok := d.Inner.(ClassifyingSink); ok {
+		return cs.AddClassified(dest, data, exec, sensitive)
+	}
+	return d.Inner.Add(dest, data, exec)
+}
+
+// Sum is the fingerprint of everything added so far.
+func (d *DigestSink) Sum() string {
+	lines := append([]string(nil), d.lines...)
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:])
 }

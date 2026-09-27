@@ -105,6 +105,8 @@ type backupOpts struct {
 	archive    bool
 	encrypt    bool
 	noRedact   bool
+	split      bool               // plain files plus an encrypted bundle of the sensitive ones
+	digest     *backup.DigestSink // when set, fingerprints the content as it is written
 	only, skip []string
 	passphrase string // already asked (the menu asks before the slow part)
 }
@@ -302,44 +304,7 @@ func runBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpt
 		return out, err
 	}
 
-	fill := func(sink backup.Sink) error {
-		res, err := backup.RunTo(targets, sink, backup.Options{
-			Context: ctx, Redact: redact, Encrypted: o.encrypt, Only: o.only, Skip: o.skip,
-		})
-		out.res = res
-		if err != nil {
-			return err
-		}
-		if registry.Selected(catInventory, o.only, o.skip) {
-			ok, err := writeInventory(ctx, env, sink, redact)
-			if err != nil {
-				return err
-			}
-			out.inventory = ok
-		}
-		// The Mac's own settings — scroll direction, key repeat, Dock size,
-		// Finder options — are held by cfprefsd, not by any file the walk
-		// above reads. A backup without them restores a machine that has all
-		// your config and still feels wrong.
-		if runtime.GOOS == "darwin" && registry.Selected(catMacOS, o.only, o.skip) {
-			n, err := writePrefsTo(ctx, sink)
-			if err != nil {
-				return err
-			}
-			out.prefs = n
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if out.res.TotalFiles == 0 && !out.inventory && out.prefs == 0 {
-			return backup.ErrNothingToWrite
-		}
-		manifest := backup.Manifest(backup.ManifestMeta{
-			Host: host, OS: runtime.GOOS, Version: cmd.Root().Version,
-			Created: time.Now().Format(time.RFC3339), Redacted: redact, Encrypted: o.encrypt,
-		}, out.res)
-		return sink.Add("MANIFEST.txt", []byte(manifest), false)
-	}
+	fill := func(sink backup.Sink) error { return fillBackup(ctx, cmd, env, o, targets, sink, host, &out) }
 
 	var err error
 	if o.archive {
@@ -370,6 +335,54 @@ func runBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpt
 		out.size = out.res.TotalBytes
 	}
 	return out, nil
+}
+
+// fillBackup writes one backup's contents into sink: the tracked files, the
+// inventory, macOS settings and the MANIFEST. Shared by every kind of backup —
+// folder, archive, encrypted, and the split form a GitHub push uses.
+func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpts, targets []registry.BackupTarget, sink backup.Sink, host string, out *backupOutcome) error {
+	if o.digest != nil {
+		o.digest.Inner = sink
+		o.digest.Exclude = map[string]bool{"MANIFEST.txt": true}
+		sink = o.digest
+	}
+	redact := o.redact()
+	res, err := backup.RunTo(targets, sink, backup.Options{
+		Context: ctx, Redact: redact, Encrypted: o.encrypt, Only: o.only, Skip: o.skip,
+	})
+	out.res = res
+	if err != nil {
+		return err
+	}
+	if registry.Selected(catInventory, o.only, o.skip) {
+		ok, err := writeInventory(ctx, env, sink, redact)
+		if err != nil {
+			return err
+		}
+		out.inventory = ok
+	}
+	// The Mac's own settings — scroll direction, key repeat, Dock size,
+	// Finder options — are held by cfprefsd, not by any file the walk
+	// above reads. A backup without them restores a machine that has all
+	// your config and still feels wrong.
+	if runtime.GOOS == "darwin" && registry.Selected(catMacOS, o.only, o.skip) {
+		n, err := writePrefsTo(ctx, sink)
+		if err != nil {
+			return err
+		}
+		out.prefs = n
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if out.res.TotalFiles == 0 && !out.inventory && out.prefs == 0 {
+		return backup.ErrNothingToWrite
+	}
+	manifest := backup.Manifest(backup.ManifestMeta{
+		Host: host, OS: runtime.GOOS, Version: cmd.Root().Version,
+		Created: time.Now().Format(time.RFC3339), Redacted: redact, Encrypted: o.encrypt, Split: o.split,
+	}, out.res)
+	return sink.Add("MANIFEST.txt", []byte(manifest), false)
 }
 
 // writeInventory records what is installed — the half of a machine no config

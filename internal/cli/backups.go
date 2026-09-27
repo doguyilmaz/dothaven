@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -219,7 +220,10 @@ func pickBackup(env *sys.OS, title string) (string, error) {
 //
 // The temporary directory is created 0700: an encrypted backup's contents are
 // SSH keys and tokens, and /tmp is shared.
-func openBackup(path string) (dir string, cleanup func(), err error) {
+func openBackup(ctx context.Context, env *sys.OS, path string) (dir string, cleanup func(), err error) {
+	if isGitHubSpec(path) {
+		return openGitHubBackup(ctx, env, path)
+	}
 	cleanup = func() {}
 	switch backup.Detect(path) {
 	case backup.FormatDir:

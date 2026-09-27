@@ -131,20 +131,29 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 				continue
 			}
 			data := raw
+			secret := false
 			if !opts.Encrypted {
 				if opts.Redact && len(raw) > maxGateText && !scan.LooksBinary(raw) {
 					res.TooLarge = append(res.TooLarge, Skipped{Dest: f.Dest, Reason: "too large to check for secrets", Size: int64(len(raw))})
 					continue
 				}
-				body, keep := gate(f.Dest, string(raw), opts.Redact, t.Redact, &res.ScanResults)
+				body, keep, sr := gate(f.Dest, string(raw), opts.Redact, t.Redact, &res.ScanResults)
 				if !keep {
 					res.Withheld = append(res.Withheld, f.Dest)
 					continue
 				}
 				data = []byte(body)
+				secret = sr.Action != scan.Include
 			}
-			if err := sink.Add(f.Dest, data, f.Exec); err != nil {
-				return res, err // a failed write to the destination is a real failure
+			var err2 error
+			if cs, ok := sink.(ClassifyingSink); ok {
+				sensitive := secret || t.Sensitivity != registry.Low || t.Redact != nil || reachesGuarded(t, f.Path, guarded)
+				err2 = cs.AddClassified(f.Dest, data, f.Exec, sensitive)
+			} else {
+				err2 = sink.Add(f.Dest, data, f.Exec)
+			}
+			if err2 != nil {
+				return res, err2 // a failed write to the destination is a real failure
 			}
 			written[f.Dest] = true
 			writtenSrc[f.Path] = true
@@ -208,11 +217,11 @@ func readRegular(p string, size int64) ([]byte, error) {
 // gate applies the redaction/skip decision to one file's content. It returns the
 // (possibly scrubbed) content and whether the file should be written at all — a
 // skip-action finding (e.g. a private key) is never copied to a plaintext backup.
-func gate(scanPath, body string, redact bool, entryRedact func(string) string, results *[]scan.Result) (string, bool) {
+func gate(scanPath, body string, redact bool, entryRedact func(string) string, results *[]scan.Result) (string, bool, scan.Result) {
 	sr := scan.ScanContentFull(scanPath, body)
 	if redact && sr.Action == scan.Skip {
 		*results = append(*results, sr)
-		return "", false
+		return "", false, sr
 	}
 	if redact && entryRedact != nil {
 		body = entryRedact(body)
@@ -221,7 +230,7 @@ func gate(scanPath, body string, redact bool, entryRedact func(string) string, r
 		body = scan.ApplyRedactions(body, sr)
 	}
 	*results = append(*results, sr)
-	return body, true
+	return body, true, sr
 }
 
 // ManifestMeta is the run context recorded in a backup's MANIFEST.
@@ -232,6 +241,7 @@ type ManifestMeta struct {
 	Created   string // pre-formatted timestamp
 	Redacted  bool
 	Encrypted bool
+	Split     bool
 }
 
 // Manifest renders a self-describing MANIFEST for a backup: what was captured,
@@ -247,6 +257,8 @@ func Manifest(meta ManifestMeta, res Result) string {
 	fmt.Fprintf(&b, "# created:   %s\n", meta.Created)
 	fmt.Fprintf(&b, "# dothaven:  %s\n", meta.Version)
 	switch {
+	case meta.Split:
+		b.WriteString("# contents:  readable config as plain files; credentials and anything holding\n#            a secret are in secrets.tar.gz.age (age-encrypted)\n#\n")
 	case meta.Encrypted:
 		b.WriteString("# contents:  complete — secrets and keys kept, whole archive age-encrypted\n#\n")
 	case meta.Redacted:

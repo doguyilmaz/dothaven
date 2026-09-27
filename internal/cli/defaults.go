@@ -127,7 +127,7 @@ func newDefaultsImportCmd(env *sys.OS) *cobra.Command {
 			if len(args) == 1 {
 				path = args[0]
 			}
-			dir, cleanup, err := openBackup(path)
+			dir, cleanup, err := openBackup(cmd.Context(), env, path)
 			defer cleanup()
 			if err != nil {
 				return err

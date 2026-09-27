@@ -63,6 +63,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		&cobra.Group{ID: "apply", Title: "Set up a machine:"},
 		&cobra.Group{ID: "inspect", Title: "Look, without changing anything:"},
 		&cobra.Group{ID: "secrets", Title: "Secrets:"},
+		&cobra.Group{ID: "sync", Title: "Keep it in a private GitHub repo:"},
 		&cobra.Group{ID: "chezmoi", Title: "Sync through a chezmoi repo (optional):"},
 	)
 	add := func(group string, cmds ...*cobra.Command) {
@@ -76,6 +77,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		newBackupCmd(env), newIncludeCmd(env), newCollectCmd(env),
 		newDefaultsCmd(env), newServicesCmd(env))
 	add("apply", newRestoreCmd(env), newReinstallCmd(env))
+	add("sync", newGitHubCmd(env))
 	add("inspect",
 		newStatusCmd(env), newDiffCmd(env), newDoctorCmd(env), newCheckCmd(env),
 		newCompareCmd(env), newListCmd(env))

@@ -275,3 +275,42 @@ func TestGuardedRootsAgainstIncludes(t *testing.T) {
 		t.Errorf("Withheld = %v", res.Withheld)
 	}
 }
+
+type memSink map[string]string
+
+func (m memSink) Add(dest string, data []byte, _ bool) error { m[dest] = string(data); return nil }
+
+// Split mode: config that is safe to read goes plain; credential entries,
+// files holding a secret, and anything under a credential root go encrypted.
+func TestSplitSinkClassifies(t *testing.T) {
+	home := t.TempDir()
+	mustWrite(t, filepath.Join(home, ".zshrc"), "alias ll='ls -la'\n")
+	mustWrite(t, filepath.Join(home, ".bashrc"), "export GITHUB_TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
+	mustWrite(t, filepath.Join(home, ".aws", "credentials"), "[default]\nx = y\n")
+	mustWrite(t, filepath.Join(home, ".aws", "config"), "[default]\nregion = eu\n")
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".zshrc"), Dest: "shell/.zshrc", Category: "shell", Sensitivity: registry.Low},
+		{Src: filepath.Join(home, ".bashrc"), Dest: "shell/.bashrc", Category: "shell", Sensitivity: registry.Low},
+		{Src: filepath.Join(home, ".aws", "credentials"), Dest: "cloud/aws/credentials", Category: "cloud", Sensitivity: registry.High},
+		{Src: filepath.Join(home, ".aws", "config"), Dest: "cloud/aws/config", Category: "cloud", Sensitivity: registry.Medium},
+	}
+	plain, secret := memSink{}, memSink{}
+	split := &SplitSink{Plain: plain, Secret: secret}
+	if _, err := RunTo(targets, split, Options{Redact: false}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := plain["shell/.zshrc"]; !ok {
+		t.Error(".zshrc should be plain")
+	}
+	for _, d := range []string{"shell/.bashrc", "cloud/aws/credentials", "cloud/aws/config"} {
+		if _, ok := secret[d]; !ok {
+			t.Errorf("%s should be in the encrypted part", d)
+		}
+		if _, ok := plain[d]; ok {
+			t.Errorf("%s leaked into the plain part", d)
+		}
+	}
+	if !strings.Contains(secret["shell/.bashrc"], "ghp_") {
+		t.Error("the encrypted part keeps the real value")
+	}
+}
