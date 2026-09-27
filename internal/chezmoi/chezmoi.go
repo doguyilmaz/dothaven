@@ -315,7 +315,7 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 
 	if strings.TrimSpace(m.Brewfile) != "" {
 		blocks = append(blocks, guarded("brew",
-			"  brew bundle --file=/dev/stdin <<'BREWFILE' || true",
+			"  brew bundle --file=- <<'BREWFILE' || true",
 			strings.TrimSpace(m.Brewfile),
 			"BREWFILE"))
 	}

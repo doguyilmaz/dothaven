@@ -96,13 +96,39 @@ func ignoreAbort(err error) error {
 	return err
 }
 
+// ledgerPath is where restore remembers what it applied.
+func ledgerPath(env *sys.OS) string { return filepath.Join(env.DataDir(), "applied.json") }
+
+// statusMark is the one-glyph, one-phrase form of a restore status, used in
+// every list so they read the same everywhere.
+func statusMark(s restore.Status) (string, string) {
+	switch s {
+	case restore.StatusNew:
+		return good("+"), "new"
+	case restore.StatusUpdate:
+		return good("↑"), "newer in backup (yours untouched since last restore)"
+	case restore.StatusConflict:
+		return warn("≠"), "differs from this machine"
+	case restore.StatusChanged:
+		return warn("✎"), "you changed it after restoring"
+	case restore.StatusSkipped:
+		return dim("○"), "skipped last time"
+	case restore.StatusSame:
+		return good("✓"), "applied"
+	case restore.StatusRedacted:
+		return dim("⊘"), "redacted — can't restore"
+	}
+	return " ", string(s)
+}
+
 func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) error {
 	dir, cleanup, err := openBackup(path)
 	defer cleanup()
 	if err != nil {
 		return err
 	}
-	plan, err := restore.BuildPlan(dir, env.Home(), restoreTargets(env))
+	lg := restore.LoadLedger(ledgerPath(env))
+	plan, err := restore.BuildPlanWith(dir, env.Home(), restoreTargets(env), lg)
 	if err != nil {
 		return err
 	}
@@ -121,36 +147,36 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	fmt.Printf("  %s: %s\n", plural(len(plan.Entries), "file"), restoreBreakdown(t))
 
 	if o.dryRun {
-		printRestorePlan(plan)
+		printRestorePlan(env, plan, false)
 		printRedacted(plan)
 		printNextSteps(env, path, extras)
 		return nil
 	}
-	if t.New+t.Conflict == 0 {
-		fmt.Println(good("✓ Every file in the backup already matches this machine."))
+	interactive := !o.force && !o.yes && tui.Interactive()
+	opts := restore.ExecuteOptions{Force: o.force}
+	if pending := t.New + t.Update + t.Conflict + t.Changed; pending == 0 && (t.Skipped == 0 || !o.force) {
+		fmt.Println(good("✓ Nothing new to restore — everything here is applied or was left out on purpose."))
 		printRedacted(plan)
-		return offerExtras(cmd, env, path, dir, extras)
-	}
-
-	interactive := !o.force && tui.Interactive()
-	if interactive && !o.yes {
-		q := fmt.Sprintf("Write %s into your home folder?", plural(t.New, "new file"))
-		if t.Conflict > 0 {
-			q = fmt.Sprintf("Write %s, and ask about the %s that differ?", plural(t.New, "new file"), plural(t.Conflict, "file"))
+		if t.Skipped == 0 || !interactive {
+			return offerExtras(cmd, env, path, dir, extras)
 		}
-		ok, err := tui.Confirm(q)
+		if ok, err := tui.Confirm(fmt.Sprintf("Pick from the %s you skipped last time?", plural(t.Skipped, "file"))); err != nil || !ok {
+			return offerExtras(cmd, env, path, dir, extras)
+		}
+		sel, err := pickRestoreFiles(env, plan)
+		if err != nil || sel == nil {
+			return ignoreAbort(err)
+		}
+		in := func(e restore.Entry) bool { return sel[e.BackupPath] }
+		opts.Selected, opts.Approved = in, in
+		interactive = false // chosen by name: no further questions
+	} else if interactive {
+		sel, approved, ok, err := chooseRestore(env, plan, t)
 		if err != nil || !ok {
 			fmt.Println("Nothing written.")
 			return ignoreAbort(err)
 		}
-	}
-
-	snapDir := ""
-	if o.force || interactive {
-		snapDir = filepath.Join(env.DataDir(), "pre-restore-"+sys.Timestamp(time.Now()))
-	}
-	opts := restore.ExecuteOptions{Force: o.force, SnapshotDir: snapDir}
-	if interactive {
+		opts.Selected, opts.Approved = sel, approved
 		opts.Resolve = func(e restore.Entry, backup, live string) restore.ConflictAction {
 			choice, err := tui.ResolveConflict(shortHome(env, e.TargetPath), backup, live)
 			if err != nil {
@@ -159,7 +185,14 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 			return conflictAction(choice)
 		}
 	}
+	// Whatever is about to be replaced is copied here first.
+	opts.SnapshotDir = filepath.Join(env.DataDir(), "pre-restore-"+sys.Timestamp(time.Now()))
+
 	res, err := restore.Execute(plan, opts)
+	lg.Record(plan.BackupID, res.Outcomes, time.Now())
+	if serr := lg.Save(ledgerPath(env)); serr != nil {
+		fmt.Fprintf(os.Stderr, "  %s could not save what was applied (%v) — the next run will ask again\n", warn("⚠"), serr)
+	}
 	if err != nil {
 		return err
 	}
@@ -169,15 +202,20 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	} else {
 		fmt.Println("\nNo files restored.")
 	}
-	if skipped := t.Conflict - (res.Restored - t.New); skipped > 0 && !o.force {
-		fmt.Printf("  %s %s kept as they are on this machine", dim("•"), plural(skipped, "differing file"))
-		if !interactive {
-			fmt.Print(" — re-run with --force to overwrite")
+	declined := 0
+	for _, oc := range res.Outcomes {
+		if oc.Declined {
+			declined++
 		}
-		fmt.Println(".")
+	}
+	if declined > 0 {
+		fmt.Printf("  %s %s left as they are — remembered, so the next restore won't offer them again\n", dim("○"), plural(declined, "file"))
+		if !interactive && !o.force {
+			fmt.Printf("    %s\n", dim("(files that differ are kept off a terminal; --force overwrites them)"))
+		}
 	}
 	if res.SnapshotDir != "" {
-		fmt.Printf("  %s overwritten files saved first to %s\n", dim("•"), shortHome(env, res.SnapshotDir))
+		fmt.Printf("  %s the versions it replaced are in %s\n", dim("•"), shortHome(env, res.SnapshotDir))
 	}
 	if res.SkippedSymlink > 0 {
 		fmt.Printf("  %s %s skipped: the file here is a symlink, and writing through it would change what it points to\n", warn("⚠"), plural(res.SkippedSymlink, "file"))
@@ -186,20 +224,147 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	return offerExtras(cmd, env, path, dir, extras)
 }
 
+// chooseRestore asks how much of the plan to apply. It returns which entries
+// to write, which the user approved overwriting by name, and false when they
+// backed out.
+func chooseRestore(env *sys.OS, plan restore.Plan, t restore.Counts) (func(restore.Entry) bool, func(restore.Entry) bool, bool, error) {
+	easy := t.New + t.Update
+	differ := t.Conflict + t.Changed
+	allHint := "nothing that differs is replaced without asking"
+	if differ == 0 {
+		allHint = "nothing on this machine is replaced"
+	}
+	for {
+		choices := []tui.Choice{
+			{Label: fmt.Sprintf("Everything new or updated (%d)", easy), Value: "all", Hint: allHint},
+			{Label: "Choose categories", Value: "cats", Hint: "e.g. only ai, shell and git"},
+			{Label: "Choose files", Value: "files", Hint: "type / to filter"},
+			{Label: "Show me the list first", Value: "list"},
+			{Label: "Cancel", Value: "cancel"},
+		}
+		if differ > 0 {
+			choices[0].Label = fmt.Sprintf("Everything new or updated (%d), ask about %d that differ", easy, differ)
+		}
+		c, err := tui.Ask("What should be restored?", "Already-applied files are not listed again.", choices)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		switch c {
+		case "all":
+			return func(e restore.Entry) bool { return e.Status != restore.StatusSkipped }, nil, true, nil
+		case "cats":
+			sel, err := pickRestoreCategories(plan)
+			if err != nil || sel == nil {
+				return nil, nil, false, err
+			}
+			return func(e restore.Entry) bool { return sel[e.Category] && e.Status != restore.StatusSkipped }, nil, true, nil
+		case "files":
+			sel, err := pickRestoreFiles(env, plan)
+			if err != nil || sel == nil {
+				return nil, nil, false, err
+			}
+			// Picking a file by name is the approval; asking again would be
+			// the question the user just answered.
+			in := func(e restore.Entry) bool { return sel[e.BackupPath] }
+			return in, in, true, nil
+		case "list":
+			printRestorePlan(env, plan, true)
+		default:
+			return nil, nil, false, nil
+		}
+	}
+}
+
+func pickRestoreCategories(plan restore.Plan) (map[string]bool, error) {
+	per := map[string]*restore.Counts{}
+	var cats []string
+	for _, e := range plan.Entries {
+		if !e.Status.Actionable() {
+			continue
+		}
+		c := per[e.Category]
+		if c == nil {
+			c = &restore.Counts{}
+			per[e.Category] = c
+			cats = append(cats, e.Category)
+		}
+		c.Add(e.Status)
+	}
+	sort.Strings(cats)
+	items := make([]tui.PickItem, 0, len(cats))
+	for _, c := range cats {
+		n := per[c]
+		items = append(items, tui.PickItem{Label: c, Value: c, Hint: restoreBreakdownPlain(*n), Selected: n.New+n.Update > 0})
+	}
+	picked, err := tui.MultiPick("Which categories?", "space toggles · enter restores. Files that differ are asked about one by one.", items)
+	if err != nil || len(picked) == 0 {
+		return nil, err
+	}
+	sel := map[string]bool{}
+	for _, p := range picked {
+		sel[p] = true
+	}
+	return sel, nil
+}
+
+func pickRestoreFiles(env *sys.OS, plan restore.Plan) (map[string]bool, error) {
+	var items []tui.PickItem
+	entries := append([]restore.Entry(nil), plan.Entries...)
+	sort.Slice(entries, func(i, j int) bool { return entries[i].BackupPath < entries[j].BackupPath })
+	for _, e := range entries {
+		if !e.Status.Actionable() {
+			continue
+		}
+		mark, what := statusMark(e.Status)
+		items = append(items, tui.PickItem{
+			Label:    mark + " " + shortenPath(shortHome(env, e.TargetPath), 44),
+			Value:    e.BackupPath,
+			Hint:     what,
+			Selected: e.Status == restore.StatusNew || e.Status == restore.StatusUpdate,
+		})
+	}
+	picked, err := tui.MultiPick("Which files?", "space toggles · / filters · enter restores. A picked file that differs is overwritten (the old one is kept aside).", items)
+	if err != nil || len(picked) == 0 {
+		return nil, err
+	}
+	sel := map[string]bool{}
+	for _, p := range picked {
+		sel[p] = true
+	}
+	return sel, nil
+}
+
+func restoreBreakdownPlain(t restore.Counts) string {
+	var parts []string
+	for _, p := range []struct {
+		n    int
+		what string
+	}{
+		{t.New, "new"}, {t.Update, "updated"}, {t.Conflict, "differ"}, {t.Changed, "changed by you"},
+		{t.Skipped, "skipped before"}, {t.Same, "applied"}, {t.Redacted, "redacted"},
+	} {
+		if p.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.what))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
 func restoreBreakdown(t restore.Counts) string {
 	var parts []string
-	if t.New > 0 {
-		parts = append(parts, fmt.Sprintf("%d new", t.New))
+	add := func(n int, text string, paint func(string) string) {
+		if n > 0 {
+			parts = append(parts, paint(fmt.Sprintf("%d %s", n, text)))
+		}
 	}
-	if t.Conflict > 0 {
-		parts = append(parts, warn(fmt.Sprintf("%d differ from this machine", t.Conflict)))
-	}
-	if t.Same > 0 {
-		parts = append(parts, dim(fmt.Sprintf("%d already the same", t.Same)))
-	}
-	if t.Redacted > 0 {
-		parts = append(parts, dim(fmt.Sprintf("%d redacted", t.Redacted)))
-	}
+	id := func(s string) string { return s }
+	add(t.New, "new", id)
+	add(t.Update, "updated", id)
+	add(t.Conflict, "differ from this machine", warn)
+	add(t.Changed, "changed by you since restoring", warn)
+	add(t.Skipped, "skipped last time", dim)
+	add(t.Same, "already applied", dim)
+	add(t.Redacted, "redacted", dim)
 	if len(parts) == 0 {
 		return "nothing to do"
 	}
@@ -305,7 +470,7 @@ func offerExtras(cmd *cobra.Command, env *sys.OS, path, dir string, x extras) er
 	if x.reinstall {
 		fmt.Println()
 		if ok, err := tui.Confirm("Reinstall your apps & packages now? (runs Homebrew etc.; can take a while)"); err == nil && ok {
-			if err := runReinstall(ctx, dir, false); err != nil {
+			if err := runReinstall(ctx, env, dir, false); err != nil {
 				fmt.Fprintln(os.Stderr, "  "+danger("✗")+" "+err.Error())
 			}
 		} else {
@@ -318,35 +483,32 @@ func offerExtras(cmd *cobra.Command, env *sys.OS, path, dir string, x extras) er
 	return nil
 }
 
-var restoreStatusLabel = map[restore.Status]string{
-	restore.StatusNew:      "[NEW]     ",
-	restore.StatusConflict: "[CONFLICT]",
-	restore.StatusSame:     "[SAME]    ",
-	restore.StatusRedacted: "[REDACTED]",
-}
-
-func printRestorePlan(plan restore.Plan) {
-	fmt.Print("\nDry run — no files will be changed:\n\n")
-	entries := append([]restore.Entry(nil), plan.Entries...)
-	sort.Slice(entries, func(i, j int) bool { return entries[i].BackupPath < entries[j].BackupPath })
-	for _, e := range entries {
-		fmt.Printf("  %s %s → %s\n", restoreStatusLabel[e.Status], e.BackupPath, e.TargetPath)
+func printRestorePlan(env *sys.OS, plan restore.Plan, actionableOnly bool) {
+	if !actionableOnly {
+		fmt.Print("\nDry run — nothing will be changed:\n")
 	}
-	t := restore.Tally(plan.Entries)
-	var parts []string
-	if t.New > 0 {
-		parts = append(parts, fmt.Sprintf("%d new", t.New))
+	byCat := map[string][]restore.Entry{}
+	var cats []string
+	for _, e := range plan.Entries {
+		if actionableOnly && !e.Status.Actionable() {
+			continue
+		}
+		if byCat[e.Category] == nil {
+			cats = append(cats, e.Category)
+		}
+		byCat[e.Category] = append(byCat[e.Category], e)
 	}
-	if t.Conflict > 0 {
-		parts = append(parts, fmt.Sprintf("%d conflicts", t.Conflict))
+	sort.Strings(cats)
+	for _, c := range cats {
+		fmt.Printf("\n  %s\n", bold(c))
+		ents := byCat[c]
+		sort.Slice(ents, func(i, j int) bool { return ents[i].BackupPath < ents[j].BackupPath })
+		for _, e := range ents {
+			mark, what := statusMark(e.Status)
+			fmt.Printf("    %s %s  %s\n", mark, padTo(shortHome(env, e.TargetPath), 52), dim(what))
+		}
 	}
-	if t.Same > 0 {
-		parts = append(parts, fmt.Sprintf("%d unchanged", t.Same))
-	}
-	if t.Redacted > 0 {
-		parts = append(parts, fmt.Sprintf("%d redacted (skipped)", t.Redacted))
-	}
-	fmt.Printf("\n  %d files total: %s\n", len(plan.Entries), strings.Join(parts, ", "))
+	fmt.Println()
 }
 
 func newStatusCmd(env *sys.OS) *cobra.Command {

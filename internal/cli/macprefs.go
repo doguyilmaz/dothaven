@@ -12,6 +12,7 @@ import (
 
 	"github.com/doguyilmaz/dothaven/internal/macprefs"
 	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/doguyilmaz/dothaven/internal/tui"
 )
 
 // prefsFileName is the wide per-key capture, written beside the whole-domain
@@ -172,7 +173,48 @@ func summarisePrefs(entries []macprefs.Entry) []string {
 	return out
 }
 
-// applyPrefs writes the portable entries back with `defaults write`.
+// currentPrefs reads this Mac's live value of every key in the given domains,
+// as "type\x00value" by "domain\x00key", so settings already in place can be
+// shown as done instead of offered again.
+func currentPrefs(ctx context.Context, domains []string) map[string]string {
+	var (
+		mu  sync.Mutex
+		out = map[string]string{}
+		ch  = make(chan string)
+		wg  sync.WaitGroup
+	)
+	for range min(prefsWorkers, max(1, len(domains))) {
+		wg.Go(func() {
+			for d := range ch {
+				raw, err := runShell(ctx, "defaults", "export", d, "-")
+				if err != nil {
+					continue
+				}
+				entries, _, err := macprefs.Collect(d, []byte(raw))
+				if err != nil {
+					continue
+				}
+				mu.Lock()
+				for _, e := range entries {
+					out[e.Domain+"\x00"+e.Key] = e.Type + "\x00" + e.Value
+				}
+				mu.Unlock()
+			}
+		})
+	}
+	for _, d := range domains {
+		if ctx.Err() != nil {
+			break
+		}
+		ch <- d
+	}
+	close(ch)
+	wg.Wait()
+	return out
+}
+
+// applyPrefs writes the portable entries back with `defaults write` — only
+// the ones not already set, and on a terminal only the domains you pick.
 func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes, all bool) error {
 	// Everything was captured, but only the core domains are written back
 	// unless asked otherwise. The rest is overwhelmingly an application's own
@@ -182,26 +224,41 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	for _, e := range entries {
 		switch {
 		case all || macprefs.IsCore(e.Domain):
-			selected = append(selected, e)
+			if macprefs.WriteArgs(e) != nil {
+				selected = append(selected, e)
+			}
 		case e.Action == "apply":
 			heldBack++
 		}
 	}
-
-	var todo [][]string
-	for _, e := range selected {
-		if args := macprefs.WriteArgs(e); args != nil {
-			todo = append(todo, args)
-		}
-	}
-	if len(todo) == 0 {
+	if len(selected) == 0 {
 		fmt.Println("No portable preferences to apply.")
 		return nil
 	}
 
-	fmt.Printf("Will set %s across %s:\n\n",
-		plural(len(todo), "preference"), plural(countDomains(selected), "domain"))
-	for _, line := range summarisePrefs(selected) {
+	// Already set is already applied: compare with what this Mac has now.
+	domains := uniqueDomains(selected)
+	live := currentPrefs(ctx, domains)
+	var todo []macprefs.Entry
+	already := 0
+	for _, e := range selected {
+		if live[e.Domain+"\x00"+e.Key] == e.Type+"\x00"+e.Value {
+			already++
+			continue
+		}
+		todo = append(todo, e)
+	}
+	if already > 0 {
+		fmt.Printf("%s %s already set on this Mac.\n", good("✓"), plural(already, "setting"))
+	}
+	if len(todo) == 0 {
+		fmt.Println(good("✓ Nothing to change — your settings are already in place."))
+		printPrefsReview(entries, all)
+		return nil
+	}
+
+	fmt.Printf("Will set %s across %s:\n\n", plural(len(todo), "preference"), plural(countDomains(todo), "domain"))
+	for _, line := range summarisePrefs(todo) {
 		fmt.Printf("  %s\n", line)
 	}
 	if heldBack > 0 {
@@ -216,12 +273,41 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	}
 
 	fmt.Println()
-	if err := confirmWrite(os.Stderr, "Apply these preferences to this Mac?", assumeYes); err != nil {
+	if tui.Interactive() && !assumeYes {
+		counts := map[string]int{}
+		for _, e := range todo {
+			counts[e.Domain]++
+		}
+		var items []tui.PickItem
+		for _, d := range uniqueDomains(todo) {
+			items = append(items, tui.PickItem{Label: d, Value: d, Hint: plural(counts[d], "setting"), Selected: true})
+		}
+		picked, err := tui.MultiPick("Which settings should be applied?", "space toggles · enter applies", items)
+		if err != nil {
+			return ignoreAbort(err)
+		}
+		keep := map[string]bool{}
+		for _, p := range picked {
+			keep[p] = true
+		}
+		var chosen []macprefs.Entry
+		for _, e := range todo {
+			if keep[e.Domain] {
+				chosen = append(chosen, e)
+			}
+		}
+		if len(chosen) == 0 {
+			fmt.Println("Nothing selected.")
+			return nil
+		}
+		todo = chosen
+	} else if err := confirmWrite(os.Stderr, "Apply these preferences to this Mac?", assumeYes); err != nil {
 		return err
 	}
 
 	var failed int
-	for _, args := range todo {
+	for _, e := range todo {
+		args := macprefs.WriteArgs(e)
 		if _, err := runShell(ctx, args[0], args[1:]...); err != nil {
 			failed++
 		}
@@ -233,6 +319,19 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 			warn("⚠"), plural(failed, "preference"))
 	}
 	return nil
+}
+
+func uniqueDomains(entries []macprefs.Entry) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range entries {
+		if !seen[e.Domain] {
+			seen[e.Domain] = true
+			out = append(out, e.Domain)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // printPrefsReview lists the settings that were captured and will never be

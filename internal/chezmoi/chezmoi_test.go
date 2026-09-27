@@ -191,7 +191,7 @@ func TestBuildPackageInstallScript(t *testing.T) {
 	}
 	for _, want := range []string{
 		"#!/bin/bash", "set -uo pipefail",
-		"command -v brew", "brew bundle --file=/dev/stdin", "BREWFILE",
+		"command -v brew", "brew bundle --file=-", "BREWFILE",
 		"command -v fnm", "fnm install v20.0.0 || true",
 		"command -v bun", "bun add -g argent || true",
 		"command -v cargo", "cargo install ripgrep || true",

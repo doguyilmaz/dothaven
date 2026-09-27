@@ -59,7 +59,14 @@ func fakeDefaults() {
 		// A core domain, so the per-key pass has something it would apply by
 		// default — iTerm2's is held back as application state.
 		case "NSGlobalDomain":
-			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.swipescrolldirection</key><false/></dict></plist>`)
+			// FAKE_SCROLL flips the live value, so an import can be tested
+			// both against a Mac that already has the setting and one that
+			// does not.
+			v := "<false/>"
+			if os.Getenv("FAKE_SCROLL") == "true" {
+				v = "<true/>"
+			}
+			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.swipescrolldirection</key>` + v + `</dict></plist>`)
 		default:
 			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>`)
 		}

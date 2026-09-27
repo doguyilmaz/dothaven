@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/scan"
@@ -22,7 +23,16 @@ const (
 	StatusConflict Status = "conflict" // present on machine but differs
 	StatusSame     Status = "same"     // identical
 	StatusRedacted Status = "redacted" // backup holds a [REDACTED] marker — unrestorable
+	// Ledger-backed statuses (see Ledger.refine).
+	StatusUpdate  Status = "update"  // live file is what restore wrote earlier; the backup is newer
+	StatusChanged Status = "changed" // restore wrote it earlier, and it has been edited since
+	StatusSkipped Status = "skipped" // declined on an earlier run, and the backup's copy is unchanged
 )
+
+// Actionable reports whether a status is something restore could still do.
+func (s Status) Actionable() bool {
+	return s != StatusSame && s != StatusRedacted
+}
 
 // Entry is one backed-up file mapped to its live target with a status.
 type Entry struct {
@@ -32,12 +42,16 @@ type Entry struct {
 	Status      Status
 	Sensitivity registry.Sensitivity // drives restore file perms (owner-only for medium/high)
 	Exec        bool                 // the backed-up file was executable (a hook, a script)
+	BackupSHA   string
+	LiveSHA     string    // "" when there is no live file
+	AppliedAt   time.Time // when restore last wrote it, if the ledger knows
 }
 
 // Plan is the full set of restorable entries from one backup directory.
 type Plan struct {
 	Entries    []Entry
 	BackupDir  string
+	BackupID   string // the backup's own name, stable however it was carried
 	Categories []string
 }
 
@@ -147,8 +161,14 @@ func classify(backupContent string, targetExists bool, targetContent string) Sta
 // BuildPlan walks backupDir and classifies each file against the live machine.
 // A missing/empty backup dir yields an empty plan (no error).
 func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, error) {
+	return BuildPlanWith(backupDir, home, targets, nil)
+}
+
+// BuildPlanWith is BuildPlan with the ledger's memory of earlier runs.
+func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *Ledger) (Plan, error) {
 	m := buildMap(targets)
 	dirDests := dirDestsByLength(m)
+	backupID := filepath.Base(filepath.Clean(backupDir))
 	var entries []Entry
 	catSet := map[string]bool{}
 
@@ -176,11 +196,16 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		tContent, exists := readLiveTarget(target)
 		status := classify(string(raw), exists, tContent)
 		catSet[category] = true
-		entries = append(entries, Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens, Exec: exec})
+		e := Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens, Exec: exec, BackupSHA: Hash(raw)}
+		if exists {
+			e.LiveSHA = Hash([]byte(tContent))
+		}
+		lg.refine(&e, backupID)
+		entries = append(entries, e)
 		return nil
 	})
 	if walkErr != nil {
-		return Plan{BackupDir: backupDir}, nil
+		return Plan{BackupDir: backupDir, BackupID: backupID}, nil
 	}
 
 	cats := make([]string, 0, len(catSet))
@@ -188,7 +213,7 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		cats = append(cats, c)
 	}
 	sort.Strings(cats)
-	return Plan{Entries: entries, BackupDir: backupDir, Categories: cats}, nil
+	return Plan{Entries: entries, BackupDir: backupDir, BackupID: backupID, Categories: cats}, nil
 }
 
 // Filter narrows a plan's entries by category (skip wins; non-empty only restricts).
@@ -210,27 +235,38 @@ func Filter(p Plan, only, skip []string) Plan {
 		cats = append(cats, c)
 	}
 	sort.Strings(cats)
-	return Plan{Entries: kept, BackupDir: p.BackupDir, Categories: cats}
+	return Plan{Entries: kept, BackupDir: p.BackupDir, BackupID: p.BackupID, Categories: cats}
 }
 
 // Counts tallies entries by status.
-type Counts struct{ New, Conflict, Same, Redacted int }
+type Counts struct{ New, Conflict, Same, Redacted, Update, Changed, Skipped int }
 
 func Tally(entries []Entry) Counts {
 	var c Counts
 	for _, e := range entries {
-		switch e.Status {
-		case StatusNew:
-			c.New++
-		case StatusConflict:
-			c.Conflict++
-		case StatusSame:
-			c.Same++
-		case StatusRedacted:
-			c.Redacted++
-		}
+		c.Add(e.Status)
 	}
 	return c
+}
+
+// Add counts one entry of status s.
+func (c *Counts) Add(s Status) {
+	switch s {
+	case StatusNew:
+		c.New++
+	case StatusConflict:
+		c.Conflict++
+	case StatusSame:
+		c.Same++
+	case StatusRedacted:
+		c.Redacted++
+	case StatusUpdate:
+		c.Update++
+	case StatusChanged:
+		c.Changed++
+	case StatusSkipped:
+		c.Skipped++
+	}
 }
 
 // ConflictAction is a per-file decision when a backup differs from the live file.
@@ -251,6 +287,19 @@ type ExecuteOptions struct {
 	// the entry plus the backup and live contents. nil → non-interactive: skip
 	// conflicts unless Force.
 	Resolve func(e Entry, backupContent, liveContent string) ConflictAction
+	// Selected, when set, narrows the run to the entries the user picked.
+	// An actionable entry left out is recorded as declined.
+	Selected func(e Entry) bool
+	// Approved, when set, marks entries the user explicitly chose to
+	// overwrite (picked by name), so they are written without a second ask.
+	Approved func(e Entry) bool
+}
+
+// Outcome is what happened to one entry.
+type Outcome struct {
+	Entry    Entry
+	Written  bool
+	Declined bool // looked at and not written: unselected, or a conflict kept
 }
 
 // ExecuteResult summarizes an applied restore.
@@ -260,18 +309,33 @@ type ExecuteResult struct {
 	SkippedSymlink int    // live target was a symlink — refused, surface for manual resolution
 	SnapshotDir    string // set if a pre-restore snapshot was written
 	PerCategory    map[string]int
+	Outcomes       []Outcome
 }
 
-// Execute applies the plan to the filesystem. New files are always written;
-// same/redacted entries never are. A conflict is overwritten when Force is set,
-// when Resolve approves it, or once the user chose "overwrite all"; otherwise it
-// is skipped. Any overwritten file is snapshotted (owner-only) first.
+// Execute applies the plan to the filesystem. New and updated files are
+// written; same/redacted entries never are. A conflict (or a file changed since
+// it was applied, or one skipped before) is overwritten when Force is set, when
+// it was approved by name, when Resolve approves it, or once the user chose
+// "overwrite all"; otherwise it is kept. Any overwritten file is snapshotted
+// (owner-only) first.
 func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 	res := ExecuteResult{PerCategory: map[string]int{}}
 	overwriteAll, skipAll := opts.Force, false
 
 	for _, e := range plan.Entries {
-		if e.Status == StatusSame || e.Status == StatusRedacted {
+		if !e.Status.Actionable() {
+			res.Skipped++
+			continue
+		}
+		if opts.Selected != nil && !opts.Selected(e) {
+			res.Skipped++
+			res.Outcomes = append(res.Outcomes, Outcome{Entry: e, Declined: true})
+			continue
+		}
+		// A file declined on an earlier run stays declined unless it is picked
+		// again or everything is being forced; being asked twice is the thing
+		// the ledger exists to prevent.
+		if e.Status == StatusSkipped && opts.Selected == nil && !opts.Force {
 			res.Skipped++
 			continue
 		}
@@ -283,8 +347,10 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			res.SkippedSymlink++
 			continue
 		}
-		if e.Status == StatusConflict {
-			overwrite := overwriteAll
+		differs := e.Status == StatusConflict || e.Status == StatusChanged ||
+			(e.Status == StatusSkipped && e.LiveSHA != "")
+		if differs {
+			overwrite := overwriteAll || (opts.Approved != nil && opts.Approved(e))
 			if !overwrite && !skipAll && opts.Resolve != nil {
 				backup, _ := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))
 				live, _ := os.ReadFile(e.TargetPath)
@@ -299,16 +365,19 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			}
 			if !overwrite {
 				res.Skipped++
+				res.Outcomes = append(res.Outcomes, Outcome{Entry: e, Declined: true})
 				continue
 			}
-			if opts.SnapshotDir != "" {
-				if raw, err := os.ReadFile(e.TargetPath); err == nil {
-					// Capture the live (unredacted) file before overwrite, owner-only.
-					if err := sys.WriteFileSecure(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
-						return res, err
-					}
-					res.SnapshotDir = opts.SnapshotDir
+		}
+		// Anything already on disk is snapshotted before it is replaced — an
+		// update of restore's own earlier write included.
+		if e.LiveSHA != "" && opts.SnapshotDir != "" {
+			if raw, err := os.ReadFile(e.TargetPath); err == nil {
+				// Capture the live (unredacted) file before overwrite, owner-only.
+				if err := sys.WriteFileSecure(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
+					return res, err
 				}
+				res.SnapshotDir = opts.SnapshotDir
 			}
 		}
 		raw, err := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))
@@ -320,6 +389,7 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 		}
 		res.Restored++
 		res.PerCategory[e.Category]++
+		res.Outcomes = append(res.Outcomes, Outcome{Entry: e, Written: true})
 	}
 	return res, nil
 }

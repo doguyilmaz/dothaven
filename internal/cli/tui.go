@@ -168,10 +168,7 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 		if err != nil {
 			return err
 		}
-		if err := confirmWrite(os.Stderr, "Install everything this backup lists?", false); err != nil {
-			return err
-		}
-		return runReinstall(ctx, dir, false)
+		return runReinstall(ctx, env, dir, false)
 	case "doctor", "defaults import":
 		p, err := pickBackup(env, "Which backup?")
 		if err != nil || p == "" {

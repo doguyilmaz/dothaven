@@ -71,6 +71,40 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 	return selected, nil
 }
 
+// PickItem is one line of a multi-select.
+type PickItem struct {
+	Label, Value, Hint string
+	Selected           bool
+}
+
+// MultiPick presents a multi-select with the given pre-selection. Long lists
+// can be filtered by typing "/".
+func MultiPick(title, description string, items []PickItem) ([]string, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	opts := make([]huh.Option[string], len(items))
+	for i, it := range items {
+		label := it.Label
+		if it.Hint != "" {
+			label = fmt.Sprintf("%-46s %s", it.Label, menuHintStyle.Render(it.Hint))
+		}
+		opts[i] = huh.NewOption(label, it.Value).Selected(it.Selected)
+	}
+	var picked []string
+	field := huh.NewMultiSelect[string]().
+		Title(title).
+		Description(description).
+		Options(opts...).
+		Filterable(len(items) > 12).
+		Height(min(len(items)+4, 24)).
+		Value(&picked)
+	if err := huh.NewForm(huh.NewGroup(field)).Run(); err != nil {
+		return nil, err
+	}
+	return picked, nil
+}
+
 // PickSome presents a multi-select with nothing chosen and returns the picks.
 func PickSome(title, description string, items []string) ([]string, error) {
 	if len(items) == 0 {

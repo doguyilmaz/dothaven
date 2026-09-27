@@ -17,8 +17,14 @@ grep '"key": "com.apple.swipescrolldirection"' $WORK/out/macos-defaults/prefs.js
 grep '"type": "bool"' $WORK/out/macos-defaults/prefs.json
 grep '"action": "apply"' $WORK/out/macos-defaults/prefs.json
 
-# By default only core system domains are written; iTerm2's key is application
-# state and is held back.
+# On the same Mac the setting is already in place: shown as done, not offered.
+exec dothaven defaults import --dry-run $WORK/out
+stdout '1 setting already set'
+stdout 'Nothing to change'
+
+# On a Mac where it differs, it is offered. By default only core system
+# domains are written; iTerm2's key is application state and is held back.
+env FAKE_SCROLL=true
 exec dothaven defaults import --dry-run $WORK/out
 stdout 'System preferences'
 stdout 'Will set 1 preference'
@@ -29,7 +35,8 @@ stdout 'Will replace preferences'
 
 # --all reaches past the core domains.
 exec dothaven defaults import --dry-run --all $WORK/out
-stdout 'Will set 2 preferences'
+stdout '1 setting already set'
+stdout 'Will set 1 preference'
 ! stdout 'held back'
 
 # --yes is required off a terminal; without it the import refuses.
