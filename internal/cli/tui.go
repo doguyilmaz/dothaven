@@ -49,6 +49,7 @@ func menuItems() []tui.MenuItem {
 		{Label: "Scan my config for secrets", Value: "scan", Hint: "tokens and keys in plain files — read-only"},
 		{Label: "Are my config files valid?", Value: "check", Hint: "parses each one — read-only"},
 		{Label: "See everything installed", Value: "collect", Hint: "apps, packages, runtimes, fonts"},
+		{Label: "Open the dashboard in your browser", Value: "ui", Hint: "coverage, backups, secrets, risks — local, read-only"},
 	}
 	if runtime.GOOS == "darwin" {
 		items = append(items,
@@ -89,6 +90,7 @@ var actionTitles = map[string]string{
 	"github push":     "Save to GitHub",
 	"github pull":     "Restore from GitHub",
 	"github status":   "GitHub",
+	"ui":              "Dashboard",
 }
 
 // newTUICmd is the interactive front door: a menu that runs an action, shows

@@ -126,6 +126,17 @@ func githubClient(ctx context.Context, env *sys.OS) (*github.Client, github.User
 	return c, me, nil
 }
 
+// githubClientNoPrompt is githubClient for callers that must never ask
+// anything (the dashboard).
+func githubClientNoPrompt(ctx context.Context, tok string) (*github.Client, github.User, error) {
+	c, err := github.New(tok)
+	if err != nil {
+		return nil, github.User{}, err
+	}
+	me, err := c.Me(ctx)
+	return c, me, err
+}
+
 func newGitHubCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "github",

@@ -72,7 +72,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 			root.AddCommand(c)
 		}
 	}
-	add("start", newTUICmd(env), newGuideCmd(env), newReadyCmd(env))
+	add("start", newTUICmd(env), newUICmd(env, version), newGuideCmd(env), newReadyCmd(env))
 	add("save",
 		newBackupCmd(env), newIncludeCmd(env), newCollectCmd(env),
 		newDefaultsCmd(env), newServicesCmd(env))

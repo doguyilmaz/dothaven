@@ -72,7 +72,7 @@ func formatDetailed(results []scan.Result) string {
 
 // scanTracked scans every file a backup would carry — the registry and your
 // includes — which is the question "are there secrets in my config?".
-func scanTracked(ctx context.Context, env *sys.OS) ([]scan.Result, error) {
+func scanTracked(ctx context.Context, env *sys.OS, progress bool) ([]scan.Result, error) {
 	var files []string
 	for _, t := range registry.BackupTargets(env.Home(), allEntries(env)) {
 		walked, _ := backup.Walk(t, backup.WalkOptions{MaxSize: scan.MaxFileSize})
@@ -81,8 +81,10 @@ func scanTracked(ctx context.Context, env *sys.OS) ([]scan.Result, error) {
 		}
 	}
 	var done int64
-	stop := startProgress("scanning your config", &done, len(files))
-	defer stop()
+	if progress {
+		stop := startProgress("scanning your config", &done, len(files))
+		defer stop()
+	}
 	seen := map[string]bool{}
 	var out []scan.Result
 	for _, f := range files {
@@ -120,7 +122,7 @@ func newScanCmd(env *sys.OS) *cobra.Command {
 			if len(args) > 0 {
 				results, err = scanTarget(c.Context(), args[0])
 			} else {
-				results, err = scanTracked(c.Context(), env)
+				results, err = scanTracked(c.Context(), env, true)
 			}
 			if errors.Is(err, context.Canceled) {
 				fmt.Fprintln(os.Stderr, "scan cancelled.")
