@@ -211,11 +211,25 @@ var claudeNoise = map[string]bool{
 	".DS_Store": true,
 }
 
+// Codex and Gemini keep sessions, history and caches beside their config;
+// what is left once those are skipped is worth asking about.
+var codexNoise = map[string]bool{
+	"sessions": true, "archived_sessions": true, "history.jsonl": true, "log": true,
+	"cache": true, "tmp": true, "shell_snapshots": true, "version.json": true,
+	"models_cache.json": true, "internal_storage.json": true, ".DS_Store": true,
+}
+
+var geminiNoise = map[string]bool{
+	"tmp": true, "history": true, "installation_id": true, "user_id": true,
+	"google_accounts.json": true, "google_account_id": true, ".DS_Store": true,
+}
+
 var configNoise = map[string]bool{".DS_Store": true, ".git": true, "dothaven": true}
 
 // Uncovered lists paths under home that look like config and that neither the
 // registry nor the user's includes cover, as "~/"-relative paths. It looks one
-// level into ~, ~/.config and ~/.claude, which is where nearly all of it lives.
+// level into ~, ~/.config, ~/.claude, ~/.codex and ~/.gemini, which is where
+// nearly all of it lives.
 //
 // This is how a backup stops being limited to what dothaven already knows
 // about: whatever it does not recognise is put in front of the user once,
@@ -272,6 +286,8 @@ func Uncovered(listDir func(string) ([]string, error), home string, entries []re
 	sweep("", "~/", uncoveredNoise, true)
 	sweep(".config", "~/.config/", configNoise, false)
 	sweep(".claude", "~/.claude/", claudeNoise, false)
+	sweep(".codex", "~/.codex/", codexNoise, false)
+	sweep(".gemini", "~/.gemini/", geminiNoise, false)
 	// Personal scripts are the classic thing nobody remembers to copy.
 	if names, err := listDir(filepath.Join(home, "bin")); err == nil && len(names) > 0 && !isCovered("~/bin") {
 		out = append(out, "~/bin")

@@ -91,6 +91,8 @@ var Entries = []Entry{
 	{ID: "ai.claude.plugins", Name: "Claude plugins & marketplaces", Category: "ai", Kind: Dir, BackupDest: "ai/claude/plugins", Sensitivity: Low, Paths: unix("~/.claude/plugins")},
 	{ID: "ai.claude.keybindings", Name: "Claude keybindings", Category: "ai", Kind: File, BackupDest: "ai/claude/keybindings.json", Sensitivity: Low, Paths: unix("~/.claude/keybindings.json")},
 	{ID: "ai.claude.statusline", Name: "Claude status line script", Category: "ai", Kind: File, BackupDest: "ai/claude/statusline.sh", Sensitivity: Low, Paths: unix("~/.claude/statusline.sh")},
+	// On Linux, Claude Code keeps its login here (macOS uses the Keychain).
+	{ID: "ai.claude.credentials", Name: "Claude Code login", Category: "ai", Kind: File, BackupDest: "ai/claude/.credentials.json", Sensitivity: High, Paths: unix("~/.claude/.credentials.json")},
 	{ID: "ai.claude.md", Name: "CLAUDE.md", Category: "ai", Kind: File, BackupDest: "ai/claude/CLAUDE.md", Sensitivity: Low,
 		Paths: map[string]string{"darwin": "~/.claude/CLAUDE.md", "linux": "~/.claude/CLAUDE.md", "windows": "%USERPROFILE%/.claude/CLAUDE.md"}},
 	// Claude Desktop keeps its MCP servers in its own file.
@@ -102,6 +104,7 @@ var Entries = []Entry{
 	{ID: "ai.codex.agents", Name: "Codex AGENTS.md", Category: "ai", Kind: File, BackupDest: "ai/codex/AGENTS.md", Sensitivity: Low, Paths: unix("~/.codex/AGENTS.md")},
 	{ID: "ai.codex.prompts", Name: "Codex prompts", Category: "ai", Kind: Dir, BackupDest: "ai/codex/prompts", Sensitivity: Low, Paths: unix("~/.codex/prompts")},
 	{ID: "ai.codex.skills", Name: "Codex skills", Category: "ai", Kind: Dir, BackupDest: "ai/codex/skills", Sensitivity: Low, Paths: unix("~/.codex/skills")},
+	{ID: "ai.codex.rules", Name: "Codex command rules", Category: "ai", Kind: Dir, BackupDest: "ai/codex/rules", Sensitivity: Low, Paths: unix("~/.codex/rules")},
 	{ID: "ai.codex.auth", Name: "Codex login", Category: "ai", Kind: File, BackupDest: "ai/codex/auth.json", Sensitivity: High, Paths: unix("~/.codex/auth.json")},
 
 	// AI: Cursor
@@ -122,6 +125,7 @@ var Entries = []Entry{
 		Paths: map[string]string{"darwin": "~/.gemini/GEMINI.md", "linux": "~/.gemini/GEMINI.md", "windows": "%USERPROFILE%/.gemini/GEMINI.md"}},
 	{ID: "ai.gemini.commands", Name: "Gemini commands", Category: "ai", Kind: Dir, BackupDest: "ai/gemini/commands", Sensitivity: Low, Paths: unix("~/.gemini/commands")},
 	{ID: "ai.gemini.extensions", Name: "Gemini extensions", Category: "ai", Kind: Dir, BackupDest: "ai/gemini/extensions", Sensitivity: Low, Paths: unix("~/.gemini/extensions"), Exclude: []string{"node_modules"}},
+	{ID: "ai.gemini.oauth", Name: "Gemini login", Category: "ai", Kind: File, BackupDest: "ai/gemini/oauth_creds.json", Sensitivity: High, Paths: unix("~/.gemini/oauth_creds.json")},
 	{ID: "ai.gemini.env", Name: "Gemini .env (API key)", Category: "ai", Kind: File, BackupDest: "ai/gemini/.env", Sensitivity: High, Paths: unix("~/.gemini/.env")},
 
 	// AI: Windsurf
@@ -144,6 +148,14 @@ var Entries = []Entry{
 	{ID: "ai.kiro.steering", Name: "Kiro steering", Category: "ai", Kind: Dir, BackupDest: "ai/kiro/steering", Sensitivity: Low, Paths: unix("~/.kiro/steering")},
 	{ID: "ai.amp", Name: "Amp settings", Category: "ai", Kind: File, BackupDest: "ai/amp/settings.json", Sensitivity: Medium, Paths: unix("~/.config/amp/settings.json")},
 	{ID: "ai.qwen", Name: "Qwen Code settings", Category: "ai", Kind: File, BackupDest: "ai/qwen/settings.json", Sensitivity: Medium, Paths: unix("~/.qwen/settings.json")},
+	// Cline and Roo Code are VS Code extensions; their MCP servers live in the
+	// editor's extension storage, not in the editor settings.
+	{ID: "ai.cline.mcp", Name: "Cline MCP servers", Category: "ai", Kind: File, BackupDest: "ai/cline/cline_mcp_settings.json", Sensitivity: Medium, Paths: appSupport("Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json")},
+	{ID: "ai.cline.cursor.mcp", Name: "Cline MCP servers (in Cursor)", Category: "ai", Kind: File, BackupDest: "ai/cline/cursor/cline_mcp_settings.json", Sensitivity: Medium, Paths: appSupport("Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json")},
+	{ID: "ai.cline.rules", Name: "Cline global rules", Category: "ai", Kind: Dir, BackupDest: "ai/cline/Rules", Sensitivity: Low, Paths: unix("~/Documents/Cline/Rules")},
+	{ID: "ai.cline.workflows", Name: "Cline global workflows", Category: "ai", Kind: Dir, BackupDest: "ai/cline/Workflows", Sensitivity: Low, Paths: unix("~/Documents/Cline/Workflows")},
+	{ID: "ai.roo.mcp", Name: "Roo Code MCP servers", Category: "ai", Kind: File, BackupDest: "ai/roo/mcp_settings.json", Sensitivity: Medium, Paths: appSupport("Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json")},
+	{ID: "ai.roo.rules", Name: "Roo Code global rules", Category: "ai", Kind: Dir, BackupDest: "ai/roo/rules", Sensitivity: Low, Paths: unix("~/.roo/rules")},
 	{ID: "ai.lmstudio.mcp", Name: "LM Studio MCP config", Category: "ai", Kind: File, BackupDest: "ai/lmstudio/mcp.json", Sensitivity: Medium, Paths: unix("~/.lmstudio/mcp.json")},
 
 	// Shell
