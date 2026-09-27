@@ -1,0 +1,20 @@
+# A config folder is added file by file: .git inside it stays out of the
+# chezmoi source, and only the file holding a secret is encrypted.
+env CHEZMOI_SOURCE=$WORK/source
+env CHEZMOI_LOG=$WORK/adds.log
+mkdir $WORK/source
+exec dothaven chezmoi-export --apply --only editor
+stdout 'folder, 2 files, 1 encrypted: secret detected'
+grep '^add --encrypt .*/\.config/nvim/lua/secrets\.lua$' $WORK/adds.log
+grep '^add .*/\.config/nvim/init\.lua$' $WORK/adds.log
+! grep '\.git/' $WORK/adds.log
+! grep 'encrypt .*init\.lua' $WORK/adds.log
+
+-- .config/chezmoi/chezmoi.toml --
+encryption = "age"
+-- .config/nvim/init.lua --
+vim.o.number = true
+-- .config/nvim/lua/secrets.lua --
+return { openai = "sk-proj-abcdefghijklmnopqrstuvwxyz123456" }
+-- .config/nvim/.git/HEAD --
+ref: refs/heads/main

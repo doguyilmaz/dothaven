@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/doguyilmaz/dothaven/internal/backup"
 	"github.com/doguyilmaz/dothaven/internal/chezmoi"
 	"github.com/doguyilmaz/dothaven/internal/collect"
 	"github.com/doguyilmaz/dothaven/internal/registry"
@@ -61,6 +62,136 @@ func templatizeSource(ctx context.Context, src, home string) {
 			fmt.Fprintf(os.Stderr, "  ⚠ could not templatize %s (kept verbatim): %v\n", src, err)
 		}
 	}
+}
+
+// chezmoiMaxFile caps a file added to the chezmoi source. It is a git repo,
+// pushed somewhere; GitHub refuses files over 100 MB and warns at 50.
+const chezmoiMaxFile = 25 << 20
+
+type itemCount struct{ total, encrypted int }
+
+// expandExport turns the plan into the files chezmoi adds. A directory is
+// walked with the same rules as a backup (symlinks followed, sockets and the
+// item's excludes skipped) plus two of its own: no nested .git (the source is
+// itself a repository) and nothing over chezmoiMaxFile. A file reached twice —
+// ~/.ssh/config alone and inside ~/.ssh — is added once, encrypted if either
+// path says so.
+func expandExport(plan []chezmoi.PlanItem, entries []registry.Entry, home string) ([]chezmoi.FileAdd, map[string]itemCount, []backup.Skipped) {
+	byID := map[string]registry.Entry{}
+	for _, e := range entries {
+		byID[e.ID] = e
+	}
+	index := map[string]int{}
+	var out []chezmoi.FileAdd
+	var tooBig []backup.Skipped
+	counts := map[string]itemCount{}
+	for _, p := range plan {
+		var paths []string
+		if p.Kind == "dir" {
+			e := byID[p.ID]
+			walked, skipped := backup.Walk(registry.BackupTarget{Src: p.Src, Dest: p.Src, IsDir: true, Exclude: e.Exclude},
+				backup.WalkOptions{SkipVCS: true, MaxSize: chezmoiMaxFile})
+			for _, f := range walked {
+				paths = append(paths, f.Path)
+			}
+			for _, s := range skipped {
+				if s.Reason == "too large" {
+					tooBig = append(tooBig, s)
+				}
+			}
+		}
+		for _, f := range chezmoi.PlanFiles(p, paths, chezmoi.SecretInFile) {
+			c := counts[p.Src]
+			c.total++
+			if f.Encrypt {
+				c.encrypted++
+			}
+			counts[p.Src] = c
+			if i, dup := index[f.Src]; dup {
+				out[i].Encrypt = out[i].Encrypt || f.Encrypt
+				if out[i].Encrypt {
+					out[i].Template = false
+				}
+				continue
+			}
+			index[f.Src] = len(out)
+			out = append(out, f)
+		}
+	}
+	return out, counts, tooBig
+}
+
+// mentionsHome reports whether a file names the home directory — the one
+// thing a template rewrite changes.
+func mentionsHome(home string) func(string) bool {
+	return func(p string) bool {
+		fi, err := os.Stat(p)
+		if err != nil || !fi.Mode().IsRegular() || fi.Size() > 4<<20 {
+			return false
+		}
+		b, err := os.ReadFile(p)
+		return err == nil && strings.Contains(string(b), home+"/")
+	}
+}
+
+type exportBatch struct {
+	encrypt, template bool
+	files             []string
+}
+
+// exportBatches groups files by how they are added, in chunks: one chezmoi
+// process per file was hundreds of processes for a Neovim config.
+func exportBatches(files []chezmoi.FileAdd) []exportBatch {
+	const chunk = 40
+	var out []exportBatch
+	for _, mode := range []struct{ enc, tmpl bool }{{false, false}, {false, true}, {true, false}} {
+		var cur []string
+		for _, f := range files {
+			if f.Encrypt == mode.enc && f.Template == mode.tmpl {
+				cur = append(cur, f.Src)
+				if len(cur) == chunk {
+					out = append(out, exportBatch{mode.enc, mode.tmpl, cur})
+					cur = nil
+				}
+			}
+		}
+		if len(cur) > 0 {
+			out = append(out, exportBatch{mode.enc, mode.tmpl, cur})
+		}
+	}
+	return out
+}
+
+type failedAdd struct{ src, why string }
+
+// addBatch adds a batch in one chezmoi call. If the batch fails, each file is
+// retried alone, so the report names the files that failed rather than
+// blaming forty for one.
+func addBatch(ctx context.Context, b exportBatch) ([]string, []failedAdd) {
+	args := []string{"add"}
+	switch {
+	case b.encrypt:
+		args = append(args, "--encrypt")
+	case b.template:
+		args = append(args, "--template")
+	}
+	if _, err := runShell(ctx, "chezmoi", append(args, b.files...)...); err == nil {
+		return b.files, nil
+	}
+	var ok []string
+	var bad []failedAdd
+	for _, f := range b.files {
+		if out, err := runShell(ctx, "chezmoi", append(append([]string(nil), args...), f)...); err != nil {
+			why := strings.TrimSpace(out)
+			if why == "" {
+				why = err.Error()
+			}
+			bad = append(bad, failedAdd{f, why})
+		} else {
+			ok = append(ok, f)
+		}
+	}
+	return ok, bad
 }
 
 func planHasSrc(plan []chezmoi.PlanItem, src string) bool {
@@ -201,12 +332,16 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			wantInstallScript := wantBrew || wantPackages
 
 			var entries []registry.Entry
-			for _, e := range registry.Entries {
+			for _, e := range allEntries(env) {
 				if chezmoi.IsSelected(e.Category, only, skip) {
 					entries = append(entries, e)
 				}
 			}
-			plan := chezmoi.PlanExport(entries, home, env.Exists, chezmoi.ContainsHighSecret)
+			plan := chezmoi.PlanExport(entries, home, chezmoi.Probes{
+				Exists:       env.Exists,
+				SecretInFile: chezmoi.SecretInFile,
+				HasHomePath:  mentionsHome(home),
+			})
 
 			if chezmoi.IsSelected("ssh", only, skip) {
 				for _, key := range chezmoi.FindSshPrivateKeys(home, env.ListDir, chezmoi.IsSSHPrivateKey) {
@@ -220,28 +355,27 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				plan = removeByID(plan, "secrets.gnupg")
 			}
 
-			if len(plan) == 0 && !wantInstallScript {
+			files, perItem, tooBig := expandExport(plan, entries, home)
+			if len(files) == 0 && !wantInstallScript {
 				fmt.Println("Nothing to export — no managed configs found on this machine.")
 				return nil
 			}
 
-			hasEncrypt := false
-			for _, p := range plan {
-				if p.Encrypt {
-					hasEncrypt = true
-					break
+			encrypted := 0
+			for _, f := range files {
+				if f.Encrypt {
+					encrypted++
 				}
 			}
+			hasEncrypt := encrypted > 0
 
 			if len(plan) > 0 {
-				encrypted := 0
+				fmt.Printf("chezmoi-export plan — %s, %d encrypted:\n\n", plural(len(files), "file"), encrypted)
 				for _, p := range plan {
-					if p.Encrypt {
-						encrypted++
+					n := perItem[p.Src]
+					if n.total == 0 {
+						continue
 					}
-				}
-				fmt.Printf("chezmoi-export plan — %d path(s), %d encrypted:\n\n", len(plan), encrypted)
-				for _, p := range plan {
 					verb := "   add          "
 					switch {
 					case p.Encrypt:
@@ -249,8 +383,23 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 					case p.Template:
 						verb = "📝 add --template"
 					}
-					fmt.Printf("  %s  %s  (%s)\n", verb, p.Src, p.Reason)
+					detail := p.Reason
+					if p.Kind == "dir" {
+						detail = fmt.Sprintf("folder, %s", plural(n.total, "file"))
+						if n.encrypted > 0 && !p.Encrypt {
+							detail += fmt.Sprintf(", %d encrypted: secret detected", n.encrypted)
+						}
+					}
+					fmt.Printf("  %s  %s  %s\n", verb, shortHome(env, p.Src), dim("("+detail+")"))
 				}
+			}
+			if len(tooBig) > 0 {
+				fmt.Printf("\n  %s %s over %s left out (a git repo is no place for them):\n", warn("⚠"), plural(len(tooBig), "file"), humanBytes(chezmoiMaxFile))
+				var lines []string
+				for _, s := range tooBig {
+					lines = append(lines, fmt.Sprintf("%s  %s", s.Dest, dim(humanBytes(s.Size))))
+				}
+				printList(lines, 6)
 			}
 			if wantInstallScript {
 				var groups []string
@@ -330,33 +479,30 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 
 			fmt.Println("")
 			var failed, failedEncrypted int
-			for _, p := range plan {
-				addArgs := []string{"add", p.Src}
-				switch {
-				case p.Encrypt:
-					addArgs = []string{"add", "--encrypt", p.Src}
-				case p.Template:
-					addArgs = []string{"add", "--template", p.Src}
-				}
-				if out, err := runShell(ctx, "chezmoi", addArgs...); err != nil {
-					fmt.Fprintf(os.Stderr, "  %s %s: %v %s\n", danger("✗"), p.Src, err, out)
+			for _, batch := range exportBatches(files) {
+				okFiles, bad := addBatch(ctx, batch)
+				for _, f := range bad {
+					fmt.Fprintf(os.Stderr, "  %s %s: %s\n", danger("✗"), shortHome(env, f.src), f.why)
 					failed++
-					if p.Encrypt {
+					if batch.encrypt {
 						failedEncrypted++
 					}
-					continue
 				}
-				if p.Template {
-					templatizeSource(ctx, p.Src, home)
+				for _, f := range okFiles {
+					if batch.template {
+						templatizeSource(ctx, f, home)
+					}
 				}
-				prefix := ""
-				switch {
-				case p.Encrypt:
-					prefix = "encrypted "
-				case p.Template:
-					prefix = "templated "
+				if len(okFiles) > 0 {
+					what := "added"
+					switch {
+					case batch.encrypt:
+						what = "encrypted"
+					case batch.template:
+						what = "templated"
+					}
+					fmt.Printf("  %s %s %s\n", good("✔"), what, plural(len(okFiles), "file"))
 				}
-				fmt.Printf("  %s %s%s\n", good("✔"), prefix, p.Src)
 			}
 
 			if wantInstallScript {

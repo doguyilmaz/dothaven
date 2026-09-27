@@ -100,24 +100,38 @@ func fakeChezmoi() {
 			fmt.Println(chezmoiSrcRoot())
 		}
 	case "add":
-		target := args[len(args)-1]
-		if sub := os.Getenv("CHEZMOI_FAIL_ON"); sub != "" && strings.Contains(target, sub) {
-			fmt.Fprintln(os.Stderr, "fake chezmoi: add failed")
-			os.Exit(1)
-		}
+		// Like the real one, `add` takes any number of targets after its flags.
 		isTemplate := false
+		var targets []string
 		for _, a := range args[1:] {
-			if a == "--template" {
+			switch {
+			case a == "--template":
 				isTemplate = true
+			case strings.HasPrefix(a, "-"):
+			default:
+				targets = append(targets, a)
 			}
 		}
-		// Emulate `add --template`: copy the target into the source state as a
-		// .tmpl so the export's source-path lookup + rewrite can find it.
-		if isTemplate {
-			if raw, err := os.ReadFile(target); err == nil {
-				dst := chezmoiTmplPath(target)
-				_ = os.MkdirAll(filepath.Dir(dst), 0o755)
-				_ = os.WriteFile(dst, raw, 0o644)
+		for _, target := range targets {
+			if sub := os.Getenv("CHEZMOI_FAIL_ON"); sub != "" && strings.Contains(target, sub) {
+				fmt.Fprintln(os.Stderr, "fake chezmoi: add failed")
+				os.Exit(1)
+			}
+		}
+		for _, target := range targets {
+			// Emulate `add --template`: copy the target into the source state
+			// as a .tmpl so the export's source-path lookup + rewrite can find it.
+			if isTemplate {
+				if raw, err := os.ReadFile(target); err == nil {
+					dst := chezmoiTmplPath(target)
+					_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+					_ = os.WriteFile(dst, raw, 0o644)
+				}
+			}
+			if log := os.Getenv("CHEZMOI_LOG"); log != "" {
+				f, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+				fmt.Fprintf(f, "%s %s\n", strings.Join(args[:len(args)-len(targets)], " "), target)
+				f.Close()
 			}
 		}
 	}

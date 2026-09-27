@@ -5,8 +5,8 @@
 package chezmoi
 
 import (
-	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,9 +17,10 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
 
-// PlanItem is one path chezmoi will add, with the encrypt/template decision and
-// why. Encrypt and Template are mutually exclusive: secrets are encrypted, plain
-// host-varying configs are templated, everything else is added verbatim.
+// PlanItem is one registry entry chezmoi will add, with the encrypt/template
+// decision and why. Encrypt and Template are mutually exclusive: secrets are
+// encrypted, plain host-varying configs are templated, everything else is added
+// verbatim. A dir entry is added file by file (see PlanFiles).
 type PlanItem struct {
 	ID       string
 	Src      string
@@ -43,14 +44,26 @@ func IsSelected(category string, only, skip []string) bool {
 	return registry.Selected(category, only, skip)
 }
 
+// Probes are the filesystem questions the planner asks, injected so it stays
+// pure.
+type Probes struct {
+	Exists func(path string) bool
+	// SecretInFile reports a HIGH secret in one file.
+	SecretInFile func(path string) bool
+	// HasHomePath reports whether a file mentions the home directory, which is
+	// what makes templating it worth anything.
+	HasHomePath func(path string) bool
+}
+
 // PlanExport decides, per registry entry that exists on disk, whether chezmoi
-// adds it plain or --encrypt. Encrypts when the entry is high-sensitivity, has a
-// redact rule, or the injected probe finds a real secret (including inside a dir).
-func PlanExport(entries []registry.Entry, home string, fileExists func(string) bool, containsSecret func(path string, isDir bool) bool) []PlanItem {
+// adds it plain, --encrypt or --template. It encrypts when the entry is
+// high-sensitivity, has a redact rule, or (for a file) holds a real secret. A
+// directory's files are judged one by one later, in PlanFiles.
+func PlanExport(entries []registry.Entry, home string, p Probes) []PlanItem {
 	var items []PlanItem
 	for _, e := range entries {
 		src := registry.ResolvePath(e, home)
-		if src == "" || !fileExists(src) {
+		if src == "" || !p.Exists(src) {
 			continue
 		}
 		isDir := e.Kind == registry.Dir
@@ -61,16 +74,18 @@ func PlanExport(entries []registry.Entry, home string, fileExists func(string) b
 		} else if encrypt {
 			reason = "has redact rule"
 		}
-		if !encrypt && containsSecret(src, isDir) {
+		if !encrypt && !isDir && p.SecretInFile(src) {
 			encrypt = true
 			reason = "secret detected"
 		}
-		// A plain, host-varying config is added as a template so its absolute
-		// home paths port to a new machine. Never both — secrets are encrypted.
+		// A plain config that names this machine's home directory is added as
+		// a template, so it ports to a machine with a different username.
+		// Only then: a template is parsed on every apply, and one that did not
+		// need to be is one more thing that can fail to parse.
 		template := false
-		if !encrypt && ShouldTemplate(e) {
+		if !encrypt && ShouldTemplate(e) && p.HasHomePath(src) {
 			template = true
-			reason = "templated (host paths)"
+			reason = "templated (home path)"
 		}
 		kind := "file"
 		if isDir {
@@ -79,6 +94,27 @@ func PlanExport(entries []registry.Entry, home string, fileExists func(string) b
 		items = append(items, PlanItem{ID: e.ID, Src: src, Kind: kind, Encrypt: encrypt, Template: template, Reason: reason})
 	}
 	return items
+}
+
+// FileAdd is one file handed to `chezmoi add`.
+type FileAdd struct {
+	Src      string
+	Encrypt  bool
+	Template bool
+}
+
+// PlanFiles expands a plan item into the files to add. A directory's files are
+// encrypted individually when they hold a secret, so one token in one file
+// does not force a whole editor config to be ciphertext.
+func PlanFiles(item PlanItem, files []string, secretInFile func(string) bool) []FileAdd {
+	if item.Kind != "dir" {
+		return []FileAdd{{Src: item.Src, Encrypt: item.Encrypt, Template: item.Template}}
+	}
+	out := make([]FileAdd, 0, len(files))
+	for _, f := range files {
+		out = append(out, FileAdd{Src: f, Encrypt: item.Encrypt || secretInFile(f)})
+	}
+	return out
 }
 
 // syncStateEditors are editor settings entries whose app also syncs the same
@@ -108,24 +144,20 @@ func anyHigh(findings []scan.Finding) bool {
 	return false
 }
 
-// ContainsHighSecret reports a HIGH-severity secret in a file (or any file in a
-// directory). HIGH-only so a benign IP/email never forces encryption.
-func ContainsHighSecret(path string, isDir bool) bool {
-	if isDir {
-		// Security probe: scan EVERYTHING (prune=false) so a HIGH secret hidden in
-		// a dependency/cache subtree of an otherwise-benign config dir still forces
-		// encryption rather than a plaintext export. Background ctx is fine — these
-		// are small config dirs and the export path was never cancellable here.
-		results, _ := scan.ScanDir(context.Background(), path, nil, false)
-		for _, r := range results {
-			if anyHigh(r.Findings) {
-				return true
-			}
-		}
+// SecretInFile reports a HIGH-severity secret in a file. HIGH-only so a
+// benign IP or email never forces encryption. It reads files up to the
+// backup's size cap, not the scanner's 1 MiB: a probe that stops early is one a
+// large file can hide a token from.
+func SecretInFile(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > 64<<20 {
 		return false
 	}
-	r := scan.ScanFile(path)
-	return r != nil && anyHigh(r.Findings)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return anyHigh(scan.ScanContentFull(path, string(b)).Findings)
 }
 
 // IsSSHPrivateKey detects a private key by content (a key header), so it catches

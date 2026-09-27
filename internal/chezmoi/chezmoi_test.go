@@ -36,9 +36,10 @@ func TestPlanExportEncryptDecision(t *testing.T) {
 	}
 	exists := func(p string) bool { return p != "/h/none" }
 	// gitconfig hides a real secret; everything else is clean.
-	secret := func(p string, isDir bool) bool { return p == "/h/.gitconfig" }
+	secret := func(p string) bool { return p == "/h/.gitconfig" }
+	home := func(p string) bool { return false }
 
-	plan := PlanExport(entries, "/h", exists, secret)
+	plan := PlanExport(entries, "/h", Probes{Exists: exists, SecretInFile: secret, HasHomePath: home})
 	got := map[string]PlanItem{}
 	for _, p := range plan {
 		got[p.ID] = p
@@ -225,4 +226,31 @@ func TestBuildPackageInstallScript(t *testing.T) {
 // resolves in tests regardless of GOOS.
 func platPath(p string) map[string]string {
 	return map[string]string{runtime.GOOS: p}
+}
+
+func TestPlanTemplatesOnlyWhenHomeIsNamed(t *testing.T) {
+	entries := []registry.Entry{
+		{ID: "shell.zshrc", Category: "shell", Kind: registry.File, Paths: platPath("/h/.zshrc")},
+		{ID: "terminal.wezterm", Category: "terminal", Kind: registry.File, Paths: platPath("/h/.wezterm.lua")},
+	}
+	plan := PlanExport(entries, "/h", Probes{
+		Exists:       func(string) bool { return true },
+		SecretInFile: func(string) bool { return false },
+		HasHomePath:  func(p string) bool { return p == "/h/.zshrc" },
+	})
+	if !plan[0].Template || plan[1].Template {
+		t.Errorf("template decision: %+v", plan)
+	}
+}
+
+func TestPlanFilesEncryptsPerFile(t *testing.T) {
+	item := PlanItem{ID: "editor.nvim", Kind: "dir", Src: "/h/.config/nvim"}
+	files := PlanFiles(item, []string{"/h/.config/nvim/init.lua", "/h/.config/nvim/secrets.lua"}, func(p string) bool { return strings.HasSuffix(p, "secrets.lua") })
+	if files[0].Encrypt || !files[1].Encrypt {
+		t.Errorf("per-file encryption: %+v", files)
+	}
+	high := PlanFiles(PlanItem{Kind: "dir", Encrypt: true}, []string{"/a"}, func(string) bool { return false })
+	if !high[0].Encrypt {
+		t.Error("a high-sensitivity dir encrypts every file")
+	}
 }

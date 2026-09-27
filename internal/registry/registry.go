@@ -304,7 +304,7 @@ var Entries = []Entry{
 	{ID: "secrets.vault", Name: "Vault token", Category: "secrets", Kind: File, BackupDest: "secrets/.vault-token", Sensitivity: High, Paths: map[string]string{"darwin": "~/.vault-token", "linux": "~/.vault-token"}},
 
 	// Secrets (carried encrypted) — declarative: a no-op until ~/.gnupg has real keys.
-	{ID: "secrets.gnupg", Name: "GnuPG home", Category: "secrets", Kind: Dir, BackupDest: "secrets/gnupg", Sensitivity: High, Paths: map[string]string{"darwin": "~/.gnupg", "linux": "~/.gnupg"}},
+	{ID: "secrets.gnupg", Name: "GnuPG home", Category: "secrets", Kind: Dir, BackupDest: "secrets/gnupg", Sensitivity: High, Paths: map[string]string{"darwin": "~/.gnupg", "linux": "~/.gnupg"}, Exclude: []string{"S.*", "*.lock", ".#*", "random_seed"}},
 
 	// Language & toolchain config (lang). Files that hold tokens by design are
 	// High (encrypted on export, excluded from a plaintext backup).

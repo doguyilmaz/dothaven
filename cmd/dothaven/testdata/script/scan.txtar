@@ -16,7 +16,17 @@ stdout 'No sensitive data found'
 ! exec dothaven scan nope.txt
 stderr 'path not found'
 
+-- .npmrc --
+//registry.npmjs.org/:_authToken=npm_abcdefghijklmnopqrstuvwxyz0123456789
 -- secret.txt --
 token=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 -- clean.txt --
 just some plain text with nothing sensitive
+
+# With no path it scans the config dothaven tracks, wherever it is run from.
+mkdir elsewhere
+cd elsewhere
+! exec dothaven scan
+stdout '~/.npmrc'
+stdout 'npm'
+cd ..
