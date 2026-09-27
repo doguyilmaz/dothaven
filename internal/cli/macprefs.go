@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -130,11 +131,16 @@ func writePrefs(path string, entries []macprefs.Entry, counts macprefs.Counts, d
 }
 
 func encodePrefs(entries []macprefs.Entry, counts macprefs.Counts, dock []string) ([]byte, error) {
-	b, err := json.MarshalIndent(prefsFile{Counts: counts, Entries: entries, Dock: dock}, "", "  ")
-	if err != nil {
+	// HTML escaping off, like every JSON file dothaven writes: nested values
+	// are XML, and \u003c in place of every < makes them unreadable.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(prefsFile{Counts: counts, Entries: entries, Dock: dock}); err != nil {
 		return nil, err
 	}
-	return append(b, '\n'), nil
+	return buf.Bytes(), nil
 }
 
 func readPrefs(path string) (prefsFile, error) {
@@ -227,7 +233,7 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	var heldBack int
 	for _, e := range entries {
 		switch {
-		case all || macprefs.IsCore(e.Domain):
+		case all || macprefs.IsCoreEntry(e.Domain, e.Key):
 			if macprefs.WriteArgs(e) != nil {
 				selected = append(selected, e)
 			}
@@ -264,6 +270,9 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	fmt.Printf("Will set %s across %s:\n\n", plural(len(todo), "preference"), plural(countDomains(todo), "domain"))
 	for _, line := range summarisePrefs(todo) {
 		fmt.Printf("  %s\n", line)
+	}
+	if notable := notablePrefs(todo); notable != "" {
+		fmt.Printf("\n  %s %s\n", dim("including"), notable)
 	}
 	if heldBack > 0 {
 		fmt.Printf("\n%s\n", dim(fmt.Sprintf(
@@ -317,6 +326,14 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 			failed++
 			continue
 		}
+		if e.Type == "plist" && !storedNested(ctx, e) {
+			// `defaults` treats a value it cannot parse as a plain string.
+			// A language list or shortcut table stored as text is worse than
+			// the old value, so the old value goes back.
+			undoPref(ctx, e, live[e.Domain+"\x00"+e.Key])
+			failed++
+			continue
+		}
 		touched[e.Domain] = true
 	}
 	restarted := restartForPrefs(ctx, touched)
@@ -331,6 +348,59 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	}
 	return nil
 }
+
+// storedNested reports whether a nested value landed as the array or dict it
+// was meant to be.
+func storedNested(ctx context.Context, e macprefs.Entry) bool {
+	out, err := runShell(ctx, "defaults", "read-type", e.Domain, e.Key)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(out, "array") || strings.Contains(out, "dictionary")
+}
+
+// undoPref puts back the value a key had before this run — prev is the
+// "type\x00value" currentPrefs read — or removes the key if it had none.
+func undoPref(ctx context.Context, e macprefs.Entry, prev string) {
+	typ, val, ok := strings.Cut(prev, "\x00")
+	if !ok {
+		_, _ = runShell(ctx, "defaults", "delete", e.Domain, e.Key)
+		return
+	}
+	if args := macprefs.WriteArgs(macprefs.Entry{Domain: e.Domain, Key: e.Key, Type: typ, Value: val}); args != nil {
+		_, _ = runShell(ctx, args[0], args[1:]...)
+	}
+}
+
+// notablePrefs names the nested settings about to be written, which a
+// per-domain count would otherwise hide: they are the ones people look for.
+func notablePrefs(entries []macprefs.Entry) string {
+	var names []string
+	apps := 0
+	for _, e := range entries {
+		if e.Type != "plist" {
+			continue
+		}
+		switch {
+		case e.Key == "NSUserKeyEquivalents":
+			apps++
+		case e.Key == "AppleLanguages":
+			names = append(names, "language order")
+		case e.Key == "AppleEnabledInputSources":
+			names = append(names, "keyboard layouts")
+		case e.Key == "AppleSymbolicHotKeys":
+			names = append(names, "keyboard shortcuts")
+		}
+	}
+	if apps > 0 {
+		names = append(names, "App Shortcuts for "+plural(apps, "app"))
+	}
+	return strings.Join(names, ", ")
+}
+
+// activateSettings makes a changed shortcut table take effect in the running
+// session instead of at the next log-in.
+const activateSettings = "/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings"
 
 // restartForPrefs restarts the parts of the UI that only read their settings at
 // launch, so the change shows now rather than after a log-out. Each is
@@ -354,6 +424,14 @@ func restartForPrefs(ctx context.Context, touched map[string]bool) []string {
 	}
 	if len(done) > 0 {
 		fmt.Printf("  %s restarted %s to pick the changes up\n", dim("•"), strings.Join(done, ", "))
+	}
+	if touched["com.apple.symbolichotkeys"] {
+		if _, err := os.Stat(activateSettings); err == nil {
+			if _, err := runShell(ctx, activateSettings, "-u"); err == nil {
+				fmt.Printf("  %s reloaded keyboard shortcuts\n", dim("•"))
+				done = append(done, "shortcuts")
+			}
+		}
 	}
 	return done
 }

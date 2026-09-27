@@ -42,15 +42,15 @@ func TestParse(t *testing.T) {
 	}
 
 	want := map[string]Value{
-		"AppleInterfaceStyle":            {String, "Dark"},
-		"com.apple.swipescrolldirection": {Bool, "false"},
-		"AppleShowAllExtensions":         {Bool, "true"},
-		"KeyRepeat":                      {Int, "2"},
-		"com.apple.trackpad.scaling":     {Float, "1.5"},
-		"NSWindow Frame Main":            {Composite, ""},
-		"AppleLanguages":                 {Composite, ""},
-		"NSNavRecentPlaces":              {Composite, ""},
-		"lastCheck":                      {Composite, ""},
+		"AppleInterfaceStyle":            {Kind: String, S: "Dark"},
+		"com.apple.swipescrolldirection": {Kind: Bool, S: "false"},
+		"AppleShowAllExtensions":         {Kind: Bool, S: "true"},
+		"KeyRepeat":                      {Kind: Int, S: "2"},
+		"com.apple.trackpad.scaling":     {Kind: Float, S: "1.5"},
+		"NSWindow Frame Main":            {Kind: Composite, S: ""},
+		"AppleLanguages":                 {Kind: Composite, S: ""},
+		"NSNavRecentPlaces":              {Kind: Composite, S: ""},
+		"lastCheck":                      {Kind: Composite, S: ""},
 	}
 	if len(got) != len(want) {
 		t.Errorf("got %d keys, want %d: %v", len(got), len(want), got)

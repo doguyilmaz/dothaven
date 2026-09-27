@@ -2,6 +2,7 @@ package macprefs
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/scan"
 )
@@ -28,7 +29,7 @@ type Counts struct {
 // Entries come back sorted by key, so a snapshot of the same machine is
 // byte-identical run to run.
 func Collect(domain string, plist []byte) ([]Entry, Counts, error) {
-	values, err := Parse(plist)
+	values, err := parse(plist, func(key string) bool { return Portable(domain, key) })
 	if err != nil {
 		return nil, Counts{}, err
 	}
@@ -45,16 +46,20 @@ func Collect(domain string, plist []byte) ([]Entry, Counts, error) {
 		// Preference domains do hold tokens. Anything kept here is written to
 		// a file that can end up in a backup, so it goes through the same
 		// scanner as every other captured file rather than a second rule set.
-		e := Entry{Domain: domain, Key: key, Type: typeName(v.Kind), Value: v.S,
+		value := v.S
+		if v.Raw != "" {
+			value = v.Raw
+		}
+		e := Entry{Domain: domain, Key: key, Type: typeName(v), Value: value,
 			Action: action.String(), Reason: reason}
-		switch res := scan.ScanContent(domain+"/"+key, v.S); res.Action {
+		switch res := scan.ScanContent(domain+"/"+key, value); res.Action {
 		case scan.Skip:
 			counts.Secret++
 			continue
 		case scan.Redact:
 			counts.Secret++
 			// A redacted value cannot be written back, only looked at.
-			e.Value = scan.ApplyRedactions(v.S, res)
+			e.Value = scan.ApplyRedactions(value, res)
 			e.Action = Review.String()
 			e.Reason = "value looks like a secret"
 		}
@@ -71,8 +76,11 @@ func Collect(domain string, plist []byte) ([]Entry, Counts, error) {
 	return entries, counts, nil
 }
 
-func typeName(k Kind) string {
-	switch k {
+func typeName(v Value) string {
+	if v.Raw != "" {
+		return "plist"
+	}
+	switch v.Kind {
 	case String:
 		return "string"
 	case Int:
@@ -103,6 +111,13 @@ func WriteArgs(e Entry) []string {
 		flag = "-float"
 	case "bool":
 		flag = "-bool"
+	case "plist":
+		// With no type flag, `defaults write` parses the value as a property
+		// list, so an XML fragment is stored as the array or dict it spells.
+		if !strings.HasPrefix(e.Value, "<array") && !strings.HasPrefix(e.Value, "<dict") {
+			return nil
+		}
+		return []string{"defaults", "write", e.Domain, e.Key, e.Value}
 	default:
 		return nil
 	}

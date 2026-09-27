@@ -62,3 +62,30 @@ exec dothaven defaults import --yes $WORK/out
 stdout 'Dock rebuilt with 1 app'
 exec dothaven defaults import --dry-run $WORK/out
 stdout 'Dry run — the Dock was not changed'
+
+# Nested settings — here the language order — are carried whole, as the XML
+# fragment `defaults write` stores with its types intact.
+env DOCK_APP=$WORK/Applications/Editor.app
+env FAKE_LANG=tr-TR
+exec dothaven defaults export -o $WORK/lang
+grep '"type": "plist"' $WORK/lang/macos-defaults/prefs.json
+grep '<array><string>tr-TR</string></array>' $WORK/lang/macos-defaults/prefs.json
+
+# Same Mac: already in place.
+exec dothaven defaults import --dry-run $WORK/lang
+stdout 'Nothing to change'
+
+# A Mac set to English gets Turkish back, named in the plan.
+env FAKE_LANG=en-US
+env DEFAULTS_LOG=$WORK/defaults.log
+exec dothaven defaults import --yes $WORK/lang
+stdout 'including language order'
+stdout 'Set 1 preference'
+grep 'write NSGlobalDomain AppleLanguages <array><string>tr-TR</string></array>' $WORK/defaults.log
+
+# If `defaults` stored it as text instead, the old list goes back and the
+# write is reported as failed.
+env FAKE_READTYPE=string
+exec dothaven defaults import --yes $WORK/lang
+stdout '1 preference could not be written'
+grep 'write NSGlobalDomain AppleLanguages <array><string>en-US</string></array>' $WORK/defaults.log

@@ -57,8 +57,21 @@ func fakeDefaults() {
 		if len(args) >= 3 && args[1] == "com.apple.dock" && args[2] == "persistent-apps" {
 			fmt.Println(`( { "tile-data" = { "file-data" = { "_CFURLString" = "file://` + os.Getenv("DOCK_APP") + `/"; }; }; } )`)
 		}
-	case "write":
+	case "write", "delete":
+		// DEFAULTS_LOG records what would have changed on a real Mac.
+		if log := os.Getenv("DEFAULTS_LOG"); log != "" {
+			f, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			fmt.Fprintln(f, strings.Join(args, " "))
+			f.Close()
+		}
 		fmt.Println("wrote")
+	case "read-type":
+		// FAKE_READTYPE simulates `defaults` storing a value as a string.
+		if t := os.Getenv("FAKE_READTYPE"); t != "" {
+			fmt.Println("Type is " + t)
+		} else {
+			fmt.Println("Type is array")
+		}
 	case "export":
 		switch args[1] {
 		case "com.googlecode.iterm2":
@@ -73,7 +86,12 @@ func fakeDefaults() {
 			if os.Getenv("FAKE_SCROLL") == "true" {
 				v = "<true/>"
 			}
-			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.swipescrolldirection</key>` + v + `</dict></plist>`)
+			// FAKE_LANG adds the language order, a nested value.
+			lang := ""
+			if l := os.Getenv("FAKE_LANG"); l != "" {
+				lang = "<key>AppleLanguages</key>\n\t<array>\n\t\t<string>" + l + "</string>\n\t</array>"
+			}
+			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.swipescrolldirection</key>` + v + lang + `</dict></plist>`)
 		default:
 			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>`)
 		}

@@ -65,6 +65,24 @@ var identifier = regexp.MustCompile(
 // the equivalent here is something a person can choose, so it is reported.
 var hostPath = regexp.MustCompile(`^(/Users/|/Volumes/|/private/)`)
 
+// portable are the nested values worth carrying: settings you notice the
+// moment you sit at a new Mac, which happen to live in an array or a dict.
+// Everything else nested stays skipped — Spaces layouts, display arrangements,
+// an app's own state.
+var portable = map[string]bool{
+	"NSGlobalDomain\x00AppleLanguages":                       true, // language order
+	"com.apple.HIToolbox\x00AppleEnabledInputSources":        true, // keyboard layouts
+	"com.apple.symbolichotkeys\x00AppleSymbolicHotKeys":      true, // system keyboard shortcuts
+	"com.apple.universalaccess\x00com.apple.custommenu.apps": true, // apps listed under App Shortcuts
+}
+
+// Portable reports whether a nested value is carried: the list above, and
+// NSUserKeyEquivalents in any domain — the App Shortcuts set for a menu item,
+// kept in that app's domain (NSGlobalDomain for "All Applications").
+func Portable(domain, key string) bool {
+	return key == "NSUserKeyEquivalents" || portable[domain+"\x00"+key]
+}
+
 // Classify decides what to do with one preference, and says why.
 //
 // The order matters. Anything that is not a single value goes first, because
@@ -74,6 +92,9 @@ var hostPath = regexp.MustCompile(`^(/Users/|/Volumes/|/private/)`)
 // reported rather than dropped.
 func Classify(domain, key string, v Value) (Action, string) {
 	if v.Kind == Composite {
+		if v.Raw != "" && Portable(domain, key) {
+			return Apply, ""
+		}
 		return Skip, "not a single value"
 	}
 	if key == "" {
