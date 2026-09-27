@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="dothaven">
+  <title>dothaven</title>
+  <defs>
+    <linearGradient id="dothaven-tile-s" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3d8ff0"/>
+      <stop offset="1" stop-color="#3b3fae"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#dothaven-tile-s)"/>
+  <path d="M12 34 L32 15 L52 34" fill="none" stroke="#fff" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="42" r="9" fill="#fff"/>
+</svg>

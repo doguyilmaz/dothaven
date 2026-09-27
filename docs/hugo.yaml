@@ -34,10 +34,15 @@ menu:
         icon: github
 
 params:
-  description: "Discover, back up, and migrate your machine's dev config — feeding chezmoi with age-encrypted secrets."
+  description: "Move your whole dev setup to a new machine — dotfiles, AI tools, keys, apps and settings — encrypted, selective, and checked."
   navbar:
     displayTitle: true
-    displayLogo: false
+    displayLogo: true
+    logo:
+      path: images/logo.svg
+      dark: images/logo.svg
+      width: 28
+      height: 28
   footer:
     enable: true
     displayCopyright: false
