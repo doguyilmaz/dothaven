@@ -32,6 +32,18 @@ type Pattern struct {
 	// secret. Their matches are checked by valueLooksReal before reporting.
 	// Structural rules (a PEM header, an AWS key's shape) need no such check.
 	keyword bool
+	// check, when set, vets a match before it is reported — for rules whose
+	// shape also fits things that are not secret (127.0.0.1 is an IP address
+	// and tells nobody anything).
+	check func(match string) bool
+}
+
+// real reports whether a match survives the rule's own vetting.
+func (p Pattern) real(match string) bool {
+	if p.keyword && !valueLooksReal(match) {
+		return false
+	}
+	return p.check == nil || p.check(match)
 }
 
 type Finding struct {

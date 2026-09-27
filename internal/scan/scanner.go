@@ -43,14 +43,22 @@ var skipDirs = map[string]bool{
 
 // ScanContent scans text line by line against every pattern. The result's
 // Action is the highest-priority action among the findings (skip > redact >
-// include); no findings → include.
-func ScanContent(path, content string) Result {
+// include); no findings → include. Lines over maxLineLen are skipped, which is
+// right for a walk over a whole home directory and wrong for a gate.
+func ScanContent(path, content string) Result { return scanContent(path, content, maxLineLen) }
+
+// ScanContentFull is ScanContent without the line-length shortcut. A gate —
+// the check that decides whether a file may be written somewhere in plaintext
+// — cannot skip the one long line a single-line JSON config keeps its token on.
+func ScanContentFull(path, content string) Result { return scanContent(path, content, 0) }
+
+func scanContent(path, content string, maxLine int) Result {
 	pats := Patterns() // hoisted out of the line loop
 	// Binary content is matched only against key-material rules; see looksBinary.
 	binary := looksBinary(content)
 	var findings []Finding
 	for i, line := range strings.Split(content, "\n") {
-		if len(line) > maxLineLen {
+		if maxLine > 0 && len(line) > maxLine {
 			continue // minified/data line — not where secrets live, and costly to scan
 		}
 		for _, p := range pats {
@@ -62,8 +70,13 @@ func ScanContent(path, content string) Result {
 				continue
 			}
 			match := line[loc[0]:loc[1]]
-			if p.keyword && !valueLooksReal(match) {
-				continue
+			if !p.real(match) {
+				// The first match on a line can be noise while a later one is
+				// not: `127.0.0.1 … 10.2.3.4`.
+				if !anyReal(p, line) {
+					continue
+				}
+				match = firstReal(p, line)
 			}
 			findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(match, 40)})
 		}
@@ -170,6 +183,17 @@ func ScanDir(ctx context.Context, dir string, progress *int64, prune bool) ([]Re
 		return out, walkErr
 	}
 	return out, nil
+}
+
+func anyReal(p Pattern, line string) bool { return firstReal(p, line) != "" }
+
+func firstReal(p Pattern, line string) string {
+	for _, m := range p.re.FindAllString(line, -1) {
+		if p.real(m) {
+			return m
+		}
+	}
+	return ""
 }
 
 // Summarize keeps only results with findings and tallies actions.

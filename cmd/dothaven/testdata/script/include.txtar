@@ -1,0 +1,48 @@
+# Paths dothaven has never heard of still travel: `include` adds them, backup
+# carries them under extra/, and restore puts them back in the same place —
+# even on a machine whose own include list is empty.
+
+# A config nothing covers is reported as such.
+exec dothaven include --list
+stdout 'Not covered by anything'
+stdout '~/.mytoolrc'
+stdout '~/.config/raycast'
+
+exec dothaven include ~/.mytoolrc .config/raycast
+stdout '\+ ~/.mytoolrc'
+stdout '\+ ~/.config/raycast'
+grep '~/.mytoolrc' .config/dothaven/include
+
+# Outside home is refused.
+exec dothaven include /etc/hosts
+stderr 'not inside your home folder'
+
+exec dothaven include --list
+stdout 'Added by you'
+! stdout '\? ~/.mytoolrc'
+
+exec dothaven backup -o out --only extra,dothaven
+stdout 'extra \(3\)'
+globpath DIR out/backup-*
+exists $DIR/extra/.mytoolrc
+exists $DIR/extra/.config/raycast/settings.json
+
+# New machine: nothing there, not even the include list.
+rm .mytoolrc .config
+exec dothaven restore $DIR
+stdout 'Restored 4 files'
+grep 'theme=dark' .mytoolrc
+exists .config/raycast/settings.json
+exists .config/raycast/extensions/x.json
+exists .config/dothaven/include
+
+# --remove takes it off the list.
+exec dothaven include --remove ~/.mytoolrc
+stdout '− ~/.mytoolrc'
+
+-- .mytoolrc --
+theme=dark
+-- .config/raycast/settings.json --
+{"hotkey": "cmd+space"}
+-- .config/raycast/extensions/x.json --
+{}

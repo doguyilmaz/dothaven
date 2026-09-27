@@ -13,8 +13,8 @@ func TestManifestDescribesAndExcludes(t *testing.T) {
 	}
 	m := Manifest(ManifestMeta{Host: "mac", OS: "darwin", Version: "v1.2.3", Created: "2026-06-24T00:00:00Z", Redacted: true}, res)
 	for _, want := range []string{
-		"host:     mac", "os:       darwin", "dothaven: v1.2.3",
-		"yes (secrets redacted)", "dothaven restore <this-directory>",
+		"host:      mac", "os:        darwin", "dothaven:  v1.2.3",
+		"secrets redacted", "dothaven restore <this backup>",
 		"shell (3)", "git (2)",
 		"secrets/gnupg", "cloud/aws/credentials", "chezmoi-export --apply",
 	} {
@@ -26,10 +26,10 @@ func TestManifestDescribesAndExcludes(t *testing.T) {
 
 func TestManifestNoExclusions(t *testing.T) {
 	m := Manifest(ManifestMeta{Host: "m", Redacted: false}, Result{PerCategory: map[string]int{}})
-	if !strings.Contains(m, "Excluded: none") {
-		t.Errorf("expected 'Excluded: none':\n%s", m)
+	if !strings.Contains(m, "Left out: nothing") {
+		t.Errorf("expected 'Left out: nothing':\n%s", m)
 	}
-	if !strings.Contains(m, "no (raw values kept)") {
+	if !strings.Contains(m, "raw values kept, NOT encrypted") {
 		t.Errorf("expected raw-values note:\n%s", m)
 	}
 }

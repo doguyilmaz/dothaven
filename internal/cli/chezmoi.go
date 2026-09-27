@@ -91,17 +91,29 @@ func removeByID(plan []chezmoi.PlanItem, id string) []chezmoi.PlanItem {
 	return out
 }
 
-func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.Manifest {
-	cctx := collect.Ctx{Context: ctx, Env: env, Home: env.Home(), Redact: false}
-	brew := collect.HomebrewCollector(cctx)
-	pkgs := collect.PackagesCollector(cctx)
-	runtimes := collect.RuntimesCollector(cctx)
-	exts := collect.EditorsExtCollector(cctx)
-	linux := collect.LinuxPackagesCollector(cctx)
+// installCollectors are the collectors whose sections feed the install script.
+func installCollectors() []collect.Collector {
+	return []collect.Collector{
+		collect.HomebrewCollector, collect.PackagesCollector, collect.RuntimesCollector,
+		collect.EditorsExtCollector, collect.LinuxPackagesCollector,
+	}
+}
 
-	specs := func(snap snapshot.Snapshot, id string) []string {
+func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.Manifest {
+	snap := collect.RunCollectors(collect.Ctx{Context: ctx, Env: env, Home: env.Home()}, installCollectors())
+	return manifestFromSnapshot(snap, pin)
+}
+
+// manifestFromSnapshot turns inventory sections into the reinstall manifest.
+// Shared by the chezmoi install script and the one a backup carries, so both
+// reinstall the same things.
+func manifestFromSnapshot(snap snapshot.Snapshot, pin bool) chezmoi.Manifest {
+	specs := func(id string) []string {
 		var out []string
 		for _, it := range snap[id].Items {
+			if it.Raw == scan.Marker {
+				continue // redacted in a plaintext inventory
+			}
 			if s := chezmoi.PickInstallSpec(it, pin); s != "" {
 				out = append(out, s)
 			}
@@ -109,20 +121,20 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 		return out
 	}
 
-	// The Brewfile is embedded verbatim into an UNENCRYPTED script — redact any
+	// The Brewfile is embedded verbatim into an unencrypted script — redact any
 	// inline credentials (e.g. a private tap's https://user:pass@host) first, and
 	// drop it entirely on a skip-action secret (a private key): ApplyRedactions
 	// only masks redact-action findings, so embedding a skip-action body would
 	// leak it raw. Mirrors the drop-on-skip gate used by collect/backup.
 	var brewfile string
-	if c := brew["apps.brew.bundle"].Content; c != nil {
-		if sr := scan.ScanContent("Brewfile", *c); sr.Action != scan.Skip {
+	if c := snap["apps.brew.bundle"].Content; c != nil {
+		if sr := scan.ScanContentFull("Brewfile", *c); sr.Action != scan.Skip {
 			brewfile = scan.ApplyRedactions(*c, sr)
 		}
 	}
 
 	var nodeVersions []string // node always keeps its exact version
-	for _, it := range pkgs["packages.node.fnm"].Items {
+	for _, it := range snap["packages.node.fnm"].Items {
 		if len(it.Columns) > 0 {
 			nodeVersions = append(nodeVersions, it.Columns[0])
 		}
@@ -131,23 +143,23 @@ func gatherInstallManifest(ctx context.Context, env *sys.OS, pin bool) chezmoi.M
 	return chezmoi.Manifest{
 		Brewfile:         brewfile,
 		NodeVersions:     nodeVersions,
-		BunGlobals:       specs(pkgs, "packages.bun.global"),
-		NpmGlobals:       specs(pkgs, "packages.npm.global"),
-		PnpmGlobals:      specs(pkgs, "packages.pnpm.global"),
-		CargoCrates:      specs(runtimes, "runtimes.rust.crates"),
-		DenoBins:         specs(pkgs, "packages.deno.bin"),
-		PipxPackages:     specs(pkgs, "packages.pipx"),
-		CursorExtensions: specs(exts, "editor.cursor.extensions"),
-		RustToolchains:   specs(runtimes, "runtimes.rust.toolchains"),
-		UvTools:          specs(pkgs, "packages.uv"),
-		ComposerGlobals:  specs(pkgs, "packages.composer"),
-		PubGlobals:       specs(pkgs, "packages.pub"),
-		DotnetTools:      specs(pkgs, "packages.dotnet"),
-		AptPackages:      specs(linux, "packages.apt"),
-		DnfPackages:      specs(linux, "packages.dnf"),
-		PacmanPackages:   specs(linux, "packages.pacman"),
-		SnapPackages:     specs(linux, "packages.snap"),
-		FlatpakPackages:  specs(linux, "packages.flatpak"),
+		BunGlobals:       specs("packages.bun.global"),
+		NpmGlobals:       specs("packages.npm.global"),
+		PnpmGlobals:      specs("packages.pnpm.global"),
+		CargoCrates:      specs("runtimes.rust.crates"),
+		DenoBins:         specs("packages.deno.bin"),
+		PipxPackages:     specs("packages.pipx"),
+		CursorExtensions: specs("editor.cursor.extensions"),
+		RustToolchains:   specs("runtimes.rust.toolchains"),
+		UvTools:          specs("packages.uv"),
+		ComposerGlobals:  specs("packages.composer"),
+		PubGlobals:       specs("packages.pub"),
+		DotnetTools:      specs("packages.dotnet"),
+		AptPackages:      specs("packages.apt"),
+		DnfPackages:      specs("packages.dnf"),
+		PacmanPackages:   specs("packages.pacman"),
+		SnapPackages:     specs("packages.snap"),
+		FlatpakPackages:  specs("packages.flatpak"),
 	}
 }
 
@@ -169,8 +181,10 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			// Interactive picker on a terminal with no explicit filter. The
 			// install groups (brew, packages) sit alongside config categories.
 			if len(only) == 0 && len(skip) == 0 && tui.Interactive() {
-				groups := backupGroups(registry.BackupTargets(home, registry.Entries))
-				groups = append(groups, tui.Group{Name: "brew"}, tui.Group{Name: "packages"})
+				groups := backupGroups(registry.BackupTargets(home, allEntries(env)), "🔒 encrypted")
+				groups = append(groups,
+					tui.Group{Name: "brew", About: "Homebrew formulae & casks, reinstalled on apply"},
+					tui.Group{Name: "packages", About: "global npm/pnpm/bun/pipx/cargo… packages"})
 				chosen, err := tui.SelectCategories("What to export to chezmoi", groups)
 				if err != nil {
 					return err

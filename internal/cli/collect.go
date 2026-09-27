@@ -42,6 +42,23 @@ func defaultCollectors() []collect.Collector {
 	}
 }
 
+// gatherInventory is the collector pipeline minus the registry file reads:
+// what is installed, not what the config files say. A backup already carries
+// those files, and copying their contents a second time into the inventory
+// would double the size and the places a secret can sit.
+func gatherInventory(ctx context.Context, env *sys.OS) snapshot.Snapshot {
+	var cols []collect.Collector
+	for i, c := range defaultCollectors() {
+		if i != 1 { // defaultCollectors()[1] is the registry adapter
+			cols = append(cols, c)
+		}
+	}
+	var done int64
+	stop := startProgress("listing installed apps & packages", &done, len(cols))
+	defer stop()
+	return collect.RunCollectors(collect.Ctx{Context: ctx, Env: env, Home: env.Home(), Done: &done}, cols)
+}
+
 // gatherSnapshot runs the full collector pipeline against the live machine. The
 // context (from the command, signal-aware) bounds and cancels the run.
 func gatherSnapshot(ctx context.Context, env *sys.OS, redact bool) snapshot.Snapshot {
@@ -115,19 +132,16 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 				return err
 			}
 
-			dir := env.ResolveOutputDir(output)
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return err
+			dir := output
+			if dir == "" {
+				dir = snapshotDir(env)
 			}
-			host, _ := os.Hostname()
-			if host == "" {
-				host = "machine"
-			}
-			path := filepath.Join(dir, fmt.Sprintf("%s-%s.json", host, sys.Timestamp(time.Now())))
+			path := filepath.Join(dir, fmt.Sprintf("%s-%s.json", hostname(), sys.Timestamp(time.Now())))
 			if err := sys.WriteFileSecure(path, string(data)); err != nil {
 				return err
 			}
-			fmt.Printf("%s %s\n", bold("Report saved to:"), path)
+			fmt.Printf("%s %s\n", bold("Snapshot saved to:"), path)
+			fmt.Printf("  %s\n", dim(fmt.Sprintf("%d sections. Browse with `dothaven list <section>`, e.g. `dothaven list brew`.", len(snap))))
 
 			if redact {
 				if report := scan.FormatReport(scan.Summarize(scanResults), scan.ReportOptions{Color: colorOn()}); strings.TrimSpace(report) != "" {
@@ -139,6 +153,6 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 	}
 	c.Flags().BoolVar(&noRedact, "no-redact", false, "keep raw values (skip secret redaction)")
 	c.Flags().BoolVar(&slim, "slim", false, "truncate long file contents to 10 lines")
-	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/.local/share/dothaven)")
+	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ~/.local/share/dothaven/snapshots)")
 	return c
 }

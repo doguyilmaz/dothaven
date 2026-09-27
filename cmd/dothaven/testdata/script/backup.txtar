@@ -1,15 +1,35 @@
 # backup copies registry-tracked files into a timestamped dir
 exec dothaven backup -o out --only shell,git
-stdout 'Backup saved to:'
-stdout 'files across:'
-exists out
+stdout 'Backup saved — 2 files'
+stdout 'git \(1\), shell \(1\)'
+stdout 'dothaven backup --encrypt'
+globpath DIR out/backup-*
+exists $DIR/shell/.zshrc
+exists $DIR/MANIFEST.txt
+grep 'Left out: nothing' $DIR/MANIFEST.txt
 
-# an unknown category matches nothing
-exec dothaven backup -o out2 --only nonexistent
-stdout 'No files found to backup'
+# a misspelled category is an error that names the real ones, not an empty backup
+! exec dothaven backup -o out2 --only shel
+stderr 'unknown category "shel"'
+stderr 'shell'
+
+# a plaintext backup leaves the SSH key out, and says so
+exec dothaven backup -o out3 --only ssh
+stdout 'credentials left out of this plaintext backup'
+stdout '^\s+ssh$'
+globpath DIR3 out3/backup-*
+exists $DIR3/ssh/config
+! exists $DIR3/ssh/id_ed25519
 
 -- .zshrc --
 alias ll='ls -la'
 -- .gitconfig --
 [user]
 	name = Test
+-- .ssh/config --
+Host box
+  User me
+-- .ssh/id_ed25519 --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAA
+-----END OPENSSH PRIVATE KEY-----

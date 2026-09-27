@@ -21,7 +21,7 @@ func menuOption(label, value, hint string) huh.Option[string] {
 	if hint == "" {
 		return huh.NewOption(label, value)
 	}
-	return huh.NewOption(fmt.Sprintf("%-37s %s", label, menuHintStyle.Render(hint)), value)
+	return huh.NewOption(fmt.Sprintf("%-40s %s", label, menuHintStyle.Render(hint)), value)
 }
 
 // Interactive reports whether both stdin and stdout are terminals, i.e. a prompt
@@ -35,12 +35,12 @@ func isTTY(f *os.File) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// Group is one selectable category with its entry count and whether it holds
-// secrets (encrypted on export).
+// Group is one selectable category: its name, a plain-words description of
+// what is in it, and a short note (e.g. that it holds credentials).
 type Group struct {
-	Name      string
-	Count     int
-	Encrypted bool
+	Name  string
+	About string
+	Note  string
 }
 
 // SelectCategories presents a multi-select of category groups (all pre-selected)
@@ -52,20 +52,18 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 	}
 	opts := make([]huh.Option[string], len(groups))
 	for i, g := range groups {
-		label := fmt.Sprintf("%-10s", g.Name)
-		if g.Count > 0 {
-			label = fmt.Sprintf("%-10s %2d", g.Name, g.Count)
-		}
-		if g.Encrypted {
-			label += "  🔒 encrypted"
+		label := fmt.Sprintf("%-10s %s", g.Name, menuHintStyle.Render(g.About))
+		if g.Note != "" {
+			label += "  " + g.Note
 		}
 		opts[i] = huh.NewOption(label, g.Name).Selected(true)
 	}
 	selected := make([]string, 0, len(groups))
 	field := huh.NewMultiSelect[string]().
 		Title(title).
-		Description("space toggles · enter confirms").
+		Description("Everything is selected. space toggles · a toggles all · enter continues").
 		Options(opts...).
+		Height(min(len(groups)+4, 22)).
 		Value(&selected)
 	if err := huh.NewForm(huh.NewGroup(field)).Run(); err != nil {
 		return nil, err
@@ -73,42 +71,68 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 	return selected, nil
 }
 
-// MainMenu shows the top-level action picker and returns the chosen command
-// name ("quit" = quit).
-func MainMenu() (string, error) {
-	// The bound value must NOT match any option's value, or huh fails to render
-	// the options before the matched one until a keypress (huh#679). An empty
-	// default matches nothing, so the cursor starts at the top and all render.
-	var choice string
-	sel := huh.NewSelect[string]().
-		Title("dothaven").
-		Description("pick an action").
-		// Ordered least to most destructive, and the cursor starts at the top.
-		// "Set up this machine" used to sit there: two keypresses from launch
-		// to a chezmoi apply that overwrites $HOME and runs an install script.
-		// The ones that write say so.
-		Options(
-			menuOption("Am I safe to wipe this Mac?", "ready", "finds unpushed work — read-only"),
-			menuOption("What's changed?", "status", "latest backup vs this machine — read-only"),
-			menuOption("Check setup (chezmoi + age)", "init", "verify chezmoi + age are ready — read-only"),
-			menuOption("Scan for secrets", "scan", "check this folder for keys and tokens — read-only"),
-			menuOption("Back up configs", "backup", "create a new local config backup"),
-			menuOption("Save this Mac's own settings", "defaults export", "scrolling, keys, Dock, Finder — read-only"),
-			menuOption("Export to chezmoi (age-encrypted)", "chezmoi-export", "stage configs; secrets encrypted"),
-			menuOption("Restore from the latest backup", "restore", "WRITES to ~ — asks before each conflict"),
-			menuOption("Put this Mac's settings back", "defaults import", "CHANGES system settings — asks first"),
-			menuOption("Set up this machine (chezmoi apply)", "migrate", "WRITES to ~ and runs your install script"),
-			menuOption("Quit", "quit", ""),
-		).
-		Value(&choice)
-	if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
-		// Esc / Ctrl-C at the menu means quit, not an error to surface.
-		if errors.Is(err, huh.ErrUserAborted) {
-			return "quit", nil
-		}
-		return "", err
+// PickSome presents a multi-select with nothing chosen and returns the picks.
+func PickSome(title, description string, items []string) ([]string, error) {
+	if len(items) == 0 {
+		return nil, nil
 	}
-	return choice, nil
+	opts := make([]huh.Option[string], len(items))
+	for i, it := range items {
+		opts[i] = huh.NewOption(it, it)
+	}
+	var picked []string
+	field := huh.NewMultiSelect[string]().
+		Title(title).
+		Description(description).
+		Options(opts...).
+		Height(min(len(items)+4, 20)).
+		Value(&picked)
+	if err := huh.NewForm(huh.NewGroup(field)).Run(); err != nil {
+		return nil, err
+	}
+	return picked, nil
+}
+
+// MenuItem is one line of a menu. A Heading groups the lines under it and
+// cannot be chosen.
+type MenuItem struct {
+	Label, Value, Hint string
+	Heading            bool
+}
+
+var headingStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+
+// headingValue marks a heading; choosing one just shows the menu again.
+const headingValue = "\x00heading"
+
+// Menu shows a list of actions under headings and returns the chosen value.
+// Esc or Ctrl-C returns "quit".
+func Menu(title, description string, items []MenuItem) (string, error) {
+	opts := make([]huh.Option[string], 0, len(items))
+	for i, it := range items {
+		if it.Heading {
+			opts = append(opts, huh.NewOption(headingStyle.Render(it.Label), fmt.Sprintf("%s%d", headingValue, i)))
+			continue
+		}
+		opts = append(opts, menuOption("  "+it.Label, it.Value, it.Hint))
+	}
+	for {
+		// The bound value must NOT match any option's value, or huh fails to
+		// render the options before the matched one until a keypress (huh#679).
+		var choice string
+		sel := huh.NewSelect[string]().Title(title).Description(description).
+			Options(opts...).Height(min(len(opts)+2, 30)).Value(&choice)
+		if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return "quit", nil
+			}
+			return "", err
+		}
+		if len(choice) >= len(headingValue) && choice[:len(headingValue)] == headingValue {
+			continue
+		}
+		return choice, nil
+	}
 }
 
 // Choice is one answer to a guided question. Hint is the muted line beside it,

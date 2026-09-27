@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/doguyilmaz/dothaven/internal/sys"
 	"github.com/spf13/cobra"
@@ -43,7 +44,7 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 			// summary that could disagree with what follows.
 			if dryRun {
 				fmt.Println("Would apply the following (chezmoi diff):")
-				out, err := runShell(ctx, "chezmoi", "diff")
+				out, err := runShell(ctx, "chezmoi", "diff", "--no-pager")
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "✗ chezmoi diff failed: %v\n%s\n", err, out)
 					return ExitError{Code: 1}
@@ -64,11 +65,18 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 			}
 
 			fmt.Println("\nApplying chezmoi source… (this also runs your install script)")
-			if out, err := runShell(ctx, "chezmoi", "apply"); err != nil {
-				fmt.Fprintf(os.Stderr, "✗ chezmoi apply failed: %v\n%s\n", err, out)
+			// On the terminal and with no deadline. The install script is a
+			// `brew bundle` that downloads for tens of minutes and asks for a
+			// password; run through a captured, 60-second pipe it was killed
+			// part-way through, silently, with its prompts unanswerable.
+			apply := exec.CommandContext(ctx, "chezmoi", "apply")
+			apply.Stdin, apply.Stdout, apply.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := apply.Run(); err != nil {
+				if ctx.Err() != nil {
+					return ExitError{Code: 130}
+				}
+				fmt.Fprintf(os.Stderr, "✗ chezmoi apply failed: %v\n", err)
 				return ExitError{Code: 1}
-			} else if out != "" {
-				fmt.Println(out)
 			}
 
 			fmt.Println("\n" + good("✓ Applied.") + " Next:")

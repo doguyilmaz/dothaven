@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Status is the outcome for one file.
@@ -36,10 +37,22 @@ type Result struct {
 // Runner executes a validator. Injected for testing.
 type Runner func(ctx context.Context, name string, args ...string) (string, error)
 
+// checkTimeout bounds one validator. `ssh -G` evaluates `Match exec` lines,
+// which run whatever command the config names; one that waits on the network
+// must not stall the whole check.
+const checkTimeout = 10 * time.Second
+
 // ExecRunner runs a real command and returns its combined output, which is
 // where parsers put their complaints.
 func ExecRunner(ctx context.Context, name string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = 2 * time.Second
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return string(out), exec.ErrWaitDelay // surfaced as unchecked, not broken
+	}
 	return string(out), err
 }
 
@@ -107,6 +120,11 @@ func verdict(r Result, out string, err error) Result {
 	if errors.Is(err, exec.ErrNotFound) {
 		r.Status = Unchecked
 		r.Detail = "no parser for this format on this machine"
+		return r
+	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		r.Status = Unchecked
+		r.Detail = "validator timed out"
 		return r
 	}
 	r.Status, r.Detail = Broken, trimDetail(out)

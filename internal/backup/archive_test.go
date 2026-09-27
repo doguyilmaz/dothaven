@@ -95,19 +95,26 @@ func TestExtractSkipsSymlinks(t *testing.T) {
 	}
 }
 
-func TestIsArchiveAndIsEncrypted(t *testing.T) {
-	cases := map[string][2]bool{ // path -> {IsArchive, IsEncrypted}
-		"/x/backup-mac.tar.gz":     {true, false},
-		"/x/backup-mac.tar.gz.age": {true, true},
-		"/x/backup-mac":            {false, false},
+// Format is judged by content, so a backup renamed on the way across — or saved
+// by a browser as "backup (1)" — still opens.
+func TestDetectByContent(t *testing.T) {
+	d := t.TempDir()
+	plain := filepath.Join(d, "renamed")
+	writeTarGz(t, plain, map[string]string{"b/x": "1"})
+	enc := filepath.Join(d, "also-renamed")
+	if err := WriteArchive(enc, "b", "correct horse battery", func(s Sink) error { return s.Add("x", []byte("1"), false) }); err != nil {
+		t.Fatal(err)
 	}
-	for path, want := range cases {
-		if got := IsArchive(path); got != want[0] {
-			t.Errorf("IsArchive(%q) = %v, want %v", path, got, want[0])
+	other := filepath.Join(d, "notes.txt")
+	os.WriteFile(other, []byte("hello"), 0o600)
+
+	for path, want := range map[string]Format{plain: FormatTarGz, enc: FormatAge, other: FormatUnknown, d: FormatDir} {
+		if got := Detect(path); got != want {
+			t.Errorf("Detect(%s) = %v, want %v", filepath.Base(path), got, want)
 		}
-		if got := IsEncrypted(path); got != want[1] {
-			t.Errorf("IsEncrypted(%q) = %v, want %v", path, got, want[1])
-		}
+	}
+	if !IsArchive(plain) || !IsArchive(enc) || IsArchive(other) || IsArchive(d) {
+		t.Error("IsArchive disagrees with Detect")
 	}
 }
 

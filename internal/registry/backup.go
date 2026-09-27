@@ -9,6 +9,7 @@ type BackupTarget struct {
 	IsDir       bool
 	Redact      func(string) string
 	Sensitivity Sensitivity
+	Exclude     []string // Dir only: patterns dropped from the walk (see backup.Excluded)
 }
 
 // BackupTargets resolves every entry with a path on this platform into a backup
@@ -28,6 +29,7 @@ func BackupTargets(home string, entries []Entry) []BackupTarget {
 			IsDir:       e.Kind == Dir,
 			Redact:      e.Redact,
 			Sensitivity: e.Sensitivity,
+			Exclude:     e.Exclude,
 		})
 	}
 	return out

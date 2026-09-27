@@ -1,15 +1,15 @@
 package cli
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/doguyilmaz/dothaven/internal/backup"
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/restore"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -17,8 +17,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func targetsFor(env *sys.OS) []registry.BackupTarget {
-	return registry.BackupTargets(env.Home(), registry.Entries)
+// restoreTargets maps a backup back onto this machine: the registry, the
+// user's includes, and a catch-all for extra/ so paths someone included on the
+// old machine come back even before this one has an include list.
+func restoreTargets(env *sys.OS) []registry.BackupTarget {
+	t := registry.BackupTargets(env.Home(), allEntries(env))
+	return append(t, registry.BackupTarget{
+		Src: env.Home(), Dest: registry.ExtraCategory, Category: registry.ExtraCategory,
+		IsDir: true, Sensitivity: registry.Medium,
+	})
 }
 
 // conflictAction maps a TUI choice onto the restore engine's action enum, keeping
@@ -37,92 +44,278 @@ func conflictAction(c tui.ConflictChoice) restore.ConflictAction {
 }
 
 func newRestoreCmd(env *sys.OS) *cobra.Command {
-	var dryRun, force bool
+	var dryRun, force, assumeYes bool
 	var only, skip []string
 	c := &cobra.Command{
-		Use:   "restore <backup-path>",
-		Short: "Restore files from a backup into your home directory",
-		Long: "Accepts a backup directory, a .tar.gz, or an age-encrypted .tar.gz.age.\n" +
-			"An archive is unpacked to a temporary directory that is removed afterwards.",
-		Args: cobra.ExactArgs(1),
+		Use:   "restore [backup]",
+		Short: "Put a backup's files back into your home folder",
+		Long: "Accepts a backup folder, a .tar.gz, or an encrypted .tar.gz.age (asks for the\n" +
+			"passphrase; no other tools needed). With no path on a terminal, it lists the\n" +
+			"backups it can find — dothaven's folder, Downloads, Desktop, USB drives.\n\n" +
+			"New files are written. A file that already exists and differs is a conflict:\n" +
+			"on a terminal you choose per file (with a diff); otherwise it is kept, unless\n" +
+			"--force. Anything overwritten is saved to a pre-restore snapshot first.\n\n" +
+			"Afterwards it offers the rest: your macOS settings, and reinstalling apps.",
+		Args:          cobra.MaximumNArgs(1),
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backupPath, _ := filepath.Abs(args[0])
-
-			// `backup --archive` produced a file that `restore` could not read,
-			// which made it a backup format the tool could create and not use.
-			if backup.IsArchive(backupPath) {
-				unpacked, cleanup, uerr := unpackBackup(cmd.Context(), backupPath)
-				if uerr != nil {
-					return uerr
+			path := ""
+			if len(args) == 1 {
+				path, _ = filepath.Abs(args[0])
+			} else {
+				if !tui.Interactive() {
+					return fmt.Errorf("which backup? pass a path: dothaven restore <folder|file>")
 				}
-				defer cleanup()
-				backupPath = unpacked
-			}
-			plan, err := restore.BuildPlan(backupPath, env.Home(), targetsFor(env))
-			if err != nil {
-				return err
-			}
-			plan = restore.Filter(plan, only, skip)
-			if len(plan.Entries) == 0 {
-				fmt.Println("No restorable files found in backup.")
-				return nil
-			}
-
-			if dryRun {
-				printRestorePlan(plan)
-				return nil
-			}
-
-			// Interactive per-conflict resolution on a terminal (unless --force,
-			// which overwrites all). Piped/CI runs stay at the safe default: skip
-			// conflicts.
-			interactive := !force && tui.Interactive()
-			snapDir := ""
-			if force || interactive {
-				snapDir = filepath.Join(env.DataDir(), "pre-restore-"+sys.Timestamp(time.Now()))
-			}
-			opts := restore.ExecuteOptions{Force: force, SnapshotDir: snapDir}
-			if interactive {
-				opts.Resolve = func(e restore.Entry, backup, live string) restore.ConflictAction {
-					choice, err := tui.ResolveConflict(e.TargetPath, backup, live)
-					if err != nil {
-						return restore.ActionSkip
-					}
-					return conflictAction(choice)
+				p, err := pickBackup(env, "Which backup should be restored?")
+				if err != nil || p == "" {
+					return ignoreAbort(err)
 				}
+				path = p
 			}
-			res, err := restore.Execute(plan, opts)
-			if err != nil {
-				return err
-			}
-
-			if res.SnapshotDir != "" {
-				fmt.Printf("Pre-restore snapshot saved to: %s\n", res.SnapshotDir)
-			}
-			if res.Restored == 0 {
-				skipped := restore.Tally(plan.Entries).Conflict
-				if !force && skipped > 0 {
-					fmt.Printf("No files restored. %d conflict(s) skipped — re-run with --force to overwrite.\n", skipped)
-				} else {
-					fmt.Println("No files restored (everything already up to date).")
-				}
-				return nil
-			}
-			fmt.Printf("Restored %d file(s) across: %s\n", res.Restored, formatCategories(res.PerCategory))
-			if res.Skipped > 0 {
-				fmt.Printf("  %d file(s) skipped\n", res.Skipped)
-			}
-			if res.SkippedSymlink > 0 {
-				fmt.Printf("  %d symlinked target(s) skipped — resolve manually so we don't write through a link\n", res.SkippedSymlink)
-			}
-			return nil
+			return runRestore(cmd, env, path, restoreOpts{dryRun: dryRun, force: force, yes: assumeYes, only: only, skip: skip})
 		},
 	}
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "show what would change without writing")
 	c.Flags().BoolVar(&force, "force", false, "overwrite differing files (a pre-restore snapshot is saved first)")
+	c.Flags().BoolVar(&assumeYes, "yes", false, "don't ask before writing")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories (comma-separated)")
 	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories (comma-separated)")
 	return c
+}
+
+type restoreOpts struct {
+	dryRun, force, yes bool
+	only, skip         []string
+}
+
+// ignoreAbort treats Esc / Ctrl-C at a prompt as "never mind".
+func ignoreAbort(err error) error {
+	if errors.Is(err, tui.ErrAborted) {
+		return nil
+	}
+	return err
+}
+
+func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) error {
+	dir, cleanup, err := openBackup(path)
+	defer cleanup()
+	if err != nil {
+		return err
+	}
+	plan, err := restore.BuildPlan(dir, env.Home(), restoreTargets(env))
+	if err != nil {
+		return err
+	}
+	plan = restore.Filter(plan, o.only, o.skip)
+	extras := backupExtras(dir)
+	if len(plan.Entries) == 0 && !extras.any() {
+		fmt.Println("No restorable files found in that backup.")
+		return nil
+	}
+
+	fmt.Printf("%s %s\n", bold("Backup:"), shortHome(env, path))
+	if m := manifestLine(dir); m != "" {
+		fmt.Printf("  %s\n", dim(m))
+	}
+	t := restore.Tally(plan.Entries)
+	fmt.Printf("  %s: %s\n", plural(len(plan.Entries), "file"), restoreBreakdown(t))
+
+	if o.dryRun {
+		printRestorePlan(plan)
+		printRedacted(plan)
+		printNextSteps(env, path, extras)
+		return nil
+	}
+	if t.New+t.Conflict == 0 {
+		fmt.Println(good("✓ Every file in the backup already matches this machine."))
+		printRedacted(plan)
+		return offerExtras(cmd, env, path, dir, extras)
+	}
+
+	interactive := !o.force && tui.Interactive()
+	if interactive && !o.yes {
+		q := fmt.Sprintf("Write %s into your home folder?", plural(t.New, "new file"))
+		if t.Conflict > 0 {
+			q = fmt.Sprintf("Write %s, and ask about the %s that differ?", plural(t.New, "new file"), plural(t.Conflict, "file"))
+		}
+		ok, err := tui.Confirm(q)
+		if err != nil || !ok {
+			fmt.Println("Nothing written.")
+			return ignoreAbort(err)
+		}
+	}
+
+	snapDir := ""
+	if o.force || interactive {
+		snapDir = filepath.Join(env.DataDir(), "pre-restore-"+sys.Timestamp(time.Now()))
+	}
+	opts := restore.ExecuteOptions{Force: o.force, SnapshotDir: snapDir}
+	if interactive {
+		opts.Resolve = func(e restore.Entry, backup, live string) restore.ConflictAction {
+			choice, err := tui.ResolveConflict(shortHome(env, e.TargetPath), backup, live)
+			if err != nil {
+				return restore.ActionSkip
+			}
+			return conflictAction(choice)
+		}
+	}
+	res, err := restore.Execute(plan, opts)
+	if err != nil {
+		return err
+	}
+
+	if res.Restored > 0 {
+		fmt.Printf("\n%s %s %s\n", good("✓"), bold(fmt.Sprintf("Restored %s", plural(res.Restored, "file"))), dim("— "+formatCategories(res.PerCategory)))
+	} else {
+		fmt.Println("\nNo files restored.")
+	}
+	if skipped := t.Conflict - (res.Restored - t.New); skipped > 0 && !o.force {
+		fmt.Printf("  %s %s kept as they are on this machine", dim("•"), plural(skipped, "differing file"))
+		if !interactive {
+			fmt.Print(" — re-run with --force to overwrite")
+		}
+		fmt.Println(".")
+	}
+	if res.SnapshotDir != "" {
+		fmt.Printf("  %s overwritten files saved first to %s\n", dim("•"), shortHome(env, res.SnapshotDir))
+	}
+	if res.SkippedSymlink > 0 {
+		fmt.Printf("  %s %s skipped: the file here is a symlink, and writing through it would change what it points to\n", warn("⚠"), plural(res.SkippedSymlink, "file"))
+	}
+	printRedacted(plan)
+	return offerExtras(cmd, env, path, dir, extras)
+}
+
+func restoreBreakdown(t restore.Counts) string {
+	var parts []string
+	if t.New > 0 {
+		parts = append(parts, fmt.Sprintf("%d new", t.New))
+	}
+	if t.Conflict > 0 {
+		parts = append(parts, warn(fmt.Sprintf("%d differ from this machine", t.Conflict)))
+	}
+	if t.Same > 0 {
+		parts = append(parts, dim(fmt.Sprintf("%d already the same", t.Same)))
+	}
+	if t.Redacted > 0 {
+		parts = append(parts, dim(fmt.Sprintf("%d redacted", t.Redacted)))
+	}
+	if len(parts) == 0 {
+		return "nothing to do"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// manifestLine is the one line of a backup's MANIFEST worth repeating: where
+// and when it was made, and what kind it is.
+func manifestLine(dir string) string {
+	b, err := os.ReadFile(filepath.Join(dir, "MANIFEST.txt"))
+	if err != nil {
+		return ""
+	}
+	var host, created, contents string
+	for _, l := range strings.Split(string(b), "\n") {
+		l = strings.TrimSpace(strings.TrimPrefix(l, "#"))
+		k, v, ok := strings.Cut(l, ":")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(k) {
+		case "host":
+			host = strings.TrimSpace(v)
+		case "created":
+			created = strings.TrimSpace(v)
+		case "contents", "redacted":
+			contents = strings.TrimSpace(v)
+		}
+	}
+	if t, err := time.Parse(time.RFC3339, created); err == nil {
+		created = t.Format("2 Jan 2006 15:04")
+	}
+	return strings.TrimSpace(fmt.Sprintf("from %s, %s — %s", host, created, contents))
+}
+
+// printRedacted names the files a plaintext backup could not give back.
+// Counting them is not enough: "3 redacted" says nothing about which three
+// config files the new machine is now missing.
+func printRedacted(plan restore.Plan) {
+	var red []string
+	for _, e := range plan.Entries {
+		if e.Status == restore.StatusRedacted {
+			red = append(red, e.BackupPath)
+		}
+	}
+	if len(red) == 0 {
+		return
+	}
+	fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s had secrets redacted, so they were not restored:", plural(len(red), "file"))))
+	printList(red, 10)
+	fmt.Println(dim("  They are in the backup for reference. For the real thing, restore an encrypted"))
+	fmt.Println(dim("  backup (dothaven backup --encrypt on the old machine), or copy the values by hand."))
+}
+
+// extras is what a backup carries beyond files.
+type extras struct{ prefs, reinstall, inventory bool }
+
+func (e extras) any() bool { return e.prefs || e.reinstall || e.inventory }
+
+func backupExtras(dir string) extras {
+	exists := func(rel string) bool { _, err := os.Stat(filepath.Join(dir, rel)); return err == nil }
+	return extras{
+		prefs:     exists(filepath.Join("macos-defaults", prefsFileName)),
+		reinstall: exists(filepath.Join("inventory", "install-packages.sh")),
+		inventory: exists(filepath.Join("inventory", "snapshot.json")),
+	}
+}
+
+func printNextSteps(env *sys.OS, path string, x extras) {
+	if !x.any() {
+		return
+	}
+	p := shortHome(env, path)
+	fmt.Println("\n" + bold("Also in this backup:"))
+	if x.prefs {
+		fmt.Printf("  %s  %s\n", kbd("dothaven defaults import "+p), dim("# macOS settings"))
+	}
+	if x.reinstall {
+		fmt.Printf("  %s  %s\n", kbd("dothaven reinstall "+p), dim("# apps & packages you had"))
+	}
+	if x.inventory {
+		fmt.Printf("  %s  %s\n", kbd("dothaven doctor "+p), dim("# what is still missing here"))
+	}
+}
+
+// offerExtras finishes a restore: on a terminal it offers the settings and the
+// reinstall right away, from the backup already open (an encrypted one is not
+// decrypted a second time); otherwise it prints the commands.
+func offerExtras(cmd *cobra.Command, env *sys.OS, path, dir string, x extras) error {
+	if !tui.Interactive() || !x.any() {
+		printNextSteps(env, path, x)
+		return nil
+	}
+	ctx := cmd.Context()
+	if x.prefs && runtime.GOOS == "darwin" {
+		fmt.Println()
+		if ok, err := tui.Confirm("Also put back your macOS settings (trackpad, keyboard, Dock, Finder)?"); err == nil && ok {
+			if err := importDefaults(ctx, env, dir, false, true, false); err != nil {
+				fmt.Fprintln(os.Stderr, "  "+danger("✗")+" "+err.Error())
+			}
+		}
+	}
+	if x.reinstall {
+		fmt.Println()
+		if ok, err := tui.Confirm("Reinstall your apps & packages now? (runs Homebrew etc.; can take a while)"); err == nil && ok {
+			if err := runReinstall(ctx, dir, false); err != nil {
+				fmt.Fprintln(os.Stderr, "  "+danger("✗")+" "+err.Error())
+			}
+		} else {
+			fmt.Printf("  Later: %s\n", kbd("dothaven reinstall "+shortHome(env, path)))
+		}
+	}
+	if x.inventory {
+		fmt.Printf("\nCheck what's still missing any time: %s\n", kbd("dothaven doctor "+shortHome(env, path)))
+	}
+	return nil
 }
 
 var restoreStatusLabel = map[restore.Status]string{
@@ -167,7 +360,7 @@ func newStatusCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("No backup found in %s. Run %s first.\n", dim(env.DataDir()), kbd("dothaven backup"))
 				return nil
 			}
-			plan, err := restore.BuildPlan(backupDir, env.Home(), targetsFor(env))
+			plan, err := restore.BuildPlan(backupDir, env.Home(), restoreTargets(env))
 			if err != nil {
 				return err
 			}
@@ -237,7 +430,12 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("No backup found in %s. Run %s first.\n", dim(env.DataDir()), kbd("dothaven backup"))
 				return nil
 			}
-			plan, err := restore.BuildPlan(backupDir, env.Home(), targetsFor(env))
+			dir, cleanup, err := openBackup(backupDir)
+			defer cleanup()
+			if err != nil {
+				return err
+			}
+			plan, err := restore.BuildPlan(dir, env.Home(), restoreTargets(env))
 			if err != nil {
 				return err
 			}
@@ -302,39 +500,4 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 	}
 	c.Flags().StringVar(&section, "section", "", "only show this category")
 	return c
-}
-
-// unpackBackup extracts an archive to a temporary directory and returns the
-// backup directory inside it, plus a cleanup function.
-//
-// The temporary directory is created with 0700: an archive holds config that
-// was redacted for a backup, not for other users on the machine, and /tmp is
-// readable by everyone.
-func unpackBackup(ctx context.Context, path string) (string, func(), error) {
-	tmp, err := os.MkdirTemp("", "dothaven-restore-")
-	if err != nil {
-		return "", func() {}, err
-	}
-	cleanup := func() { _ = os.RemoveAll(tmp) }
-	if err := os.Chmod(tmp, 0o700); err != nil {
-		cleanup()
-		return "", func() {}, err
-	}
-
-	archivePath := path
-	if backup.IsEncrypted(path) {
-		fmt.Println("Decrypting with age — enter the passphrase used to create it.")
-		archivePath = filepath.Join(tmp, "backup.tar.gz")
-		if err := backup.Decrypt(ctx, path, archivePath); err != nil {
-			cleanup()
-			return "", func() {}, err
-		}
-	}
-
-	dir, err := backup.Extract(archivePath, tmp)
-	if err != nil {
-		cleanup()
-		return "", func() {}, err
-	}
-	return dir, cleanup, nil
 }

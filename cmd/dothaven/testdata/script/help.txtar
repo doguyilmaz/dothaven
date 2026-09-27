@@ -3,6 +3,7 @@ exec dothaven --version
 stdout 'dev'
 
 exec dothaven --help
-stdout 'inventories your machine'
+stdout 'Moving to a new machine'
+stdout 'backup --encrypt'
 stdout 'chezmoi-export'
 stdout 'collect'

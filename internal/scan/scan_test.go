@@ -355,3 +355,38 @@ func TestFormatSecurityReport(t *testing.T) {
 		}
 	}
 }
+
+func TestIPRuleIgnoresLoopbackButKeepsRealAddresses(t *testing.T) {
+	if r := ScanContent("x", "export DOCKER_HOST=tcp://127.0.0.1:2375\nbind 0.0.0.0\nmask 255.255.255.0"); r.Action != Include {
+		t.Errorf("loopback/any/netmask flagged: %+v", r.Findings)
+	}
+	r := ScanContent("x", "ssh 127.0.0.1 then 10.2.3.4")
+	if r.Action != Redact || len(r.Findings) != 1 || r.Findings[0].Match != "10.2.3.4" {
+		t.Errorf("a real address after a loopback one: %+v", r.Findings)
+	}
+}
+
+func TestRedactionKeepsKeyAndSparesCode(t *testing.T) {
+	in := "export API_KEY=sk_" + "live_abcdefghijklmnopqrstuvwx\nif [[ $token == x ]]; then\n"
+	out := ApplyRedactions(in, ScanContent("x", in))
+	if !strings.Contains(out, "export API_KEY="+Marker) {
+		t.Errorf("key name not kept: %q", out)
+	}
+	if !strings.Contains(out, "$token == x") {
+		t.Errorf("code that merely mentions a keyword was masked: %q", out)
+	}
+	if strings.Contains(out, "sk_live_") {
+		t.Errorf("secret survived: %q", out)
+	}
+}
+
+// The gate scans long lines; the directory scan may skip them.
+func TestFullScanReadsLongLines(t *testing.T) {
+	line := strings.Repeat("a", 70<<10) + " ghp_" + strings.Repeat("b", 36)
+	if ScanContent("x", line).Action != Include {
+		t.Fatal("ScanContent is expected to skip a 70 KiB line")
+	}
+	if ScanContentFull("x", line).Action != Redact {
+		t.Error("ScanContentFull missed a token on a long line")
+	}
+}

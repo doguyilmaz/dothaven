@@ -117,11 +117,19 @@ func capturePrefs(ctx context.Context, domains []string) ([]macprefs.Entry, macp
 // writePrefs saves the capture. Owner-only: a preference value can hold a token
 // the scanner did not recognise.
 func writePrefs(path string, entries []macprefs.Entry, counts macprefs.Counts) error {
-	b, err := json.MarshalIndent(prefsFile{Counts: counts, Entries: entries}, "", "  ")
+	b, err := encodePrefs(entries, counts)
 	if err != nil {
 		return err
 	}
-	return sys.WriteFileSecure(path, string(b)+"\n")
+	return sys.WriteFileSecure(path, string(b))
+}
+
+func encodePrefs(entries []macprefs.Entry, counts macprefs.Counts) ([]byte, error) {
+	b, err := json.MarshalIndent(prefsFile{Counts: counts, Entries: entries}, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }
 
 func readPrefs(path string) (prefsFile, error) {

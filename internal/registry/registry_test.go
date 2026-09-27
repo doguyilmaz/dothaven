@@ -21,7 +21,15 @@ func TestResolvePath(t *testing.T) {
 
 func TestEntriesInvariants(t *testing.T) {
 	idx := map[string]Entry{}
+	dests := map[string]string{}
 	for _, e := range Entries {
+		if prev, dup := dests[e.BackupDest]; dup {
+			t.Errorf("%s and %s share BackupDest %q — restore could not tell them apart", prev, e.ID, e.BackupDest)
+		}
+		dests[e.BackupDest] = e.ID
+		if strings.HasPrefix(e.BackupDest, "inventory") || strings.HasPrefix(e.BackupDest, "macos-defaults") || strings.HasPrefix(e.BackupDest, ExtraCategory+"/") {
+			t.Errorf("%s: BackupDest %q collides with a reserved backup folder", e.ID, e.BackupDest)
+		}
 		if e.ID == "" || e.BackupDest == "" {
 			t.Errorf("entry missing ID/BackupDest: %+v", e)
 		}
@@ -44,6 +52,8 @@ func TestEntriesInvariants(t *testing.T) {
 		"cloud.aws.credentials", "cloud.kube.config", "cloud.docker.config",
 		"secrets.netrc", "secrets.vault", "secrets.gnupg", "db.pgpass", "db.mycnf",
 		"build.maven", "build.gradle", "npm.config",
+		"ssh.dir", "ai.codex.auth", "ai.gemini.env", "cloud.gcloud.adc", "cloud.firebase",
+		"mobile.android.debugkey", "cloud.kube.dir",
 	}
 	for _, id := range mustHigh {
 		e, ok := idx[id]
@@ -133,6 +143,39 @@ func TestFileMetadataLineCount(t *testing.T) {
 		snap := Collect(context.Background(), env, home, false, e)
 		if got := snap["terminal.p10k"].Pairs["lines"]; got != want {
 			t.Errorf("content %q: lines=%q, want %q", content, got, want)
+		}
+	}
+}
+
+// Every MCP-bearing config is at least Medium: their env blocks hold API keys
+// in whatever shape the server wants, which a pattern scan can miss, and
+// Medium is what writes them back owner-only.
+func TestMCPConfigsAreNotLow(t *testing.T) {
+	for _, e := range Entries {
+		if strings.Contains(strings.ToLower(e.Name), "mcp") && e.Sensitivity == Low {
+			t.Errorf("%s (%s) carries MCP servers but is Low", e.ID, e.Name)
+		}
+	}
+}
+
+// A file entry whose dest sits inside a dir entry's dest must name the same
+// file on disk, or backup's dedupe and restore's mapping would disagree about
+// which one it is.
+func TestNestedDestsAgreeOnSource(t *testing.T) {
+	for _, goos := range []string{"darwin", "linux"} {
+		for _, d := range Entries {
+			if d.Kind != Dir || d.Paths[goos] == "" {
+				continue
+			}
+			for _, f := range Entries {
+				if f.ID == d.ID || f.Paths[goos] == "" || !strings.HasPrefix(f.BackupDest, d.BackupDest+"/") {
+					continue
+				}
+				want := d.Paths[goos] + strings.TrimPrefix(f.BackupDest, d.BackupDest)
+				if f.Paths[goos] != want {
+					t.Errorf("%s: %s dest %q is inside %s's, but its path %q is not %q", goos, f.ID, f.BackupDest, d.ID, f.Paths[goos], want)
+				}
+			}
 		}
 	}
 }

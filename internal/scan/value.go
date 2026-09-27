@@ -1,6 +1,9 @@
 package scan
 
-import "strings"
+import (
+	"bytes"
+	"strings"
+)
 
 // valueLooksReal reports whether a keyword rule's match carries an actual
 // secret rather than code that happens to mention the word.
@@ -67,6 +70,14 @@ func valueLooksReal(match string) bool {
 // only against key-material rules (Action == Skip), because GnuPG stores a
 // private key as a binary s-expression — skipping such files outright would
 // lose the one finding that matters most in them.
+// LooksBinary is looksBinary for a byte slice, without copying it.
+func LooksBinary(b []byte) bool {
+	if len(b) > 8<<10 {
+		b = b[:8<<10]
+	}
+	return bytes.IndexByte(b, 0) >= 0
+}
+
 func looksBinary(content string) bool {
 	if len(content) > 8<<10 {
 		content = content[:8<<10]

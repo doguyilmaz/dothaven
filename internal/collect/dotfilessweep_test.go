@@ -2,6 +2,7 @@ package collect
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/doguyilmaz/dothaven/internal/registry"
@@ -130,4 +131,24 @@ func TestClassifyDotfiles(t *testing.T) {
 			t.Errorf("review = %v, want [.real]", got.Review)
 		}
 	})
+}
+
+func TestUncoveredOffersOnlyWhatNothingCovers(t *testing.T) {
+	dirs := map[string][]string{
+		"/h":         {".zshrc", ".config", ".claude", ".mytoolrc", ".npm", ".zsh_history", "Documents", ".ssh"},
+		"/h/.config": {"nvim", "raycast", "gh"},
+		"/h/.claude": {"skills", "statusline-command.sh", "projects", "todos"},
+		"/h/bin":     {"deploy"},
+	}
+	list := func(p string) ([]string, error) { return dirs[p], nil }
+	got := Uncovered(list, "/h", registry.Entries, registry.Includes{Declined: []string{"~/.config/gh-dash"}})
+	want := "~/.mytoolrc,~/.config/raycast,~/.claude/statusline-command.sh,~/bin"
+	if strings.Join(got, ",") != want {
+		t.Errorf("Uncovered = %v\nwant %s", got, want)
+	}
+	// Once included (or declined), a path is no longer offered.
+	got = Uncovered(list, "/h", registry.Entries, registry.Includes{Paths: []string{"~/.mytoolrc", "~/bin"}, Declined: []string{"~/.config/raycast"}})
+	if strings.Join(got, ",") != "~/.claude/statusline-command.sh" {
+		t.Errorf("after include/decline = %v", got)
+	}
 }

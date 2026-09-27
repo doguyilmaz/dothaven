@@ -1,23 +1,13 @@
-# An archive must be restorable, and owner-only.
-#
-# This runs the real tar and the real restore. The unit test for Extract used a
-# synthetic archive and passed while the shipped path was broken: macOS tar
-# writes an AppleDouble sidecar ("._name") as the first entry, and the root
-# directory was being read from entry order. Only an end-to-end run touches
-# that, which is why this exists alongside the unit test rather than instead
-# of it.
+# An archive must be restorable, and owner-only. It is written by dothaven
+# itself, so no AppleDouble sidecars and no dependence on the tar binary.
 
 exec dothaven backup --archive -o out --only shell
-stdout 'Archive saved to:'
-stdout 'Restore it with:'
+stdout 'Backup saved — 2 files'
+stdout 'dothaven restore backup-'
 
-# The archive holds the same config the backup directory does, and that is
-# written 0600. tar honours the umask, so this was landing 0644.
 globpath ARCHIVE out/*.tar.gz
 filemode 600 $ARCHIVE
 
-# And it restores: the plan has to find the files inside, which is what the
-# root-directory bug broke.
 exec dothaven restore --dry-run $ARCHIVE
 stdout 'Dry run'
 stdout '\.zshrc'

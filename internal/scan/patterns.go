@@ -3,6 +3,7 @@ package scan
 import (
 	"os/user"
 	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -27,6 +28,19 @@ func kw(id, label string, sev Severity, action Action, re string) Pattern {
 	p := mk(id, label, sev, action, re)
 	p.keyword = true
 	return p
+}
+
+// checked attaches a vetting function to a rule.
+func checked(p Pattern, check func(string) bool) Pattern {
+	p.check = check
+	return p
+}
+
+// meaningfulIP drops the addresses every machine has: loopback, "any",
+// broadcast and netmasks. Redacting `DOCKER_HOST=tcp://127.0.0.1:2375` hides
+// nothing and, in a plaintext backup, makes the whole .zshrc unrestorable.
+func meaningfulIP(m string) bool {
+	return !strings.HasPrefix(m, "127.") && m != "0.0.0.0" && !strings.HasPrefix(m, "255.")
 }
 
 func build() {
@@ -95,7 +109,7 @@ func build() {
 		mk("pgpass-line", "pgpass credentials", High, Redact, `(?m)^[^:#\s]+:(?:\d+|\*):[^:]*:[^:]*:.+$`),
 
 		// MEDIUM
-		mk("ip-address", "IP address", Medium, Redact, `\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`),
+		checked(mk("ip-address", "IP address", Medium, Redact, `\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`), meaningfulIP),
 		mk("email-address", "email address", Medium, Include, `\b[\w.+-]+@[\w-]+\.[\w.]+\b`),
 	}
 

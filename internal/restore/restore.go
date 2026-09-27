@@ -31,6 +31,7 @@ type Entry struct {
 	Category    string
 	Status      Status
 	Sensitivity registry.Sensitivity // drives restore file perms (owner-only for medium/high)
+	Exec        bool                 // the backed-up file was executable (a hook, a script)
 }
 
 // Plan is the full set of restorable entries from one backup directory.
@@ -168,10 +169,14 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 		if rerr != nil {
 			return nil
 		}
+		exec := false
+		if fi, ierr := d.Info(); ierr == nil {
+			exec = fi.Mode().Perm()&0o111 != 0
+		}
 		tContent, exists := readLiveTarget(target)
 		status := classify(string(raw), exists, tContent)
 		catSet[category] = true
-		entries = append(entries, Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens})
+		entries = append(entries, Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens, Exec: exec})
 		return nil
 	})
 	if walkErr != nil {
@@ -310,7 +315,7 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 		if err != nil {
 			return res, err
 		}
-		if err := writeTarget(e.TargetPath, string(raw), e.Sensitivity); err != nil {
+		if err := writeTarget(e.TargetPath, string(raw), e.Sensitivity, e.Exec); err != nil {
 			return res, err
 		}
 		res.Restored++
@@ -321,9 +326,15 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 
 // writeTarget writes a restored file owner-only when the registry marked it
 // medium/high, so a secret never lands world-readable; low configs keep 0644.
-func writeTarget(path, content string, sens registry.Sensitivity) error {
+// A file that was executable in the backup stays executable: git ignores a
+// hook without the bit, and says so only in a hint nobody reads.
+func writeTarget(path, content string, sens registry.Sensitivity, exec bool) error {
+	perm := os.FileMode(0o644)
 	if sens == registry.High || sens == registry.Medium {
-		return sys.WriteFileSecure(path, content)
+		perm = 0o600
 	}
-	return sys.WriteFile(path, content)
+	if exec {
+		perm |= (perm & 0o444) >> 2 // r → x for each class that can read it
+	}
+	return sys.WriteFileAs(path, content, perm)
 }

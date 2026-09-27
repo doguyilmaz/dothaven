@@ -74,7 +74,7 @@ func newServicesExportCmd(env *sys.OS) *cobra.Command {
 				fmt.Println("Homebrew not found — nothing to export (this captures $(brew --prefix)/etc service config).")
 				return nil
 			}
-			dir := filepath.Join(env.ResolveOutputDir(output), servicesSubdir)
+			dir := filepath.Join(outputDir(env, output), servicesSubdir)
 			n := 0
 			for _, rel := range curatedServiceConfigs() {
 				raw, err := env.ReadFile(filepath.Join(prefix, "etc", rel))
@@ -105,7 +105,7 @@ func newServicesExportCmd(env *sys.OS) *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ./reports in a repo, else ~/.local/share/dothaven)")
+	c.Flags().StringVarP(&output, "output", "o", "", "output directory (default: ~/.local/share/dothaven)")
 	return c
 }
 

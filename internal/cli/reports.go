@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
@@ -25,12 +24,14 @@ func newCompareCmd(env *sys.OS) *cobra.Command {
 					}
 				}
 			} else {
-				files = newestJSON(filepath.Join(cwd(), "reports"), 2)
+				files = newestSnapshots(env, 2)
 				if len(files) < 2 {
-					fmt.Println("Need at least 2 .json reports in reports/ to compare.")
-					fmt.Println("Usage: dothaven compare [file1] [file2]")
+					fmt.Printf("Need two snapshots to compare; found %d in %s.\n", len(files), shortHome(env, snapshotDir(env)))
+					fmt.Println("Run `dothaven collect` on each machine, or: dothaven compare <a.json> <b.json>")
 					return nil
 				}
+				// Oldest on the left, so "+" reads as "added since".
+				files[0], files[1] = files[1], files[0]
 			}
 			left, err := parseSnapshotFile(env, files[0])
 			if err != nil {
@@ -93,20 +94,42 @@ func formatSection(name string, s snapshot.Section) string {
 
 func newListCmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <section>",
-		Short: "Print one section of the latest snapshot",
-		Args:  cobra.ExactArgs(1),
+		Use:   "list [section] [snapshot-or-backup]",
+		Short: "Print sections of the latest snapshot (or of a backup's inventory)",
+		Long: "With no section, lists the section names. A section is fuzzy-matched: `list\n" +
+			"brew` shows formulae, casks and the Brewfile. Reads the newest snapshot from\n" +
+			"`dothaven collect`, or the inventory inside a backup you name.",
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			query := args[0]
-			files := newestJSON(filepath.Join(cwd(), "reports"), 1)
-			if len(files) == 0 {
-				fmt.Println("No .json reports found. Run 'dothaven collect' first.")
-				return nil
+			var snap snapshot.Snapshot
+			var err error
+			if len(args) == 2 {
+				snap, err = loadSnapshotArg(env, args[1])
+			} else {
+				files := newestSnapshots(env, 1)
+				if len(files) == 0 {
+					fmt.Println("No snapshot yet. Run `dothaven collect` first.")
+					return nil
+				}
+				fmt.Println(dim("From " + shortHome(env, files[0])))
+				snap, err = parseSnapshotFile(env, files[0])
 			}
-			snap, err := parseSnapshotFile(env, files[0])
 			if err != nil {
 				return err
 			}
+			if len(args) == 0 {
+				names := make([]string, 0, len(snap))
+				for n := range snap {
+					names = append(names, n)
+				}
+				sortStrings(names)
+				for _, n := range names {
+					fmt.Println("  " + n)
+				}
+				fmt.Printf("\n%s\n", dim(fmt.Sprintf("%d sections. Show one with `dothaven list <name>`.", len(names))))
+				return nil
+			}
+			query := args[0]
 			var matches []string
 			for name := range snap {
 				if fuzzyMatch(query, name) {

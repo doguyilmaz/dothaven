@@ -3,6 +3,7 @@ package scan
 import (
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
@@ -24,9 +25,35 @@ func ApplyRedactions(content string, r Result) string {
 			continue
 		}
 		seen[f.Pattern.ID] = true
-		out = f.Pattern.re.ReplaceAllString(out, Marker)
+		p := f.Pattern
+		out = p.re.ReplaceAllStringFunc(out, func(m string) string {
+			// Only what the scan would itself report is masked. A keyword rule
+			// also matches `token == x` in code, and masking that corrupts a
+			// file to hide nothing.
+			if !p.real(m) {
+				return m
+			}
+			if p.keyword {
+				return keepKey(m)
+			}
+			return Marker
+		})
 	}
 	return out
+}
+
+// keepKey masks the value of a `key = value` match and keeps the key, so a
+// redacted file still says which setting held the secret.
+func keepKey(m string) string {
+	i := strings.IndexAny(m, "=:")
+	if i < 0 {
+		return Marker
+	}
+	j := i + 1
+	for j < len(m) && strings.ContainsRune(" \t=:\"'", rune(m[j])) {
+		j++
+	}
+	return m[:j] + Marker
 }
 
 // RedactSection scrubs a section in place — content AND pairs (values and keys)

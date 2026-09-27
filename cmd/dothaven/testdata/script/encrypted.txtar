@@ -1,0 +1,57 @@
+# The migration path end to end: an encrypted backup carries what a plaintext
+# one must not (SSH keys, tokens, credential files), keeps executable bits, and
+# restores on a machine that has none of it — with no age binary involved.
+env DOTHAVEN_PASSPHRASE='correct horse battery staple'
+
+chmod 755 .config/git/hooks/pre-commit
+exec dothaven backup --encrypt -o out --only ssh,git,cloud,npm,extra
+stdout 'Encrypted backup saved'
+! stdout 'left out of this plaintext backup'
+globpath ARCHIVE out/*.tar.gz.age
+filemode 600 $ARCHIVE
+! exists out/backup-*.partial
+# no plaintext anywhere in the file
+! grep 'OPENSSH PRIVATE KEY' $ARCHIVE
+! grep 'npm_supersecret' $ARCHIVE
+
+# Wipe the "machine".
+rm .ssh .gitconfig .aws .npmrc .config
+
+exec dothaven restore $ARCHIVE
+stdout 'This backup is encrypted|Restored'
+stdout 'Restored [0-9]+ files'
+grep 'BEGIN OPENSSH PRIVATE KEY' .ssh/id_ed25519
+filemode 600 .ssh/id_ed25519
+grep 'aws_secret_access_key = wJalr' .aws/credentials
+grep '_authToken=npm_supersecret' .npmrc
+grep 'name = Test' .gitconfig
+filemode 755 .config/git/hooks/pre-commit
+
+# A wrong passphrase is refused cleanly, and nothing is written.
+rm .gitconfig
+env DOTHAVEN_PASSPHRASE='not the passphrase at all'
+! exec dothaven restore $ARCHIVE
+stderr 'wrong passphrase'
+! exists .gitconfig
+
+-- .ssh/config --
+Host box
+  User me
+-- .ssh/id_ed25519 --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAA
+-----END OPENSSH PRIVATE KEY-----
+-- .ssh/id_ed25519.pub --
+ssh-ed25519 AAAAC3Nz me@box
+-- .aws/credentials --
+[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+-- .npmrc --
+//registry.npmjs.org/:_authToken=npm_supersecret1234567890abcdefghijklmnop
+-- .gitconfig --
+[user]
+	name = Test
+-- .config/git/hooks/pre-commit --
+#!/bin/sh
+exit 0

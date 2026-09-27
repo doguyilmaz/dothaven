@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -118,11 +119,32 @@ func firstToken(s string) string {
 	return s
 }
 
+// loadSnapshotArg reads a snapshot file, or the inventory inside a backup
+// folder or archive.
+func loadSnapshotArg(env *sys.OS, path string) (snapshot.Snapshot, error) {
+	if strings.HasSuffix(path, ".json") {
+		return parseSnapshotFile(env, path)
+	}
+	dir, cleanup, err := openBackup(path)
+	defer cleanup()
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "inventory", "snapshot.json"))
+	if err != nil {
+		return nil, fmt.Errorf("%s has no inventory (made with --skip inventory, or by an older dothaven)", path)
+	}
+	return snapshot.Parse(b)
+}
+
 func newDoctorCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
-		Use:   "doctor [snapshot.json]",
-		Short: "Snapshot vs this machine — what is not installed",
-		Args:  cobra.MaximumNArgs(1),
+		Use:   "doctor [snapshot-or-backup]",
+		Short: "What the old machine had installed that this one doesn't",
+		Long: "Compares a snapshot — or the inventory inside a backup — with this machine and\n" +
+			"lists what is missing, with the command that installs each group. Run it on\n" +
+			"the new machine after restoring. Exits 1 if anything is missing.",
+		Args: cobra.MaximumNArgs(1),
 		// A drift result returns a non-zero exit (CI-friendly), which is a normal
 		// outcome — not an error to print. The report is already on stdout.
 		SilenceErrors: true,
@@ -135,22 +157,15 @@ func newDoctorCmd(env *sys.OS) *cobra.Command {
 			if len(args) > 0 {
 				path = args[0]
 			} else {
-				// Where collect can have put one: the repo-local reports dir,
-				// the current directory (collect -o .), then the stable data dir.
-				var found []string
-				for _, dir := range []string{filepath.Join(cwd(), "reports"), cwd(), env.DataDir()} {
-					if found = newestJSON(dir, 1); len(found) > 0 {
-						break
-					}
-				}
+				found := newestSnapshots(env, 1)
 				if len(found) == 0 {
-					fmt.Println("No snapshot found. Run 'dothaven collect' first, or pass a path.")
+					fmt.Println("No snapshot found. Pass a backup (dothaven doctor <backup>), or run `dothaven collect` on the old machine.")
 					return nil
 				}
 				path = found[0]
 				fmt.Printf("%s\n\n", dim("Using newest snapshot: "+filepath.Base(path)))
 			}
-			want, err := parseSnapshotFile(env, path)
+			want, err := loadSnapshotArg(env, path)
 			if err != nil {
 				return err
 			}
