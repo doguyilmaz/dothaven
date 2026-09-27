@@ -34,12 +34,15 @@ kubeconfig, the git hooks, the scroll direction. dothaven is for the clean insta
 ## Install
 
 ```bash
+# A fresh machine — no Homebrew needed (verifies the release checksum, no sudo):
+curl -fsSL https://raw.githubusercontent.com/doguyilmaz/dothaven/main/scripts/install.sh | sh
+
 brew install --cask doguyilmaz/tap/dothaven                      # macOS (signed, notarized)
 go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest    # macOS or Linux
 ```
 
-Linux binaries are also on the [releases page](https://github.com/doguyilmaz/dothaven/releases).
-One static binary; nothing else is needed — encryption is built in.
+One static binary; nothing else is needed — encryption is built in. Binaries for every
+platform are on the [releases page](https://github.com/doguyilmaz/dothaven/releases).
 
 ## Moving to a new machine
 
