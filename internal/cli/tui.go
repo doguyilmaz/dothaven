@@ -35,7 +35,7 @@ func menuItems() []tui.MenuItem {
 		{Label: "2. Pack everything into one encrypted file", Value: "pack", Hint: "configs, keys, tokens, app list, settings"},
 		{Label: "3. Restore a backup onto this " + m, Value: "restore", Hint: "pick a backup, preview, then write"},
 		{Label: "4. Reinstall my apps & packages", Value: "reinstall", Hint: "from a backup's list — Homebrew, npm, …"},
-		{Label: "5. What's still missing here?", Value: "doctor", Hint: "a backup's app list vs this " + m + " — read-only"},
+		{Label: "5. What's still missing here?", Value: "missing", Hint: "a backup's app list vs this " + m + " — read-only"},
 
 		{Heading: true, Label: "Your private GitHub repo"},
 		{Label: "Save this " + m + " to GitHub", Value: "github push", Hint: "private repo, encrypted by default"},
@@ -75,7 +75,7 @@ var actionTitles = map[string]string{
 	"pack":            "Pack everything for a new machine",
 	"restore":         "Restore a backup",
 	"reinstall":       "Reinstall apps & packages",
-	"doctor":          "What's still missing here?",
+	"missing":         "What's still missing here?",
 	"backup":          "Quick backup",
 	"status":          "What changed since the last backup?",
 	"include":         "Choose what else to back up",
@@ -179,7 +179,7 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 			return err
 		}
 		return runReinstall(ctx, env, dir, false)
-	case "doctor", "defaults import":
+	case "missing", "defaults import":
 		p, err := pickBackup(env, "Which backup?")
 		if err != nil || p == "" {
 			return err

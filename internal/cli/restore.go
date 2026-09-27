@@ -446,7 +446,7 @@ func printNextSteps(env *sys.OS, path string, x extras) {
 		fmt.Printf("  %s  %s\n", kbd("dothaven reinstall "+p), dim("# apps & packages you had"))
 	}
 	if x.inventory {
-		fmt.Printf("  %s  %s\n", kbd("dothaven doctor "+p), dim("# what is still missing here"))
+		fmt.Printf("  %s  %s\n", kbd("dothaven missing "+p), dim("# what is still missing here"))
 	}
 }
 
@@ -478,7 +478,7 @@ func offerExtras(cmd *cobra.Command, env *sys.OS, path, dir string, x extras) er
 		}
 	}
 	if x.inventory {
-		fmt.Printf("\nCheck what's still missing any time: %s\n", kbd("dothaven doctor "+shortHome(env, path)))
+		fmt.Printf("\nCheck what's still missing any time: %s\n", kbd("dothaven missing "+shortHome(env, path)))
 	}
 	return nil
 }

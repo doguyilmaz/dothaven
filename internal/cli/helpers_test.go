@@ -178,6 +178,9 @@ func TestPlural(t *testing.T) {
 		{4, "key", "4 keys"},
 		{5, "day", "5 days"},
 		{6, "branch", "6 branches"},
+		// "pathes" shipped in doctor's output: -es only after a sibilant.
+		{2, "path", "2 paths"},
+		{2, "stash", "2 stashes"},
 		{0, "setting", "0 settings"},
 	}
 	for _, tt := range tests {

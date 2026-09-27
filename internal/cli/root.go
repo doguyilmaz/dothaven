@@ -17,6 +17,9 @@ import (
 
 // NewRoot builds the root command with every subcommand wired in.
 func NewRoot(env *sys.OS, version string) *cobra.Command {
+	// Commands list in the order they are added below — the order of the job —
+	// not alphabetically, which put "tui" after "ready".
+	cobra.EnableCommandSorting = false
 	root := &cobra.Command{
 		Use:   "dothaven",
 		Short: "Keep your dev setup when you change machines",
@@ -28,7 +31,10 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 			"  dothaven backup --encrypt    2. everything, keys included, in ONE encrypted file\n" +
 			"  dothaven restore <file>      3. on the new machine: put it all back\n" +
 			"  dothaven reinstall <file>    4. reinstall your apps & packages\n" +
-			"  dothaven doctor <file>       5. check what's still missing\n\n" +
+			"  dothaven missing <file>      5. check what's still missing\n\n" +
+			"Or keep it in a private GitHub repo instead of a file:\n" +
+			"  dothaven github push         on the old machine (encrypted by default)\n" +
+			"  dothaven restore github      on the new one\n\n" +
 			"Run `dothaven` with no arguments for a menu that walks you through it.\n" +
 			"Anything that changes files you already have asks first and takes --dry-run.",
 		Version: version,
@@ -79,7 +85,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 	add("apply", newRestoreCmd(env), newReinstallCmd(env))
 	add("sync", newGitHubCmd(env))
 	add("inspect",
-		newStatusCmd(env), newDiffCmd(env), newDoctorCmd(env), newCheckCmd(env),
+		newStatusCmd(env), newDiffCmd(env), newMissingCmd(env), newCheckCmd(env), newDoctorCmd(env, version),
 		newCompareCmd(env), newListCmd(env))
 	add("secrets", newScanCmd(env), newSecurityCmd(env))
 	add("chezmoi", newInitCmd(env), newChezmoiExportCmd(env), newMigrateCmd(env))

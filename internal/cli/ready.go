@@ -230,7 +230,8 @@ func plural(n int, unit string) string {
 	if l := len(unit); l >= 2 && unit[l-1] == 'y' && !strings.ContainsRune("aeiou", rune(unit[l-2])) {
 		return fmt.Sprintf("%d %sies", n, strings.TrimSuffix(unit, "y"))
 	}
-	if strings.HasSuffix(unit, "h") {
+	// -es after a sibilant (stash, branch, box), not after every h ("path").
+	if strings.HasSuffix(unit, "sh") || strings.HasSuffix(unit, "ch") || strings.HasSuffix(unit, "x") || strings.HasSuffix(unit, "s") {
 		return fmt.Sprintf("%d %ses", n, unit)
 	}
 	return fmt.Sprintf("%d %ss", n, unit)

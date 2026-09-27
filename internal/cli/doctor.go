@@ -138,76 +138,83 @@ func loadSnapshotArg(ctx context.Context, env *sys.OS, path string) (snapshot.Sn
 	return snapshot.Parse(b)
 }
 
-func newDoctorCmd(env *sys.OS) *cobra.Command {
-	c := &cobra.Command{
-		Use:   "doctor [snapshot-or-backup]",
+func newMissingCmd(env *sys.OS) *cobra.Command {
+	return &cobra.Command{
+		Use:   "missing [backup-or-snapshot]",
 		Short: "What the old machine had installed that this one doesn't",
-		Long: "Compares a snapshot — or the inventory inside a backup — with this machine and\n" +
-			"lists what is missing, with the command that installs each group. Run it on\n" +
-			"the new machine after restoring. Exits 1 if anything is missing.",
+		Long: "Compares the app & package list inside a backup (or a `collect` snapshot) with\n" +
+			"this machine and lists what is missing, with the command that installs each\n" +
+			"group. Run it on the new machine after restoring; `dothaven reinstall <backup>`\n" +
+			"installs them for you. Exits 1 if anything is missing.",
 		Args: cobra.MaximumNArgs(1),
 		// A drift result returns a non-zero exit (CI-friendly), which is a normal
 		// outcome — not an error to print. The report is already on stdout.
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Defaults to the newest snapshot, like status and diff default to
-			// the newest backup. Requiring the path made the one command you
-			// reach for on a fresh machine the one that answered with cobra's
-			// "accepts 1 arg(s), received 0".
 			path := ""
 			if len(args) > 0 {
-				path = args[0]
-			} else {
-				found := newestSnapshots(env, 1)
-				if len(found) == 0 {
-					fmt.Println("No snapshot found. Pass a backup (dothaven doctor <backup>), or run `dothaven collect` on the old machine.")
-					return nil
-				}
-				path = found[0]
-				fmt.Printf("%s\n\n", dim("Using newest snapshot: "+filepath.Base(path)))
+				path, _ = absBackupArg(args[0])
 			}
-			want, err := loadSnapshotArg(cmd.Context(), env, path)
-			if err != nil {
-				return err
-			}
-			snap := gatherSnapshot(cmd.Context(), env, false)
-			if cerr := cmd.Context().Err(); cerr != nil {
-				return ExitError{Code: 130} // cancelled mid-collect — a partial snapshot gives a bogus verdict
-			}
-			missing := findMissing(want, snap)
-
-			ids := make([]string, 0, len(missing))
-			for id := range missing {
-				ids = append(ids, id)
-			}
-			sort.Strings(ids)
-
-			if len(ids) == 0 {
-				fmt.Println(good("✅ Parity — everything installable in the snapshot is present on this machine."))
-				return nil
-			}
-
-			fmt.Println("Missing on this machine (present in the snapshot):")
-			fmt.Println()
-			total := 0
-			for _, id := range ids {
-				items := missing[id]
-				total += len(items)
-				fmt.Printf("  %s (%d)\n", id, len(items))
-				for _, it := range items {
-					fmt.Printf("    - %s\n", it)
-				}
-				if cmd := remediationCommand(id); cmd != "" {
-					names := make([]string, len(items))
-					for i, it := range items {
-						names[i] = firstToken(it)
-					}
-					fmt.Printf("    fix: %s %s\n", cmd, strings.Join(names, " "))
-				}
-			}
-			fmt.Printf("\n%d item(s) missing across %d section(s).\n", total, len(ids))
-			return ExitError{Code: 1}
+			return runMissing(cmd, env, path)
 		},
 	}
-	return c
+}
+
+// runMissing reports what a backup's (or snapshot's) inventory has that this
+// machine lacks. With no path it uses the newest snapshot.
+func runMissing(cmd *cobra.Command, env *sys.OS, path string) error {
+	if path == "" {
+		found := newestSnapshots(env, 1)
+		if len(found) == 0 {
+			fmt.Println("Which backup? Pass one: dothaven missing <backup>  (or run `dothaven collect` on the old machine).")
+			return nil
+		}
+		path = found[0]
+		fmt.Printf("%s\n\n", dim("Using newest snapshot: "+filepath.Base(path)))
+	}
+	want, err := loadSnapshotArg(cmd.Context(), env, path)
+	if err != nil {
+		return err
+	}
+	snap := gatherInventory(cmd.Context(), env)
+	if cerr := cmd.Context().Err(); cerr != nil {
+		return ExitError{Code: 130} // cancelled mid-collect — a partial snapshot gives a bogus verdict
+	}
+	missing := findMissing(want, snap)
+
+	ids := make([]string, 0, len(missing))
+	for id := range missing {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	if len(ids) == 0 {
+		fmt.Println(good("✓ Nothing missing — everything installable in that backup is here."))
+		return nil
+	}
+
+	fmt.Println(bold("Missing on this machine:"))
+	total := 0
+	for _, id := range ids {
+		items := missing[id]
+		total += len(items)
+		label := inventoryLabels[id]
+		if label == "" {
+			label = id
+		}
+		fmt.Printf("\n  %s %s\n", bold(label), dim(fmt.Sprintf("(%d)", len(items))))
+		fmt.Printf("    %s\n", preview(items, 12))
+		if rc := remediationCommand(id); rc != "" {
+			names := make([]string, len(items))
+			for i, it := range items {
+				names[i] = firstToken(it)
+			}
+			fmt.Printf("    %s %s\n", dim("fix:"), kbd(rc+" "+strings.Join(names, " ")))
+		}
+	}
+	fmt.Printf("\n%s missing across %s.\n", plural(total, "item"), plural(len(ids), "group"))
+	if !strings.HasSuffix(path, ".json") {
+		fmt.Printf("Install them (all, or the ones you pick): %s\n", kbd("dothaven reinstall "+shortHome(env, path)))
+	}
+	return ExitError{Code: 1}
 }

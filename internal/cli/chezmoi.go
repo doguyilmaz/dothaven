@@ -590,5 +590,5 @@ func printChezmoiHandoff(ctx context.Context, sourcePath string) {
 
 	fmt.Println("\nThen, on the other machine:")
 	fmt.Println("  chezmoi init --apply <your-private-repo>")
-	fmt.Println("  dothaven doctor                   # what is still missing there")
+	fmt.Println("  dothaven missing <backup>         # what is still missing there")
 }

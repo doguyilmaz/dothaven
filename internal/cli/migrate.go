@@ -81,7 +81,7 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 
 			fmt.Println("\n" + good("✓ Applied.") + " Next:")
 			fmt.Printf("  %s  %s\n", kbd("chezmoi diff"), dim("# review what's managed"))
-			fmt.Printf("  %s  %s\n", kbd("dothaven doctor"), dim("# what is still missing here"))
+			fmt.Printf("  %s   %s\n", kbd("dothaven check"), dim("# do the configs that landed still parse?"))
 			return nil
 		},
 	}
