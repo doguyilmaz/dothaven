@@ -6,6 +6,7 @@ package secretstore
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -73,8 +74,36 @@ func run(stdin string, name string, args ...string) (string, error) {
 	return strings.TrimRight(string(out), "\r\n"), err
 }
 
+// encPrefix marks a stored value as base64. Secrets are stored encoded so
+// that nothing about them — quotes, backslashes, spaces at either end, ş or ğ
+// — depends on how `security -i` parses a line or how `security -w` prints a
+// password it considers unprintable (as hex). Values stored by older versions
+// have no prefix and are read as they are.
+const encPrefix = "b64:"
+
+func encode(secret string) string {
+	return encPrefix + base64.StdEncoding.EncodeToString([]byte(secret))
+}
+
+func decode(v string) string {
+	if rest, ok := strings.CutPrefix(v, encPrefix); ok {
+		if b, err := base64.StdEncoding.DecodeString(rest); err == nil {
+			return string(b)
+		}
+	}
+	return v
+}
+
 // Get returns the secret stored under account.
 func (s *Store) Get(account string) (string, error) {
+	v, err := s.raw(account)
+	if err != nil {
+		return "", err
+	}
+	return decode(v), nil
+}
+
+func (s *Store) raw(account string) (string, error) {
 	switch s.kind {
 	case "keychain":
 		v, err := run("", "security", "find-generic-password", "-s", service, "-a", account, "-w")
@@ -93,24 +122,36 @@ func (s *Store) Get(account string) (string, error) {
 	if err != nil {
 		return "", ErrNotFound
 	}
-	return strings.TrimSpace(string(b)), nil
+	return strings.TrimSuffix(string(b), "\n"), nil
 }
 
-// Set stores secret under account, replacing any previous value. The secret
-// never appears in a command line (which other processes can read): the
-// Keychain gets it through `security -i` on stdin, the keyring through
-// secret-tool's stdin.
+// Set stores secret under account, replacing any previous value, and reads it
+// back: a passphrase remembered wrongly is worse than one not remembered, since
+// later pushes would silently encrypt with it. The secret never appears in a
+// command line (which other processes can read): the Keychain gets it through
+// `security -i` on stdin, the keyring through secret-tool's stdin.
 func (s *Store) Set(account, secret string) error {
-	if strings.ContainsAny(secret, "\"\n\r") || strings.ContainsAny(account, "\"\n\r ") {
-		return fmt.Errorf("cannot store a value containing quotes or newlines")
+	if strings.ContainsAny(account, "\"\n\r \\") {
+		return fmt.Errorf("invalid account name %q", account)
 	}
+	if err := s.set(account, encode(secret)); err != nil {
+		return err
+	}
+	if got, err := s.Get(account); err != nil || got != secret {
+		_ = s.Delete(account)
+		return errors.New("the stored value did not read back the same, so it was not kept")
+	}
+	return nil
+}
+
+func (s *Store) set(account, value string) error {
 	switch s.kind {
 	case "keychain":
-		cmd := fmt.Sprintf("add-generic-password -U -s %s -a \"%s\" -l \"dothaven %s\" -w \"%s\"\n", service, account, account, secret)
+		cmd := fmt.Sprintf("add-generic-password -U -s %s -a \"%s\" -l \"dothaven %s\" -w \"%s\"\n", service, account, account, value)
 		_, err := run(cmd, "security", "-i")
 		return err
 	case "secret-service":
-		_, err := run(secret, "secret-tool", "store", "--label=dothaven "+account, "service", service, "account", account)
+		_, err := run(value, "secret-tool", "store", "--label=dothaven "+account, "service", service, "account", account)
 		return err
 	}
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
@@ -120,7 +161,7 @@ func (s *Store) Set(account, secret string) error {
 		return err
 	}
 	tmp := filepath.Join(s.dir, "."+account+".tmp")
-	if err := os.WriteFile(tmp, []byte(secret+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(tmp, []byte(value+"\n"), 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, filepath.Join(s.dir, account))

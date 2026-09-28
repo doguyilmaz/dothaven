@@ -24,8 +24,28 @@ func TestFileBackendRoundTrip(t *testing.T) {
 	if fi.Mode().Perm() != 0o600 || di.Mode().Perm() != 0o700 {
 		t.Errorf("modes: file %o dir %o", fi.Mode().Perm(), di.Mode().Perm())
 	}
-	if err := s.Set("github", "a\"b"); err == nil {
-		t.Error("a value that could break out of the keychain command must be refused")
+	// Anything a passphrase can contain comes back exactly: quotes and
+	// backslashes (which the Keychain's command parser would otherwise see),
+	// spaces at the ends, non-ASCII letters, even a newline.
+	for _, v := range []string{`a"b\c`, "  padded passphrase ", "şifre-ğüç-ıİ-çok-gizli", "two\nlines"} {
+		if err := s.Set("backup-passphrase", v); err != nil {
+			t.Fatalf("Set(%q): %v", v, err)
+		}
+		if got, err := s.Get("backup-passphrase"); err != nil || got != v {
+			t.Errorf("Get = %q, %v; want %q", got, err, v)
+		}
+	}
+	// What is on disk is encoded, so no backend ever parses the secret.
+	if b, _ := os.ReadFile(filepath.Join(dir, "credentials", "backup-passphrase")); string(b) == "two\nlines\n" {
+		t.Error("stored unencoded")
+	}
+	// A value stored by an older version (unencoded) still reads.
+	os.WriteFile(filepath.Join(dir, "credentials", "old"), []byte("gho_legacy\n"), 0o600)
+	if got, _ := s.Get("old"); got != "gho_legacy" {
+		t.Errorf("legacy value = %q", got)
+	}
+	if err := s.Set("bad account", "x"); err == nil {
+		t.Error("an account name that could break the keychain command must be refused")
 	}
 	if err := s.Delete("github"); err != nil {
 		t.Fatal(err)
