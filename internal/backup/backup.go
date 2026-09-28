@@ -4,7 +4,6 @@
 package backup
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -157,7 +156,7 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			}
 			// An age identity under any name or path: cheap to look for, and
 			// the one file a push must never carry.
-			if opts.Remote && bytes.Contains(raw, ageIdentity) {
+			if opts.Remote && scan.ContainsAgeIdentity(raw) {
 				res.KeptLocal = append(res.KeptLocal, f.Dest)
 				continue
 			}
@@ -202,8 +201,6 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 	}
 	return res, nil
 }
-
-var ageIdentity = []byte("AGE-SECRET-KEY-1")
 
 func under(p, root string) bool {
 	return p == root || strings.HasPrefix(p, root+string(filepath.Separator))

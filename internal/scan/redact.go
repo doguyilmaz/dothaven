@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"bytes"
 	"regexp"
 	"sort"
 	"strings"
@@ -20,14 +21,17 @@ func ApplyRedactions(content string, r Result) string {
 	if r.Action != Redact {
 		return content
 	}
-	seen := map[string]bool{}
-	var rules []Pattern
-	for _, f := range r.Findings {
-		if f.Pattern.Action != Redact || seen[f.Pattern.ID] {
-			continue
+	rules := r.redact
+	if rules == nil {
+		// A Result built by hand rather than by a scan: its findings are all
+		// there is to go on.
+		seen := map[string]bool{}
+		for _, f := range r.Findings {
+			if f.Pattern.Action == Redact && !seen[f.Pattern.ID] {
+				seen[f.Pattern.ID] = true
+				rules = append(rules, f.Pattern)
+			}
 		}
-		seen[f.Pattern.ID] = true
-		rules = append(rules, f.Pattern)
 	}
 	var b strings.Builder
 	b.Grow(len(content))
@@ -126,6 +130,8 @@ func sortedMapKeys(m map[string]string) []string {
 	return ks
 }
 
+var pemHeader = regexp.MustCompile(`-----BEGIN[A-Z0-9 ]*PRIVATE KEY-----`)
+
 // --- Targeted, structure-preserving redactors (used by registry entries) ---
 
 var (
@@ -152,8 +158,16 @@ func RedactSSHConfig(text string) string {
 // setting's name, a token's prefix, its last two characters), never the value.
 // A scan's output lands in terminal scrollback, CI logs and screen shares.
 func Preview(match string) string {
-	if strings.Contains(match, "PRIVATE KEY") || strings.HasPrefix(match, "(") {
-		return match // a PEM/s-expression header names the kind, not the key
+	// A PEM header names the kind of key, not the key — but only the header:
+	// a one-line JSON PEM (a service-account key) matches with its body.
+	if h := pemHeader.FindString(match); h != "" {
+		return h
+	}
+	if strings.HasPrefix(match, "(") && len(match) <= 40 {
+		return match // a GnuPG s-expression's opening names the kind, not the key
+	}
+	if strings.HasPrefix(match, "AGE-SECRET-KEY-") {
+		return "AGE-SECRET-KEY-••••"
 	}
 	key, val := "", match
 	if i := strings.IndexAny(match, "=:"); i >= 0 && i < len(match)-1 {
@@ -168,4 +182,21 @@ func Preview(match string) string {
 		head = 0
 	}
 	return key + string(r[:head]) + "••••" + string(r[len(r)-2:])
+}
+
+// ageIdentityRe is a whole age identity, classic or post-quantum.
+var ageIdentityRe = regexp.MustCompile(`AGE-SECRET-KEY-(PQ-)?1[0-9A-Z]{50,}`)
+
+// ContainsAgeIdentity reports whether b holds an age identity — the key that
+// opens every file encrypted to it.
+func ContainsAgeIdentity(b []byte) bool {
+	return bytes.Contains(b, []byte("AGE-SECRET-KEY-")) && ageIdentityRe.Match(b)
+}
+
+// MaskAgeIdentities replaces every age identity in b with Marker.
+func MaskAgeIdentities(b []byte) []byte {
+	if !bytes.Contains(b, []byte("AGE-SECRET-KEY-")) {
+		return b
+	}
+	return ageIdentityRe.ReplaceAll(b, []byte(Marker))
 }

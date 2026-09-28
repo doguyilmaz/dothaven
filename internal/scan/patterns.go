@@ -59,14 +59,15 @@ func base64PrivateKey(m string) bool {
 func build() {
 	patterns = []Pattern{
 		// HIGH — private keys & certs (skip whole file)
-		mk("private-key-pem", "private key", High, Skip, `-----BEGIN.*PRIVATE KEY-----`),
+		mk("private-key-pem", "private key", High, Skip, `-----BEGIN[A-Z0-9 ]*PRIVATE KEY-----`),
 		mk("pgp-private-key", "PGP private key", High, Skip, `-----BEGIN PGP PRIVATE KEY BLOCK-----`),
 		// GnuPG agent key material is a binary Libgcrypt s-expression, not PEM —
 		// e.g. "(21:protected-private-key" — so the PEM rule above misses it.
 		mk("gpg-sexp-private-key", "GnuPG private key", High, Skip, `\(\d{1,3}:(protected-|shadowed-)?private-key`),
 		// An age identity: what chezmoi and sops decrypt with. Losing it loses
 		// every file encrypted to it; leaking it opens all of them.
-		mk("age-secret-key", "age private key", High, Skip, `AGE-SECRET-KEY-1[0-9A-Z]{58}`),
+		// The post-quantum identity (age-keygen -pq) is AGE-SECRET-KEY-PQ-1….
+		mk("age-secret-key", "age private key", High, Skip, `AGE-SECRET-KEY-(PQ-)?1[0-9A-Z]{50,}`),
 		// A PEM private key, base64-encoded once more — kubeconfig's
 		// client-key-data, CI variables. "LS0tLS1CRUdJTi" is "-----BEGIN".
 		checked(mk("private-key-pem-b64", "private key (base64)", High, Skip, `LS0tLS1CRUdJTi[A-Za-z0-9+/]{16,}`), base64PrivateKey),

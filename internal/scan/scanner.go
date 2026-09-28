@@ -57,6 +57,9 @@ func scanContent(path, content string, maxLine int) Result {
 	// Binary content is matched only against key-material rules; see looksBinary.
 	binary := looksBinary(content)
 	var findings []Finding
+	action := Include
+	var redact []Pattern
+	seenRedact := map[string]bool{}
 	for i, line := range strings.Split(content, "\n") {
 		if maxLine > 0 && len(line) > maxLine {
 			continue // minified/data line — not where secrets live, and costly to scan
@@ -87,16 +90,19 @@ func scanContent(path, content string, maxLine int) Result {
 			// and a match cut short would show "..".
 			findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(match, 512)})
 			spans = append(spans, [2]int{loc[0], loc[1]})
+			// The verdict and the redaction come from every match; only the
+			// report below is deduplicated.
+			if actionPriority[p.Action] > actionPriority[action] {
+				action = p.Action
+			}
+			if p.Action == Redact && !seenRedact[p.ID] {
+				seenRedact[p.ID] = true
+				redact = append(redact, p)
+			}
 		}
 		findings = dedupeLine(findings, lineStart, spans)
 	}
-	action := Include
-	for _, f := range findings {
-		if actionPriority[f.Pattern.Action] > actionPriority[action] {
-			action = f.Pattern.Action
-		}
-	}
-	return Result{Path: path, Findings: findings, Action: action}
+	return Result{Path: path, Findings: findings, Action: action, redact: redact}
 }
 
 // ScanFile scans a regular file's contents. A missing/unreadable path, a
@@ -240,8 +246,10 @@ func dedupeLine(findings []Finding, start int, spans [][2]int) []Finding {
 			for j, g := range line {
 				overlap := spans[i][0] < spans[j][1] && spans[j][0] < spans[i][1]
 				// A specific rule wins over a keyword one; of two keyword
-				// rules, the first listed.
-				if j != i && overlap && (!g.Pattern.keyword || j < i) {
+				// rules, the first listed. Never a weaker one: an email
+				// address inside a password does not make it an email.
+				if j != i && overlap && (!g.Pattern.keyword || j < i) &&
+					actionPriority[g.Pattern.Action] >= actionPriority[f.Pattern.Action] {
 					dup = true
 					break
 				}

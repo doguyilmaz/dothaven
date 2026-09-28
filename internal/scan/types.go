@@ -54,8 +54,13 @@ type Finding struct {
 
 type Result struct {
 	Path     string
-	Findings []Finding
-	Action   Action // highest-priority action among findings (skip > redact > include)
+	Findings []Finding // what is reported: one per secret, by its most specific rule
+	Action   Action    // highest-priority action among all matches (skip > redact > include)
+	// redact are the redact rules that matched anywhere, before findings were
+	// deduplicated for the report. Redaction uses these, never the report:
+	// a rule dropped from the report as a duplicate on one line can still be
+	// the only one that matches a secret elsewhere.
+	redact []Pattern
 }
 
 type Summary struct {

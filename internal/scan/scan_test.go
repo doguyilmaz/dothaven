@@ -465,3 +465,49 @@ func TestOverlappingFindingsCountOnce(t *testing.T) {
 		t.Errorf("preview = %q", Preview(r.Findings[0].Match))
 	}
 }
+
+// The report is deduplicated; redaction is not. Every value the second
+// review got through (reproduced against a plaintext backup) stays out.
+func TestDedupeNeverSwitchesRedactionOff(t *testing.T) {
+	for _, c := range []struct{ in, secret string }{
+		{"export TOKEN=abcdefghijklmnop password=hunter2hunter2\n", "hunter2hunter2"},
+		{`export CFG='{"token":"opaqueSecretValue123","user":"me@example.com"}'` + "\n", "opaqueSecretValue123"},
+		{"export password=MyP@ss.w0rd\n", "MyP@ss.w0rd"},
+		{"password: MyP@ss.w0rd\n", "MyP@ss.w0rd"},
+		{`{"api_key": "xxxxxxxxxxxxxxxx", "password": "yyyyyyyyyyyyyy"}` + "\n", "yyyyyyyyyyyyyy"},
+	} {
+		r := ScanContentFull(".zshrc", c.in)
+		if r.Action == Include {
+			t.Errorf("%q: action include — the file would not be redacted at all", c.in)
+			continue
+		}
+		if out := ApplyRedactions(c.in, r); strings.Contains(out, c.secret) {
+			t.Errorf("%q redacted to %q — %q survived", c.in, out, c.secret)
+		}
+	}
+}
+
+// A one-line JSON PEM matches from BEGIN to END; the preview is the header.
+// A post-quantum age identity is found like a classic one.
+func TestPreviewOfKeysShowsNoKeyMaterial(t *testing.T) {
+	sa := `{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n-----END PRIVATE KEY-----\n"}`
+	r := ScanContentFull("sa.json", sa)
+	if r.Action != Skip || len(r.Findings) == 0 {
+		t.Fatalf("service-account key: %+v", r)
+	}
+	for _, f := range r.Findings {
+		if p := Preview(f.Match); strings.Contains(p, "MIIE") {
+			t.Errorf("preview shows key material: %q", p)
+		}
+	}
+	pq := "AGE-SECRET-KEY-PQ-1" + strings.Repeat("QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L", 3) + "\n"
+	r = ScanContentFull("key.txt", pq)
+	if r.Action != Skip {
+		t.Errorf("post-quantum age identity: action %v", r.Action)
+	}
+	for _, f := range r.Findings {
+		if p := Preview(f.Match); strings.Contains(p, "QPZRY") {
+			t.Errorf("preview shows the age key: %q", p)
+		}
+	}
+}
