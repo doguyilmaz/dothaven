@@ -336,14 +336,21 @@ var safeName = regexp.MustCompile(`^[A-Za-z0-9@_][A-Za-z0-9@._+/:=~-]*$`)
 func SafeName(s string) bool { return len(s) <= 214 && safeName.MatchString(s) }
 
 // safeBrewLine is the Brewfile grammar `brew bundle dump` writes: a directive,
-// a quoted name, optionally a second quoted argument (a tap's URL) and
-// `key: value` options. A Brewfile is Ruby, and inside a double-quoted Ruby
-// string `#{…}`, `#@x` and `#$x` run code, so a quoted part may not contain #.
+// a quoted name, optionally a tap's https URL, and `key: value` options from
+// a fixed list. A Brewfile is Ruby: inside a double-quoted string `#{…}`,
+// `#@x` and `#$x` run code, so `#` may not start one of those; single quotes
+// interpolate nothing. Options are allowlisted because one of them runs a
+// command: `postinstall: "…"` is handed to the shell after the install.
 var safeBrewLine = func() *regexp.Regexp {
-	str := `"[^"\\#\n]*"`
-	val := `(\d+|true|false|:[a-z_]+|` + str + `|\[\s*(` + str + `(\s*,\s*` + str + `)*)?\s*\])`
-	return regexp.MustCompile(`^\s*(tap|brew|cask|mas|vscode|whalebrew|go|cargo|uv|flatpak)\s+` + str +
-		`(\s*,\s*` + str + `)?(\s*,\s*[a-z_]+:\s*` + val + `)*\s*(#[^\n]*)?$`)
+	dq := `"(?:[^"\\#\n]|#[^{@$"\\\n])*#?"`
+	sq := `'[^'\\\n]*'`
+	str := `(?:` + dq + `|` + sq + `)`
+	url := `(?:"https://[^"\\#\s]+"|'https://[^'\\\s]+')`
+	key := `(?:args|conflicts_with|restart_service|start_service|link|greedy|id|force_auto_update|version_file|trusted)`
+	hash := `\{\s*[a-z_]+:\s*` + str + `(?:\s*,\s*[a-z_]+:\s*` + str + `)*\s*\}`
+	val := `(?:\d+|true|false|:[a-z_]+|` + str + `|\[\s*(?:` + str + `(?:\s*,\s*` + str + `)*)?\s*\]|` + hash + `)`
+	return regexp.MustCompile(`^\s*(?:tap|brew|cask|mas|vscode|whalebrew|go|cargo|uv|flatpak)\s+` + str +
+		`(?:\s*,\s*` + url + `)?(?:\s*,\s*` + key + `:\s*` + val + `)*\s*(?:#[^\n]*)?$`)
 }()
 
 // SafeBrewLine reports whether a Brewfile line is one brew bundle wrote, and
