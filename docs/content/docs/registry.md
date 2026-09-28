@@ -216,6 +216,7 @@ Local model files (Ollama weights and the like) are not copied. `collect` record
 | `~/.kube/config` | kubeconfig | 🔑 |
 | `~/.kube/` | kube configs | 🔑 |
 | `~/.docker/daemon.json` | Docker daemon.json |  |
+| `~/.boto` | gsutil / boto config | 🔑 |
 | `~/.config/gcloud/application_default_credentials.json` | gcloud application default credentials | 🔑 |
 | `~/.config/configstore/firebase-tools.json` | Firebase CLI login | 🔑 |
 | `~/.docker/config.json` | Docker config | 🔑 |
@@ -336,6 +337,7 @@ Local model files (Ollama weights and the like) are not copied. `collect` record
 | `~/.gemrc` | .gemrc |  |
 | `~/.bundle/config` | Bundler config | 🔒 |
 | `~/.irbrc` | .irbrc |  |
+| `~/.config/uv/uv.toml` | uv config | 🔒 |
 | `~/Library/Application Support/pip/pip.conf` (Linux: `~/.config/pip/pip.conf`) | pip config | 🔒 |
 | `~/.condarc` | .condarc |  |
 | `~/Library/Application Support/pypoetry/auth.toml` (Linux: `~/.config/pypoetry/auth.toml`) | Poetry auth | 🔑 |

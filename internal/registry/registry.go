@@ -226,6 +226,8 @@ var Entries = []Entry{
 	// Extra kubeconfigs beside the main one (many people keep one per cluster).
 	{ID: "cloud.kube.dir", Name: "kube configs", Category: "cloud", Kind: Dir, BackupDest: "cloud/kube", Sensitivity: High, Paths: unix("~/.kube"), Exclude: []string{"cache", "http-cache", "kubens", "kubectx"}},
 	{ID: "cloud.docker.daemon", Name: "Docker daemon.json", Category: "cloud", Kind: File, BackupDest: "cloud/docker/daemon.json", Sensitivity: Low, Paths: unix("~/.docker/daemon.json")},
+	// gsutil / boto: its [Credentials] section holds keys or a refresh token.
+	{ID: "cloud.boto", Name: "gsutil / boto config", Category: "cloud", Kind: File, BackupDest: "cloud/boto/.boto", Sensitivity: High, Paths: unix("~/.boto")},
 	{ID: "cloud.gcloud.adc", Name: "gcloud application default credentials", Category: "cloud", Kind: File, BackupDest: "cloud/gcloud/application_default_credentials.json", Sensitivity: High, Paths: unix("~/.config/gcloud/application_default_credentials.json")},
 	{ID: "cloud.firebase", Name: "Firebase CLI login", Category: "cloud", Kind: File, BackupDest: "cloud/firebase/firebase-tools.json", Sensitivity: High, Paths: unix("~/.config/configstore/firebase-tools.json")},
 	{ID: "cloud.docker.config", Name: "Docker config", Category: "cloud", Kind: File, BackupDest: "cloud/docker/config.json", Sensitivity: High, Paths: map[string]string{"darwin": "~/.docker/config.json", "linux": "~/.docker/config.json", "windows": "%USERPROFILE%/.docker/config.json"}},
@@ -333,6 +335,7 @@ var Entries = []Entry{
 	{ID: "lang.gemrc", Name: ".gemrc", Category: "lang", Kind: File, BackupDest: "lang/ruby/.gemrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.gemrc", "linux": "~/.gemrc"}},
 	{ID: "lang.bundle", Name: "Bundler config", Category: "lang", Kind: File, BackupDest: "lang/ruby/bundle-config", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/.bundle/config", "linux": "~/.bundle/config"}},
 	{ID: "lang.irbrc", Name: ".irbrc", Category: "lang", Kind: File, BackupDest: "lang/ruby/.irbrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.irbrc", "linux": "~/.irbrc"}},
+	{ID: "lang.uv", Name: "uv config", Category: "lang", Kind: File, BackupDest: "lang/uv/uv.toml", Sensitivity: Medium, Paths: unix("~/.config/uv/uv.toml")},
 	{ID: "lang.pip", Name: "pip config", Category: "lang", Kind: File, BackupDest: "lang/python/pip.conf", Sensitivity: Medium, Paths: map[string]string{"darwin": "~/Library/Application Support/pip/pip.conf", "linux": "~/.config/pip/pip.conf"}},
 	{ID: "lang.condarc", Name: ".condarc", Category: "lang", Kind: File, BackupDest: "lang/python/.condarc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.condarc", "linux": "~/.condarc"}},
 	{ID: "lang.poetry.auth", Name: "Poetry auth", Category: "lang", Kind: File, BackupDest: "lang/python/poetry-auth.toml", Sensitivity: High, Paths: map[string]string{"darwin": "~/Library/Application Support/pypoetry/auth.toml", "linux": "~/.config/pypoetry/auth.toml"}},

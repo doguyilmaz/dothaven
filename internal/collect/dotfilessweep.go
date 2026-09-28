@@ -208,7 +208,9 @@ var claudeNoise = map[string]bool{
 	"debug": true, "file-history": true, "session-env": true, "history.jsonl": true,
 	"cache": true, "logs": true, "telemetry": true, ".credentials.json": true, "local": true,
 	"downloads": true, "paste-cache": true, "stats-cache.json": true, "__store.db": true,
-	".DS_Store": true,
+	".DS_Store": true, "sessions": true, "tasks": true, "backups": true, ".last-cleanup": true,
+	"policy-limits.json": true, "policy-limits.json.stamp.json": true, "remote-settings.json": true,
+	"environment-manager": true, "launcher-settings.json": true, "plans": true,
 }
 
 // Codex and Gemini keep sessions, history and caches beside their config;
@@ -224,7 +226,13 @@ var geminiNoise = map[string]bool{
 	"google_accounts.json": true, "google_account_id": true, ".DS_Store": true,
 }
 
-var configNoise = map[string]bool{".DS_Store": true, ".git": true, "dothaven": true}
+// configNoise under ~/.config: browser profiles on Linux (gigabytes of cache
+// and history, synced by the browser's own account) are not config to carry.
+var configNoise = map[string]bool{
+	".DS_Store": true, ".git": true, "dothaven": true,
+	"chromium": true, "google-chrome": true, "google-chrome-beta": true, "BraveSoftware": true,
+	"microsoft-edge": true, "vivaldi": true, "opera": true, "pulse": true,
+}
 
 // Uncovered lists paths under home that look like config and that neither the
 // registry nor the user's includes cover, as "~/"-relative paths. It looks one
