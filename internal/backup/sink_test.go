@@ -32,7 +32,7 @@ func TestWriteArchiveEncryptedRoundTrip(t *testing.T) {
 	d := t.TempDir()
 	dst := filepath.Join(d, "backup-box-1.tar.gz.age")
 	files := map[string]string{"ssh/id_ed25519": "-----BEGIN OPENSSH PRIVATE KEY-----\nk\n", "git/hooks/pre-commit": "#!/bin/sh\n"}
-	if err := WriteArchive(dst, "backup-box-1", "correct horse battery", fill(files, map[string]bool{"git/hooks/pre-commit": true})); err != nil {
+	if err := WriteEncryptedArchive(dst, "backup-box-1", "correct horse battery", fill(files, map[string]bool{"git/hooks/pre-commit": true})); err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(dst)
@@ -69,7 +69,7 @@ func TestWriteArchiveEncryptedRoundTrip(t *testing.T) {
 
 func TestExtractArchiveWrongPassphrase(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "b.tar.gz.age")
-	if err := WriteArchive(dst, "b", "right passphrase", fill(map[string]string{"x": "1"}, nil)); err != nil {
+	if err := WriteEncryptedArchive(dst, "b", "right passphrase", fill(map[string]string{"x": "1"}, nil)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ExtractArchive(dst, t.TempDir(), pass("wrong passphrase")); !errors.Is(err, ErrWrongPassphrase) {
@@ -80,7 +80,7 @@ func TestExtractArchiveWrongPassphrase(t *testing.T) {
 func TestWriteArchivePlainAndAbort(t *testing.T) {
 	d := t.TempDir()
 	dst := filepath.Join(d, "b.tar.gz")
-	if err := WriteArchive(dst, "b", "", fill(map[string]string{"shell/.zshrc": "alias ll=ls"}, nil)); err != nil {
+	if err := WriteArchive(dst, "b", fill(map[string]string{"shell/.zshrc": "alias ll=ls"}, nil)); err != nil {
 		t.Fatal(err)
 	}
 	root, err := ExtractArchive(dst, t.TempDir(), func() (string, error) {
@@ -96,7 +96,7 @@ func TestWriteArchivePlainAndAbort(t *testing.T) {
 
 	// A fill that fails leaves nothing behind that looks like a backup.
 	bad := filepath.Join(d, "bad.tar.gz")
-	if err := WriteArchive(bad, "b", "", func(Sink) error { return ErrNothingToWrite }); !errors.Is(err, ErrNothingToWrite) {
+	if err := WriteArchive(bad, "b", func(Sink) error { return ErrNothingToWrite }); !errors.Is(err, ErrNothingToWrite) {
 		t.Fatalf("err = %v", err)
 	}
 	for _, p := range []string{bad, bad + ".partial"} {
@@ -113,7 +113,7 @@ func TestEncryptedArchiveOpensWithAgeCLI(t *testing.T) {
 		t.Skip("age not installed")
 	}
 	dst := filepath.Join(t.TempDir(), "b.tar.gz.age")
-	if err := WriteArchive(dst, "b", "correct horse battery", fill(map[string]string{"x": "1"}, nil)); err != nil {
+	if err := WriteEncryptedArchive(dst, "b", "correct horse battery", fill(map[string]string{"x": "1"}, nil)); err != nil {
 		t.Fatal(err)
 	}
 	// age reads the passphrase from the terminal only; without one it cannot be
@@ -235,7 +235,7 @@ func TestRunDedupesAndReportsWithheld(t *testing.T) {
 
 func TestVerifyCountsAndDetectsCorruption(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "b.tar.gz.age")
-	if err := WriteArchive(dst, "b", "correct horse battery", fill(map[string]string{"a": "1", "b": "2"}, nil)); err != nil {
+	if err := WriteEncryptedArchive(dst, "b", "correct horse battery", fill(map[string]string{"a": "1", "b": "2"}, nil)); err != nil {
 		t.Fatal(err)
 	}
 	n, err := Verify(dst, pass("correct horse battery"))
@@ -271,8 +271,85 @@ func TestGuardedRootsAgainstIncludes(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "extra", ".aws", "config")); err != nil {
 		t.Error("the harmless sibling should still be carried")
 	}
-	if len(res.Withheld) != 1 {
-		t.Errorf("Withheld = %v", res.Withheld)
+	// Reported once, under the entry that names it — not again for the include.
+	if len(res.SkippedSensitive) != 1 || len(res.Withheld) != 0 {
+		t.Errorf("SkippedSensitive = %v, Withheld = %v", res.SkippedSensitive, res.Withheld)
+	}
+}
+
+// A credential file that is a symlink (stow, chezmoi symlink mode) is still a
+// credential when the folder it really lives in is what gets included — and
+// so is a symlink in an included folder that points at one.
+func TestGuardedRootsThroughSymlinks(t *testing.T) {
+	home, dest := t.TempDir(), t.TempDir()
+	mustWrite(t, filepath.Join(home, ".dotfiles", "kube", "config"), "users:\n- user:\n    token: opaque-zzzz\n")
+	mustWrite(t, filepath.Join(home, ".dotfiles", "zshrc"), "alias ll=ls\n")
+	os.MkdirAll(filepath.Join(home, ".kube"), 0o700)
+	if err := os.Symlink(filepath.Join(home, ".dotfiles", "kube", "config"), filepath.Join(home, ".kube", "config")); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(home, ".aws", "credentials"), "[default]\nopaque = zzzzzzzz\n")
+	os.MkdirAll(filepath.Join(home, "notes"), 0o700)
+	if err := os.Symlink(filepath.Join(home, ".aws", "credentials"), filepath.Join(home, "notes", "aws")); err != nil {
+		t.Fatal(err)
+	}
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".kube", "config"), Dest: "cloud/kube/config", Category: "cloud", Sensitivity: registry.High},
+		{Src: filepath.Join(home, ".aws", "credentials"), Dest: "cloud/aws/credentials", Category: "cloud", Sensitivity: registry.High},
+		{Src: filepath.Join(home, ".dotfiles"), Dest: "extra/.dotfiles", Category: registry.ExtraCategory, IsDir: true, Sensitivity: registry.Medium},
+		{Src: filepath.Join(home, "notes"), Dest: "extra/notes", Category: registry.ExtraCategory, IsDir: true, Sensitivity: registry.Medium},
+	}
+	if _, err := Run(targets, dest, Options{Redact: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"extra/.dotfiles/kube/config", "extra/notes/aws"} {
+		if _, err := os.Stat(filepath.Join(dest, p)); !os.IsNotExist(err) {
+			t.Errorf("%s reached a plaintext backup through a symlink", p)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dest, "extra", ".dotfiles", "zshrc")); err != nil {
+		t.Error("the harmless file beside it should still be carried")
+	}
+}
+
+// A push to GitHub leaves age identities behind — the registry's, one inside
+// a folder that wraps it, and one under any other name — even when encrypted;
+// a local encrypted backup carries them.
+func TestRemoteRunKeepsAgeKeysLocal(t *testing.T) {
+	home := t.TempDir()
+	key := "AGE-SECRET-KEY-1QYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQY\n"
+	mustWrite(t, filepath.Join(home, ".config", "chezmoi", "key.txt"), key)
+	mustWrite(t, filepath.Join(home, ".config", "chezmoi", "chezmoi.toml"), "encryption = \"age\"\n")
+	mustWrite(t, filepath.Join(home, "keys", "other-name"), key)
+	mustWrite(t, filepath.Join(home, ".zshrc"), "alias ll=ls\n")
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".config", "chezmoi", "key.txt"), Dest: "secrets/age/chezmoi-key.txt", Category: "secrets", Sensitivity: registry.High, LocalOnly: true},
+		{Src: filepath.Join(home, ".config", "chezmoi"), Dest: "dev/chezmoi", Category: "dev", IsDir: true, Sensitivity: registry.Medium},
+		{Src: filepath.Join(home, "keys"), Dest: "extra/keys", Category: registry.ExtraCategory, IsDir: true, Sensitivity: registry.Medium},
+		{Src: filepath.Join(home, ".zshrc"), Dest: "shell/.zshrc", Category: "shell", Sensitivity: registry.Low},
+	}
+	remote := memSink{}
+	res, err := RunTo(targets, remote, Options{Encrypted: true, Remote: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for dest, body := range remote {
+		if strings.Contains(body, "AGE-SECRET-KEY-1") {
+			t.Errorf("%s carries an age key to GitHub", dest)
+		}
+	}
+	if _, ok := remote["dev/chezmoi/chezmoi.toml"]; !ok {
+		t.Error("chezmoi's config should still go")
+	}
+	if strings.Join(res.KeptLocal, ",") != "secrets/age/chezmoi-key.txt,extra/keys/other-name" {
+		t.Errorf("KeptLocal = %v", res.KeptLocal)
+	}
+	local := memSink{}
+	if _, err := RunTo(targets, local, Options{Encrypted: true}); err != nil {
+		t.Fatal(err)
+	}
+	if local["secrets/age/chezmoi-key.txt"] != key {
+		t.Error("a local encrypted backup must carry the age key")
 	}
 }
 
@@ -312,5 +389,46 @@ func TestSplitSinkClassifies(t *testing.T) {
 	}
 	if !strings.Contains(secret["shell/.bashrc"], "ghp_") {
 		t.Error("the encrypted part keeps the real value")
+	}
+}
+
+func TestEncryptedArchiveRefusesEmptyPassphrase(t *testing.T) {
+	dst := filepath.Join(t.TempDir(), "b.tar.gz.age")
+	err := WriteEncryptedArchive(dst, "b", "", fill(map[string]string{"ssh/id_ed25519": "KEY"}, nil))
+	if !errors.Is(err, ErrNoPassphrase) {
+		t.Fatalf("err = %v, want ErrNoPassphrase", err)
+	}
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Error("an archive was written anyway")
+	}
+	if _, err := os.Stat(dst + ".partial"); !os.IsNotExist(err) {
+		t.Error("a partial file was left behind")
+	}
+}
+
+func TestAgeHeaderChecksPassphrase(t *testing.T) {
+	dst := filepath.Join(t.TempDir(), "b.tar.gz.age")
+	if err := WriteEncryptedArchive(dst, "b", "correct horse battery", fill(map[string]string{"x": strings.Repeat("y", 1<<20)}, nil)); err != nil {
+		t.Fatal(err)
+	}
+	hdr, err := AgeHeader(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hdr) > 1024 {
+		t.Errorf("header is %d bytes; it should be the header, not the file", len(hdr))
+	}
+	if !HeaderOpens(hdr, "correct horse battery") {
+		t.Error("the right passphrase does not open the header")
+	}
+	if HeaderOpens(hdr, "a different passphrase") {
+		t.Error("a wrong passphrase opens the header")
+	}
+	plain := filepath.Join(t.TempDir(), "b.tar.gz")
+	if err := WriteArchive(plain, "b", fill(map[string]string{"x": "1"}, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AgeHeader(plain); err == nil {
+		t.Error("a plain archive has an age header")
 	}
 }

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -320,6 +321,10 @@ type machineMeta struct {
 	// Fingerprint is a hash of what was backed up (not of the encrypted
 	// bytes), so an unchanged machine is recognised and not pushed again.
 	Fingerprint string `json:"fingerprint"`
+	// AgeHeader is the header of the encrypted file, base64: enough to tell
+	// whether this push's passphrase is the one that copy was made with. It
+	// reveals nothing the encrypted file beside it does not.
+	AgeHeader string `json:"ageHeader,omitempty"`
 }
 
 func githubStatus(ctx context.Context, env *sys.OS) error {
@@ -513,17 +518,42 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	if err != nil {
 		return err
 	}
-	fp := mode + ":" + digest.Sum()
+	// Encrypted means encrypted: check the bytes about to leave this machine,
+	// not the flag that asked for them.
+	var header []byte
+	for _, f := range files {
+		if !strings.HasSuffix(f.Path, ".age") {
+			continue
+		}
+		if backup.Detect(f.Src) != backup.FormatAge {
+			return fmt.Errorf("refusing to upload: %s is not encrypted", f.Path)
+		}
+		if header == nil {
+			if header, err = backup.AgeHeader(f.Src); err != nil {
+				return err
+			}
+		}
+	}
+	// The version is part of the fingerprint: a newer dothaven may carry more,
+	// or classify a file as sensitive that an older one left readable.
+	fp := mode + ":" + cmd.Root().Version + ":" + digest.Sum()
 	if remote := readMachineMeta(ctx, c, r.FullName, machine); remote.Fingerprint == fp {
-		cfg.Repo, cfg.Mode = r.FullName, mode
-		_ = saveGitHubConfig(env, cfg)
-		fmt.Printf("%s Already up to date — nothing changed since the last push (%s).\n", good("✓"), shortDate(remote.Created))
-		return nil
+		if samePassphrase(remote, header, pass) {
+			cfg.Repo, cfg.Mode = r.FullName, mode
+			_ = saveGitHubConfig(env, cfg)
+			fmt.Printf("%s Already up to date — nothing changed since the last push (%s).\n", good("✓"), shortDate(remote.Created))
+			return nil
+		}
+		fmt.Println(dim("Nothing changed, but the copy on GitHub was made with a different passphrase — replacing it with one yours opens."))
+	}
+	var headerB64 string
+	if header != nil {
+		headerB64 = base64.StdEncoding.EncodeToString(header)
 	}
 	meta, _ := json.MarshalIndent(machineMeta{
 		Machine: machine, Host: hostname(), OS: runtime.GOOS, Mode: mode,
 		Created: time.Now().UTC().Format(time.RFC3339), Files: out.res.TotalFiles, Dothaven: cmd.Root().Version,
-		Fingerprint: fp,
+		Fingerprint: fp, AgeHeader: headerB64,
 	}, "", "  ")
 	metaPath := filepath.Join(tmp, "dothaven.json")
 	if err := os.WriteFile(metaPath, append(meta, '\n'), 0o600); err != nil {
@@ -555,12 +585,28 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	}
 	fmt.Printf("%s Pushed %s as machines/%s %s\n", good("✓"), plural(out.res.TotalFiles, "file"), machine, dim("("+mode+", commit "+sha[:7]+")"))
 	fmt.Printf("  %s\n", r.HTMLURL+"/tree/"+firstNonEmpty(r.DefaultBranch, "main")+"/machines/"+machine)
+	printLeftOut(out.res, mode != modePlain, "dothaven github push --mode encrypted")
 	fmt.Println("\n" + bold("On the new machine:"))
 	fmt.Printf("  %s\n  %s\n", kbd("dothaven github login"), kbd("dothaven restore github"))
 	if mode != modePlain {
 		fmt.Println(dim("  You will need the passphrase. Nothing can open the encrypted part without it."))
 	}
 	return nil
+}
+
+// samePassphrase reports whether the copy on GitHub opens with pass. With
+// nothing encrypted in this push there is nothing to open, so any passphrase
+// is the same one; with no header recorded, it cannot be known and the push
+// goes ahead.
+func samePassphrase(remote machineMeta, header []byte, pass string) bool {
+	if header == nil {
+		return true
+	}
+	hdr, err := base64.StdEncoding.DecodeString(remote.AgeHeader)
+	if err != nil || len(hdr) == 0 {
+		return false
+	}
+	return backup.HeaderOpens(hdr, pass)
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -584,11 +630,11 @@ func askPushMode() (string, error) {
 // keychain after the first push so a routine push doesn't ask every time.
 // The keychain is local; the passphrase protects the copy on GitHub.
 func pushPassphrase(env *sys.OS) (string, error) {
-	if p, ok := os.LookupEnv(passphraseEnv); ok {
-		return p, nil
+	if p, ok, err := envPassphrase(); ok {
+		return p, err
 	}
 	st := secrets(env)
-	if p, err := st.Get(accountPassphrase); err == nil && p != "" {
+	if p, err := st.Get(accountPassphrase); err == nil && len([]rune(p)) >= minPassphrase {
 		fmt.Println(dim("Using your remembered backup passphrase (forget it with `dothaven github logout`)."))
 		return p, nil
 	}
@@ -618,7 +664,7 @@ func buildPushFiles(ctx context.Context, cmd *cobra.Command, env *sys.OS, tmp, m
 	var out backupOutcome
 	switch mode {
 	case modeEncrypted:
-		o := backupOpts{output: tmp, archive: true, encrypt: true, passphrase: pass, only: only, skip: skip, digest: digest}
+		o := backupOpts{output: tmp, archive: true, encrypt: true, passphrase: pass, only: only, skip: skip, digest: digest, remote: true}
 		res, err := runBackup(ctx, cmd, env, o)
 		if err != nil {
 			return nil, res, err
@@ -634,7 +680,7 @@ func buildPushFiles(ctx context.Context, cmd *cobra.Command, env *sys.OS, tmp, m
 
 	case modePlain:
 		tree := filepath.Join(tmp, "tree")
-		o := backupOpts{only: only, skip: skip, digest: digest}
+		o := backupOpts{only: only, skip: skip, digest: digest, remote: true}
 		if err := fillBackup(ctx, cmd, env, o, targets, backup.DirSink{Root: tree}, host, &out); err != nil {
 			return nil, out, backupErr(err)
 		}
@@ -645,8 +691,8 @@ func buildPushFiles(ctx context.Context, cmd *cobra.Command, env *sys.OS, tmp, m
 		tree := filepath.Join(tmp, "tree")
 		secretsPath := filepath.Join(tmp, "secrets.tar.gz.age")
 		var split *backup.SplitSink
-		o := backupOpts{noRedact: true, split: true, only: only, skip: skip, digest: digest}
-		err := backup.WriteArchive(secretsPath, name, pass, func(secret backup.Sink) error {
+		o := backupOpts{noRedact: true, split: true, only: only, skip: skip, digest: digest, remote: true}
+		err := backup.WriteEncryptedArchive(secretsPath, name, pass, func(secret backup.Sink) error {
 			split = &backup.SplitSink{Plain: backup.DirSink{Root: tree}, Secret: secret}
 			return fillBackup(ctx, cmd, env, o, targets, split, host, &out)
 		})

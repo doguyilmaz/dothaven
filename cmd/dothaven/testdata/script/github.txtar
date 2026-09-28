@@ -26,6 +26,28 @@ exists .config/dothaven/github.json
 exec dothaven github push --only shell,ssh --machine oldmac
 stdout 'Already up to date'
 
+# A passphrase set but empty (a script's $PASS that expanded to nothing) or
+# too short is refused — never taken as "no encryption".
+env DOTHAVEN_PASSPHRASE=
+! exec dothaven github push --mode split --only shell,ssh --machine oldmac
+stderr 'shorter than 10 characters'
+env DOTHAVEN_PASSPHRASE=abc
+! exec dothaven github push --only shell,ssh --machine oldmac
+stderr 'shorter than 10 characters'
+
+# Nothing changed but the passphrase: the copy on GitHub is replaced, so the
+# passphrase you now know is the one that opens it.
+env DOTHAVEN_PASSPHRASE='a brand new passphrase'
+exec dothaven github push --only shell,ssh --machine oldmac
+stdout 'different passphrase'
+stdout 'Pushed 3 files as machines/oldmac'
+exec dothaven github push --only shell,ssh --machine oldmac
+stdout 'Already up to date'
+env DOTHAVEN_PASSPHRASE='correct horse battery staple'
+! exec dothaven restore github --dry-run
+stderr 'wrong passphrase'
+env DOTHAVEN_PASSPHRASE='a brand new passphrase'
+
 exec dothaven github status
 stdout 'oldmac'
 stdout 'encrypted'
@@ -50,6 +72,15 @@ stdout 'Restored 3 files'
 grep 'BEGIN OPENSSH PRIVATE KEY' .ssh/id_ed25519
 grep 'alias ll' .zshrc
 
+# An age key never goes to GitHub, not even encrypted: it opens the encrypted
+# files in a dotfiles repo. The push says so; a local encrypted backup carries it.
+exec dothaven github push --only secrets --machine agebox
+stdout '1 age key file kept off GitHub'
+stdout 'secrets/age/chezmoi-key.txt'
+stdout 'Pushed 1 file'
+exec dothaven backup --encrypt --only secrets -o $WORK/local
+stdout 'Encrypted backup saved — 2 files'
+
 # A public repository is never written to.
 ! exec dothaven github push --repo tester/public-one --only shell
 stderr 'PUBLIC'
@@ -63,3 +94,8 @@ Host box
 -----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAA
 -----END OPENSSH PRIVATE KEY-----
+-- .netrc --
+machine example.com login me password hunter2hunter2
+-- .config/chezmoi/key.txt --
+# public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
+AGE-SECRET-KEY-1QYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQY

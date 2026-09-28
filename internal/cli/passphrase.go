@@ -39,13 +39,24 @@ func readSecret(prompt string) (string, error) {
 	return strings.TrimRight(string(b), "\r\n"), nil
 }
 
+// envPassphrase is DOTHAVEN_PASSPHRASE for a new archive, held to the same
+// rule as a typed one. Set but empty is an error, not "no passphrase": a
+// script whose $PASS expanded to nothing must fail, not upload plaintext.
+func envPassphrase() (string, bool, error) {
+	p, ok := os.LookupEnv(passphraseEnv)
+	if !ok {
+		return "", false, nil
+	}
+	if len([]rune(p)) < minPassphrase {
+		return "", true, fmt.Errorf("%s is set but shorter than %d characters", passphraseEnv, minPassphrase)
+	}
+	return p, true, nil
+}
+
 // newPassphrase asks for a passphrase for a new archive, twice.
 func newPassphrase() (string, error) {
-	if p, ok := os.LookupEnv(passphraseEnv); ok {
-		if len(p) < minPassphrase {
-			return "", fmt.Errorf("%s is shorter than %d characters", passphraseEnv, minPassphrase)
-		}
-		return p, nil
+	if p, ok, err := envPassphrase(); ok {
+		return p, err
 	}
 	fmt.Fprintln(os.Stderr, dim("Choose a passphrase for this backup. You will need it on the new machine,"))
 	fmt.Fprintln(os.Stderr, dim("and nothing can recover the backup without it — store it in a password manager."))
@@ -54,7 +65,7 @@ func newPassphrase() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if len(p) < minPassphrase {
+		if len([]rune(p)) < minPassphrase {
 			fmt.Fprintf(os.Stderr, "  %s at least %d characters, please — this file can hold your SSH keys.\n", warn("⚠"), minPassphrase)
 			continue
 		}

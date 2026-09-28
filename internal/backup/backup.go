@@ -4,6 +4,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -30,6 +31,9 @@ type Options struct {
 	Skip      []string
 	// MaxFileSize overrides the per-file cap (0 → MaxFileSize).
 	MaxFileSize int64
+	// Remote marks a run whose output leaves this machine (a GitHub push).
+	// LocalOnly entries, and any file holding an age identity, stay behind.
+	Remote bool
 }
 
 // maxGateText is the largest text file the plaintext gate will scan. Scanning
@@ -65,6 +69,9 @@ type Result struct {
 	// but were written verbatim because redaction was off. The CLI warns loudly
 	// when that happened in a plaintext tree.
 	RawSecrets []string
+	// KeptLocal lists files a remote run left on this machine on purpose (see
+	// Options.Remote): keys that protect other copies.
+	KeptLocal []string
 }
 
 // Run copies every selected target into destRoot.
@@ -82,12 +89,18 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 	// Credential roots, whichever entry reaches them. A user who includes
 	// ~/.aws must not get ~/.aws/credentials in plaintext just because it came
 	// in through their own path rather than the registry's.
-	var guarded []string
+	var guarded, localOnly []string
 	for _, t := range targets {
 		if t.Sensitivity == registry.High && t.Redact == nil {
-			guarded = append(guarded, filepath.Clean(t.Src))
+			guarded = appendRoot(guarded, t.Src)
+		}
+		if t.LocalOnly {
+			localOnly = appendRoot(localOnly, t.Src)
 		}
 	}
+	// Roots already reported as left out: a wider entry or an include that
+	// reaches the same files must not list them a second time.
+	var reported []string
 	for _, t := range targets {
 		if !registry.Selected(t.Category, opts.Only, opts.Skip) {
 			continue
@@ -101,6 +114,14 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			if _, err := os.Stat(t.Src); err == nil {
 				res.SkippedSensitive = append(res.SkippedSensitive, t.Dest)
 			}
+			reported = appendRoot(reported, t.Src)
+			continue
+		}
+		if opts.Remote && t.LocalOnly {
+			if _, err := os.Stat(t.Src); err == nil {
+				res.KeptLocal = append(res.KeptLocal, t.Dest)
+			}
+			reported = appendRoot(reported, t.Src)
 			continue
 		}
 		files, skipped := Walk(t, WalkOptions{MaxSize: opts.MaxFileSize})
@@ -118,16 +139,26 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			// Two entries can name the same file (~/.ssh/config is tracked on
 			// its own and as part of ~/.ssh, or a user include overlaps the
 			// registry); it is carried once, under the first entry's name.
-			if written[f.Dest] || writtenSrc[f.Path] {
+			if written[f.Dest] || writtenSrc[f.Path] || reachesGuarded(t, f.Path, reported) {
 				continue
 			}
 			if opts.Redact && reachesGuarded(t, f.Path, guarded) {
 				res.Withheld = append(res.Withheld, f.Dest)
 				continue
 			}
+			if opts.Remote && reachesGuarded(t, f.Path, localOnly) {
+				res.KeptLocal = append(res.KeptLocal, f.Dest)
+				continue
+			}
 			raw, err := readRegular(f.Path, f.Size)
 			if err != nil {
 				res.ReadErrors = append(res.ReadErrors, f.Dest)
+				continue
+			}
+			// An age identity under any name or path: cheap to look for, and
+			// the one file a push must never carry.
+			if opts.Remote && bytes.Contains(raw, ageIdentity) {
+				res.KeptLocal = append(res.KeptLocal, f.Dest)
 				continue
 			}
 			data := raw
@@ -172,25 +203,55 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 	return res, nil
 }
 
+var ageIdentity = []byte("AGE-SECRET-KEY-1")
+
 func under(p, root string) bool {
 	return p == root || strings.HasPrefix(p, root+string(filepath.Separator))
+}
+
+// appendRoot adds a guarded root, and also where it really is when it is a
+// symlink: a stow-managed ~/.kube/config pointing into ~/.dotfiles is still a
+// credential when ~/.dotfiles is what gets included.
+func appendRoot(roots []string, src string) []string {
+	c := filepath.Clean(src)
+	roots = append(roots, c)
+	if r, err := filepath.EvalSymlinks(c); err == nil && r != c {
+		roots = append(roots, r)
+	}
+	return roots
 }
 
 // reachesGuarded reports whether a file inside a credential root was reached
 // from outside it — through a user include, or an entry wrapping the root —
 // rather than through a more specific registry entry that knows how to redact
-// it (~/.ssh/config is its own entry inside the guarded ~/.ssh).
+// it (~/.ssh/config is its own entry inside the guarded ~/.ssh). Paths are
+// compared as written and as resolved, so a symlink in either direction does
+// not hide a credential.
 func reachesGuarded(t registry.BackupTarget, file string, roots []string) bool {
-	src := filepath.Clean(t.Src)
-	for _, r := range roots {
-		if !under(file, r) {
-			continue
-		}
-		if t.Category == registry.ExtraCategory || (src != r && under(r, src)) {
-			return true
-		}
+	if len(roots) == 0 {
+		return false
 	}
-	return false
+	src := filepath.Clean(t.Src)
+	check := func(file, src string) bool {
+		for _, r := range roots {
+			if !under(file, r) {
+				continue
+			}
+			if t.Category == registry.ExtraCategory || (src != r && under(r, src)) {
+				return true
+			}
+		}
+		return false
+	}
+	if check(file, src) {
+		return true
+	}
+	rf, err1 := filepath.EvalSymlinks(file)
+	rs, err2 := filepath.EvalSymlinks(src)
+	if err1 != nil || err2 != nil || (rf == file && rs == src) {
+		return false
+	}
+	return check(rf, rs)
 }
 
 // readRegular reads a file the walk vetted, refusing anything that is no
@@ -296,6 +357,8 @@ func Manifest(meta ManifestMeta, res Result) string {
 		"# Carry them encrypted: dothaven backup --encrypt  (or chezmoi-export --apply)\n",
 		res.SkippedSensitive)
 	list("# Left out: private keys found by the scan (same remedy as above).\n", res.Withheld)
+	list("# Kept off GitHub, even encrypted: age keys, which open the encrypted files in\n"+
+		"# a dotfiles repository. Carry them with dothaven backup --encrypt.\n", res.KeptLocal)
 	var big []string
 	for _, t := range res.TooLarge {
 		big = append(big, fmt.Sprintf("%s (%d MiB)", t.Dest, t.Size>>20))

@@ -43,10 +43,10 @@ var categoryAbout = map[string]string{
 	"npm":        "npm config",
 	"bun":        "bun config",
 	"db":         "database client config and saved passwords",
-	"secrets":    ".netrc, Vault token, GnuPG keys",
+	"secrets":    ".netrc, Vault token, GnuPG and age keys",
 	"vm":         "version pins (.tool-versions, mise, .nvmrc)",
 	"net":        "curl and wget defaults",
-	"dev":        "direnv",
+	"dev":        "direnv, chezmoi config",
 	"apps":       "Karabiner, Hammerspoon, window managers…",
 	"schedule":   "launchd agents",
 	"build":      "Maven and Gradle settings",
@@ -109,6 +109,7 @@ type backupOpts struct {
 	digest     *backup.DigestSink // when set, fingerprints the content as it is written
 	only, skip []string
 	passphrase string // already asked (the menu asks before the slow part)
+	remote     bool   // the result leaves this machine (a GitHub push)
 }
 
 func (o backupOpts) redact() bool { return !o.noRedact && !o.encrypt }
@@ -312,7 +313,11 @@ func runBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpt
 		if o.encrypt {
 			out.path += ".age"
 		}
-		err = backup.WriteArchive(out.path, name, o.passphrase, fill)
+		if o.encrypt {
+			err = backup.WriteEncryptedArchive(out.path, name, o.passphrase, fill)
+		} else {
+			err = backup.WriteArchive(out.path, name, fill)
+		}
 	} else {
 		out.path = filepath.Join(dir, name)
 		err = fill(backup.DirSink{Root: out.path})
@@ -348,7 +353,7 @@ func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOp
 	}
 	redact := o.redact()
 	res, err := backup.RunTo(targets, sink, backup.Options{
-		Context: ctx, Redact: redact, Encrypted: o.encrypt, Only: o.only, Skip: o.skip,
+		Context: ctx, Redact: redact, Encrypted: o.encrypt, Only: o.only, Skip: o.skip, Remote: o.remote,
 	})
 	out.res = res
 	if err != nil {
@@ -448,6 +453,12 @@ func writePrefsTo(ctx context.Context, sink backup.Sink) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// Preference values are whatever apps chose to store. In a split backup
+	// they go to the encrypted part: the scanner reads prefs.json as JSON,
+	// where a key and its value sit on separate lines.
+	if cs, ok := sink.(backup.ClassifyingSink); ok {
+		return counts.Apply, cs.AddClassified("macos-defaults/"+prefsFileName, data, false, true)
+	}
 	return counts.Apply, sink.Add("macos-defaults/"+prefsFileName, data, false)
 }
 
@@ -486,31 +497,7 @@ func printBackupOutcome(env *sys.OS, o backupOutcome) {
 		fmt.Printf("  %s\n", dim("+ "+strings.Join(extras, ", ")))
 	}
 
-	// Everything that exists and did not go in, loudest first. A backup is
-	// judged by what it is missing, and nobody reads a MANIFEST until too late.
-	if len(res.SkippedSensitive)+len(res.Withheld) > 0 {
-		fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s with credentials left out of this plaintext backup:",
-			plural(len(res.SkippedSensitive)+len(res.Withheld), "path"))))
-		printList(append(append([]string(nil), res.SkippedSensitive...), res.Withheld...), 8)
-		fmt.Printf("  For a complete copy, keys included: %s\n", kbd("dothaven backup --encrypt"))
-	}
-	if len(res.TooLarge) > 0 {
-		fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s left out for size:", plural(len(res.TooLarge), "file"))))
-		var lines []string
-		for _, t := range res.TooLarge {
-			lines = append(lines, fmt.Sprintf("%s  %s", t.Dest, dim(fmt.Sprintf("%s, %s", humanBytes(t.Size), t.Reason))))
-		}
-		printList(lines, 8)
-	}
-	if len(res.ReadErrors) > 0 {
-		fmt.Fprintf(os.Stderr, "\n%s %s\n", danger("✗"), bold(fmt.Sprintf("%s exist but could not be read:", plural(len(res.ReadErrors), "file"))))
-		printListTo(os.Stderr, res.ReadErrors, 8)
-	}
-	if len(res.RawSecrets) > 0 && !o.encrypted {
-		fmt.Fprintf(os.Stderr, "\n%s %s\n", danger("🔴"), bold(fmt.Sprintf("%s holding private keys were written UNENCRYPTED:", plural(len(res.RawSecrets), "file"))))
-		printListTo(os.Stderr, res.RawSecrets, 8)
-		fmt.Fprintf(os.Stderr, "  Treat this backup as secret, or use %s instead.\n", kbd("dothaven backup --encrypt"))
-	}
+	printLeftOut(res, o.encrypted, "dothaven backup --encrypt")
 	if o.redacted {
 		if report := scan.FormatReport(scan.Summarize(res.ScanResults), scan.ReportOptions{Color: colorOn()}); strings.TrimSpace(report) != "" {
 			fmt.Println(report)
@@ -533,6 +520,41 @@ func printBackupOutcome(env *sys.OS, o backupOutcome) {
 	}
 	fmt.Printf("  %s             %s\n", kbd("dothaven status"), dim("what changed since this backup"))
 	fmt.Printf("  %s   %s\n", kbd("dothaven backup --encrypt"), dim("one complete encrypted file for a new machine"))
+}
+
+// printLeftOut lists everything that exists and did not go in, loudest first.
+// A backup is judged by what it is missing, and nobody reads a MANIFEST until
+// too late. complete is the command that would carry the credentials.
+func printLeftOut(res backup.Result, encrypted bool, complete string) {
+	if len(res.SkippedSensitive)+len(res.Withheld) > 0 {
+		fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s with credentials left out of this plaintext backup:",
+			plural(len(res.SkippedSensitive)+len(res.Withheld), "path"))))
+		printList(append(append([]string(nil), res.SkippedSensitive...), res.Withheld...), 8)
+		fmt.Printf("  For a complete copy, keys included: %s\n", kbd(complete))
+	}
+	if len(res.KeptLocal) > 0 {
+		fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s kept off GitHub, even encrypted:", plural(len(res.KeptLocal), "age key file"))))
+		printList(res.KeptLocal, 8)
+		fmt.Printf("  They open the encrypted files in your dotfiles repo, so they never go into a repository.\n")
+		fmt.Printf("  Carry them to the new machine with %s, or keep them in your password manager.\n", kbd("dothaven backup --encrypt"))
+	}
+	if len(res.TooLarge) > 0 {
+		fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s left out for size:", plural(len(res.TooLarge), "file"))))
+		var lines []string
+		for _, t := range res.TooLarge {
+			lines = append(lines, fmt.Sprintf("%s  %s", t.Dest, dim(fmt.Sprintf("%s, %s", humanBytes(t.Size), t.Reason))))
+		}
+		printList(lines, 8)
+	}
+	if len(res.ReadErrors) > 0 {
+		fmt.Fprintf(os.Stderr, "\n%s %s\n", danger("✗"), bold(fmt.Sprintf("%s exist but could not be read:", plural(len(res.ReadErrors), "file"))))
+		printListTo(os.Stderr, res.ReadErrors, 8)
+	}
+	if len(res.RawSecrets) > 0 && !encrypted {
+		fmt.Fprintf(os.Stderr, "\n%s %s\n", danger("🔴"), bold(fmt.Sprintf("%s holding private keys were written UNENCRYPTED:", plural(len(res.RawSecrets), "file"))))
+		printListTo(os.Stderr, res.RawSecrets, 8)
+		fmt.Fprintf(os.Stderr, "  Treat this backup as secret, or use %s instead.\n", kbd("dothaven backup --encrypt"))
+	}
 }
 
 func printList(items []string, limit int) { printListTo(os.Stdout, items, limit) }

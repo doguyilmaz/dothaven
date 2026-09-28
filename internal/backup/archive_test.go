@@ -102,7 +102,7 @@ func TestDetectByContent(t *testing.T) {
 	plain := filepath.Join(d, "renamed")
 	writeTarGz(t, plain, map[string]string{"b/x": "1"})
 	enc := filepath.Join(d, "also-renamed")
-	if err := WriteArchive(enc, "b", "correct horse battery", func(s Sink) error { return s.Add("x", []byte("1"), false) }); err != nil {
+	if err := WriteEncryptedArchive(enc, "b", "correct horse battery", func(s Sink) error { return s.Add("x", []byte("1"), false) }); err != nil {
 		t.Fatal(err)
 	}
 	other := filepath.Join(d, "notes.txt")

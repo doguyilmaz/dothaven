@@ -58,6 +58,11 @@ type Entry struct {
 	// Exclude drops matching paths from a Dir entry's walk: caches, logs and
 	// bundled binaries that live beside the config (see backup.Excluded).
 	Exclude []string
+	// LocalOnly never leaves this machine except in a local encrypted backup:
+	// no push to GitHub carries it, not even encrypted. It is for keys that
+	// protect other copies — an age identity opens every file encrypted to it,
+	// and those files already live in a repository.
+	LocalOnly bool
 }
 
 // unix is the common case: the same ~-relative path on macOS and Linux.
@@ -312,6 +317,11 @@ var Entries = []Entry{
 	{ID: "vm.asdfrc", Name: ".asdfrc", Category: "vm", Kind: File, BackupDest: "vm/.asdfrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.asdfrc", "linux": "~/.asdfrc"}},
 
 	// Secrets / bare credential stores (High — never plaintext)
+	// age identities, which chezmoi and sops decrypt with. Without them the
+	// encrypted files in a dotfiles repo cannot be opened on the new machine.
+	{ID: "secrets.age.chezmoi", Name: "chezmoi age key", Category: "secrets", Kind: File, BackupDest: "secrets/age/chezmoi-key.txt", Sensitivity: High, LocalOnly: true, Paths: unix("~/.config/chezmoi/key.txt")},
+	{ID: "secrets.age.sops", Name: "sops age keys", Category: "secrets", Kind: File, BackupDest: "secrets/age/sops-keys.txt", Sensitivity: High, LocalOnly: true,
+		Paths: map[string]string{"darwin": "~/Library/Application Support/sops/age/keys.txt", "linux": "~/.config/sops/age/keys.txt"}},
 	{ID: "secrets.netrc", Name: ".netrc", Category: "secrets", Kind: File, BackupDest: "secrets/.netrc", Sensitivity: High, Paths: map[string]string{"darwin": "~/.netrc", "linux": "~/.netrc", "windows": "%USERPROFILE%/_netrc"}},
 	{ID: "secrets.vault", Name: "Vault token", Category: "secrets", Kind: File, BackupDest: "secrets/.vault-token", Sensitivity: High, Paths: map[string]string{"darwin": "~/.vault-token", "linux": "~/.vault-token"}},
 
@@ -390,6 +400,9 @@ var Entries = []Entry{
 	{ID: "mobile.xcode.snippets", Name: "Xcode code snippets", Category: "mobile", Kind: Dir, BackupDest: "mobile/xcode/CodeSnippets", Sensitivity: Low, Paths: map[string]string{"darwin": "~/Library/Developer/Xcode/UserData/CodeSnippets"}},
 
 	// dothaven's own list of extra paths, so it survives a restore.
+	// chezmoi's own config (its age recipient, template data). Its state
+	// database is rebuilt by the first apply.
+	{ID: "dev.chezmoi", Name: "chezmoi config", Category: "dev", Kind: Dir, BackupDest: "dev/chezmoi", Sensitivity: Medium, Paths: unix("~/.config/chezmoi"), Exclude: []string{"*.boltdb"}},
 	{ID: "dothaven.include", Name: "dothaven include list", Category: "dothaven", Kind: File, BackupDest: "dothaven/include", Sensitivity: Low, Paths: unix("~/.config/dothaven/include")},
 }
 

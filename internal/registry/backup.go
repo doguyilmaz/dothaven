@@ -10,6 +10,7 @@ type BackupTarget struct {
 	Redact      func(string) string
 	Sensitivity Sensitivity
 	Exclude     []string // Dir only: patterns dropped from the walk (see backup.Excluded)
+	LocalOnly   bool     // never pushed off this machine (see Entry.LocalOnly)
 }
 
 // BackupTargets resolves every entry with a path on this platform into a backup
@@ -30,6 +31,7 @@ func BackupTargets(home string, entries []Entry) []BackupTarget {
 			Redact:      e.Redact,
 			Sensitivity: e.Sensitivity,
 			Exclude:     e.Exclude,
+			LocalOnly:   e.LocalOnly,
 		})
 	}
 	return out

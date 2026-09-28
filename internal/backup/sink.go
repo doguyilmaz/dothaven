@@ -49,8 +49,13 @@ type SplitSink struct {
 }
 
 func (s *SplitSink) Add(dest string, data []byte, exec bool) error {
-	sensitive := scan.ScanContentFull(dest, string(data)).Action != scan.Include
-	return s.AddClassified(dest, data, exec, sensitive)
+	return s.AddClassified(dest, data, exec, s.sensitive(dest, data))
+}
+
+// sensitive is how an unclassified file is placed: anything the scanner would
+// not include verbatim goes to the encrypted part.
+func (s *SplitSink) sensitive(dest string, data []byte) bool {
+	return scan.ScanContentFull(dest, string(data)).Action != scan.Include
 }
 
 func (s *SplitSink) AddClassified(dest string, data []byte, exec, sensitive bool) error {
@@ -106,8 +111,19 @@ func (t *tarSink) Add(dest string, data []byte, exec bool) error {
 // is left behind looking like a backup.
 var ErrNothingToWrite = errors.New("nothing to write")
 
-// WriteArchive builds a .tar.gz at dst — age-encrypted with passphrase when one
-// is given — by handing fill a Sink to add files to.
+// WriteArchive builds a plain .tar.gz at dst by handing fill a Sink to add
+// files to. WriteEncryptedArchive is the encrypted one; they are separate so
+// that no value of a variable can turn "encrypted" into "plain" — an empty
+// passphrase is an error there, never a request for no encryption.
+func WriteArchive(dst, root string, fill func(Sink) error) error {
+	return writeArchive(dst, root, "", false, fill)
+}
+
+// ErrNoPassphrase is returned when an encrypted archive is asked for without a
+// passphrase.
+var ErrNoPassphrase = errors.New("an encrypted archive needs a passphrase")
+
+// WriteEncryptedArchive builds an age-encrypted .tar.gz at dst.
 //
 // Everything streams: files go through tar and gzip and, when encrypting,
 // straight into age, so an encrypted backup never exists in plaintext on disk,
@@ -117,7 +133,14 @@ var ErrNothingToWrite = errors.New("nothing to write")
 // Encryption uses the age library, not the age binary. The format is age's
 // own, so `age -d` opens these files, but the machine you restore on does not
 // need age installed — which, on a freshly wiped laptop, it will not be.
-func WriteArchive(dst, root, passphrase string, fill func(Sink) error) (err error) {
+func WriteEncryptedArchive(dst, root, passphrase string, fill func(Sink) error) error {
+	if passphrase == "" {
+		return ErrNoPassphrase
+	}
+	return writeArchive(dst, root, passphrase, true, fill)
+}
+
+func writeArchive(dst, root, passphrase string, encrypt bool, fill func(Sink) error) (err error) {
 	tmp := dst + ".partial"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -132,7 +155,7 @@ func WriteArchive(dst, root, passphrase string, fill func(Sink) error) (err erro
 
 	var w io.Writer = f
 	var enc io.WriteCloser
-	if passphrase != "" {
+	if encrypt {
 		r, rerr := age.NewScryptRecipient(passphrase)
 		if rerr != nil {
 			return rerr
@@ -165,6 +188,53 @@ func WriteArchive(dst, root, passphrase string, fill func(Sink) error) (err erro
 		return err
 	}
 	return os.Rename(tmp, dst)
+}
+
+// AgeHeader returns the start of an age file: its header, which holds the
+// passphrase-wrapped file key, and the payload nonce. That is enough to check
+// a passphrase against the file without the rest of it, and it reveals
+// nothing the file itself does not.
+func AgeHeader(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	buf := make([]byte, 64<<10)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, err
+	}
+	buf = buf[:n]
+	if !bytes.HasPrefix(buf, []byte(ageMagic)) {
+		return nil, errors.New("not an age file")
+	}
+	// The header ends with the MAC line, "--- <mac>\n"; the 16-byte payload
+	// nonce follows.
+	i := bytes.Index(buf, []byte("\n--- "))
+	if i < 0 {
+		return nil, errors.New("age header not found")
+	}
+	end := bytes.IndexByte(buf[i+1:], '\n')
+	if end < 0 {
+		return nil, errors.New("age header not found")
+	}
+	end += i + 2
+	if len(buf) < end+16 {
+		return nil, errors.New("age file too short")
+	}
+	return buf[:end+16], nil
+}
+
+// HeaderOpens reports whether passphrase unlocks the age header hdr, as
+// returned by AgeHeader.
+func HeaderOpens(hdr []byte, passphrase string) bool {
+	id, err := age.NewScryptIdentity(passphrase)
+	if err != nil {
+		return false
+	}
+	_, err = age.Decrypt(bytes.NewReader(hdr), id)
+	return err == nil
 }
 
 // ErrWrongPassphrase is returned when an encrypted archive will not open with
@@ -309,16 +379,23 @@ type DigestSink struct {
 	lines   []string
 }
 
-func (d *DigestSink) note(dest string, data []byte, exec bool) {
+// note records one file. class is where a classifying sink put it ("" when
+// nothing classified it): a file that moves between the readable and the
+// encrypted part has changed, even if its bytes have not.
+func (d *DigestSink) note(dest string, data []byte, exec bool, class string) {
 	if d.Exclude[dest] {
 		return
 	}
 	sum := sha256.Sum256(data)
-	d.lines = append(d.lines, fmt.Sprintf("%s\x00%x\x00%v", dest, sum, exec))
+	d.lines = append(d.lines, fmt.Sprintf("%s\x00%x\x00%v\x00%s", dest, sum, exec, class))
 }
 
 func (d *DigestSink) Add(dest string, data []byte, exec bool) error {
-	d.note(dest, data, exec)
+	if cs, ok := d.Inner.(*SplitSink); ok {
+		// Let the split sink decide, and record what it decided.
+		return d.AddClassified(dest, data, exec, cs.sensitive(dest, data))
+	}
+	d.note(dest, data, exec, "")
 	return d.Inner.Add(dest, data, exec)
 }
 
@@ -326,7 +403,11 @@ func (d *DigestSink) Add(dest string, data []byte, exec bool) error {
 // around a SplitSink must not turn "this is a credential" into "scan it and
 // see".
 func (d *DigestSink) AddClassified(dest string, data []byte, exec, sensitive bool) error {
-	d.note(dest, data, exec)
+	class := "plain"
+	if sensitive {
+		class = "secret"
+	}
+	d.note(dest, data, exec, class)
 	if cs, ok := d.Inner.(ClassifyingSink); ok {
 		return cs.AddClassified(dest, data, exec, sensitive)
 	}
