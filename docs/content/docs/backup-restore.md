@@ -113,6 +113,9 @@ A backup is judged by what it is missing, so dothaven lists everything that exis
 | Files over 64 MiB | Every backup | Config files are kilobytes; this keeps a stray disk image out. |
 | Text files over 8 MiB | Plain backups (unless `--no-redact`) | Too large to check for secrets. The encrypted backup carries them. |
 | Files that exist but cannot be read | Every backup | Listed on stderr so you can fix permissions. |
+| Folders the new machine rebuilds: `node_modules` and other dependency folders, caches (`.cache`, `__pycache__`, `.next`, editor caches…), virtual environments, and build output (`dist`, `build`, `target`…) | Every backup | They are large and hold no config; `npm install`, `pip` or your build brings them back. Build output is left out only beside the file that builds it (`package.json` with its `node_modules`, `pyproject.toml`, `Cargo.toml`…), so a plugin that ships a built `dist/` keeps it. |
+
+The rule goes by folder name, not by `.gitignore`: a folder you keep ignored on purpose (AI tool state, for example) is still carried. A folder you include by its own path is always carried, whatever it is called.
 
 A credential folder stays protected even when you include it yourself: `dothaven include ~/.aws` does not put `~/.aws/credentials` into a plaintext backup.
 

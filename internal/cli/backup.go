@@ -583,6 +583,22 @@ func printLeftOut(res backup.Result, encrypted bool, complete string) {
 		fmt.Printf("  They open the encrypted files in your dotfiles repo, so they never go into a repository.\n")
 		fmt.Printf("  Carry them to the new machine with %s, or keep them in your password manager.\n", kbd("dothaven backup --encrypt"))
 	}
+	if len(res.Rebuildable) > 0 {
+		kinds := map[string]bool{}
+		var dests []string
+		for _, r := range res.Rebuildable {
+			kinds[backup.RebuildKind(r)] = true
+			dests = append(dests, r.Dest)
+		}
+		names := make([]string, 0, len(kinds))
+		for k := range kinds {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		fmt.Printf("\n%s %s\n", dim("·"), fmt.Sprintf("%s left out, rebuilt on the new machine (%s):", plural(len(res.Rebuildable), "folder"), strings.Join(names, ", ")))
+		printList(dests, 5)
+		fmt.Println(dim("  Reinstall them there with the tool that made them (npm install, pip, your build)."))
+	}
 	if len(res.TooLarge) > 0 {
 		fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s left out for size:", plural(len(res.TooLarge), "file"))))
 		var lines []string

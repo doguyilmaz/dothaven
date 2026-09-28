@@ -78,6 +78,9 @@ type Result struct {
 	// KeptLocal lists files a remote run left on this machine on purpose (see
 	// Options.Remote): keys that protect other copies.
 	KeptLocal []string
+	// Rebuildable lists folders left out because the new machine rebuilds
+	// them: dependencies, caches, virtual environments, build output.
+	Rebuildable []Skipped
 }
 
 // Run copies every selected target into destRoot.
@@ -135,9 +138,12 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 		}
 		files, skipped := Walk(t, WalkOptions{MaxSize: opts.MaxFileSize, SkipVCS: opts.SkipVCS})
 		for _, s := range skipped {
-			if s.Reason == "too large" {
+			switch {
+			case s.Reason == "too large":
 				res.TooLarge = append(res.TooLarge, s)
-			} else {
+			case IsRebuildable(s):
+				res.Rebuildable = append(res.Rebuildable, s)
+			default:
 				res.ReadErrors = append(res.ReadErrors, s.Dest)
 			}
 		}
@@ -382,6 +388,12 @@ func Manifest(meta ManifestMeta, res Result) string {
 	}
 	list("# Left out: over the per-file size cap.\n", big)
 	list("# Left out: exist but could not be read.\n", res.ReadErrors)
+	var rebuilt []string
+	for _, r := range res.Rebuildable {
+		rebuilt = append(rebuilt, fmt.Sprintf("%s (%s)", r.Dest, RebuildKind(r)))
+	}
+	list("# Left out: rebuilt on the new machine by the tool that made them\n"+
+		"# (npm install, pip, your build).\n", rebuilt)
 	if !left {
 		b.WriteString("# Left out: nothing.\n")
 	}
