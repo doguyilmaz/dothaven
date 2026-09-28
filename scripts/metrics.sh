@@ -4,18 +4,17 @@
 #
 # GitHub counts every release asset download, and a `brew install` fetches the
 # same tarball from the same URL, so both paths land in one number. Counts are
-# cumulative and never expire — run this whenever, there is no history to keep.
+# cumulative and never expire, so run this at any time; there is no history to keep.
 #
 # There is no active-user line here, and there cannot be. The macOS apps get
 # one for free because Sparkle polls an appcast asset daily and GitHub counts
 # every poll; dothaven has no updater, and Homebrew only fetches when a version
-# actually changes. Manufacturing a heartbeat would mean a CLI that phones home
-# — a bad trade generally, and a worse one for a tool that handles dotfiles and
-# age-encrypted secrets.
+# changes. Adding a heartbeat would mean a CLI that phones home. That
+# is a bad trade in general, and a worse one for a tool that handles dotfiles
+# and age-encrypted secrets.
 #
-# So the useful question here is not how many, it is WHICH: the platform split
-# is the number with a decision attached, namely whether the Linux builds are
-# worth shipping.
+# So the useful number here is the platform split, not the total: it decides
+# whether the Linux builds are worth shipping.
 #
 # Everything is a TOTAL, not a unique count, and your own downloads count too.
 
@@ -69,6 +68,6 @@ if views=$(gh api "repos/$REPO/traffic/views" 2>/dev/null); then
     printf 'clones   %5s  (%s unique)\n' \
         "$(jq .count <<<"$clones")" "$(jq .uniques <<<"$clones")"
 else
-    echo "unavailable — traffic requires push access on $REPO"
+    echo "unavailable: traffic requires push access on $REPO"
 fi
 printf 'stars    %5s\n' "$(gh api "repos/$REPO" --jq .stargazers_count)"

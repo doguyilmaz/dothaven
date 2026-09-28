@@ -3,7 +3,7 @@ package macprefs
 import "testing"
 
 // Every key below was read off a real machine with `defaults export`, not
-// invented — the noise in a preference domain is specific enough that guessing
+// invented. The noise in a preference domain is specific enough that guessing
 // at it produces a classifier that works on nothing.
 func TestClassify(t *testing.T) {
 	tests := []struct {
@@ -34,7 +34,7 @@ func TestClassify(t *testing.T) {
 		{"last check", "com.apple.whatever", "LastUpdateCheckDate", Value{Kind: String, S: "x"}, Skip},
 		{"launch counter", "com.apple.whatever", "launchCount", Value{Kind: Int, S: "42"}, Skip},
 
-		// Leaks caught by running the classifier over a real machine — every
+		// Leaks caught by running the classifier over a real machine. Every
 		// one of these was landing in Apply.
 		{"last-prefixed interval", "NSGlobalDomain", "NSLinguisticDataAssetsRequestLastInterval", Value{Kind: Int, S: "86400"}, Skip},
 		{"transition marker", "NSGlobalDomain", "NSSpellCheckerContainerTransitionComplete", Value{Kind: Bool, S: "true"}, Skip},
@@ -44,7 +44,7 @@ func TestClassify(t *testing.T) {
 		{"non-NS window geometry", "com.apple.finder", "CopyProgressWindowLocation", Value{Kind: String, S: "{587, 207}"}, Skip},
 		// Not listed: com.apple.dock trash-full. It is transient state, but
 		// there is no pattern that catches it without catching real settings,
-		// and writing it is harmless — the Dock recomputes it immediately.
+		// and writing it is harmless because the Dock recomputes it at once.
 
 		// …and these must survive the tightening. Hot corners, function-key
 		// behaviour and Spaces ordering are exactly what people re-set by hand.

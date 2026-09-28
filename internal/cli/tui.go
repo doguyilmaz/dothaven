@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -23,53 +24,54 @@ func machineWord() string {
 	return "machine"
 }
 
-// menuItems is the menu, grouped by the job someone has rather than by the
-// shape of the code. The first group is the reason most people open it: moving
-// to a new machine without losing anything. Each line says what it does, and
-// the ones that write say so.
-func menuItems() []tui.MenuItem {
+// menuTree is the menu, grouped by the job someone has rather than by the
+// shape of the code. Each group is short enough to show whole on any
+// terminal. The first group is the reason most people open it: moving to a
+// new machine without losing anything.
+func menuTree() []tui.Node {
 	m := machineWord()
-	items := []tui.MenuItem{
-		{Heading: true, Label: "Moving to a new " + m},
-		{Label: "1. Check nothing would be lost", Value: "ready", Hint: "unpushed work, .env files, backup age — read-only"},
-		{Label: "2. Pack everything into one encrypted file", Value: "pack", Hint: "configs, keys, tokens, app list, settings"},
-		{Label: "3. Restore a backup onto this " + m, Value: "restore", Hint: "pick a backup, preview, then write"},
-		{Label: "4. Reinstall my apps & packages", Value: "reinstall", Hint: "from a backup's list — Homebrew, npm, …"},
-		{Label: "5. What's still missing here?", Value: "missing", Hint: "a backup's app list vs this " + m + " — read-only"},
-
-		{Heading: true, Label: "Your private GitHub repo"},
-		{Label: "Save this " + m + " to GitHub", Value: "github push", Hint: "private repo, encrypted by default"},
-		{Label: "Restore from GitHub", Value: "github pull", Hint: "pick a machine, preview, then write"},
-		{Label: "GitHub sign-in & status", Value: "github status", Hint: "who, which repo, which machines"},
-
-		{Heading: true, Label: "Everyday"},
-		{Label: "Quick backup to this " + m, Value: "backup", Hint: "a folder here; secrets redacted"},
-		{Label: "What changed since my last backup?", Value: "status", Hint: "read-only"},
-		{Label: "Choose what else to back up", Value: "include", Hint: "files & folders dothaven doesn't know"},
-		{Label: "Scan my config for secrets", Value: "scan", Hint: "tokens and keys in plain files — read-only"},
-		{Label: "Are my config files valid?", Value: "check", Hint: "parses each one — read-only"},
-		{Label: "See everything installed", Value: "collect", Hint: "apps, packages, runtimes, fonts"},
-		{Label: "Open the dashboard in your browser", Value: "ui", Hint: "coverage, backups, secrets, risks — local, read-only"},
+	move := []tui.Node{
+		{Label: "Check nothing would be lost", Value: "ready", About: "Unpushed work, .env files and the age of your last backup. Read-only."},
+		{Label: "Pack everything into one encrypted file", Value: "pack", About: "Config, keys, tokens, the app list and settings, in one file only your passphrase opens."},
+		{Label: "Restore a backup onto this " + m, Value: "restore", About: "Pick a backup, see what it would change, then write."},
+		{Label: "Reinstall my apps and packages", Value: "reinstall", About: "From a backup's app list: Homebrew, npm, pipx and the rest."},
+		{Label: "What's still missing here?", Value: "missing", About: "A backup's app list compared with this " + m + ". Read-only."},
 	}
 	if runtime.GOOS == "darwin" {
-		items = append(items,
-			tui.MenuItem{Label: "Put macOS settings back from a backup", Value: "defaults import", Hint: "CHANGES system settings — asks first"})
+		move = append(move, tui.Node{Label: "Put macOS settings back", Value: "defaults import", About: "Key repeat, Dock, Finder and more, from a backup. Asks before it changes anything."})
 	}
-	items = append(items,
-		tui.MenuItem{Heading: true, Label: "Sync through a chezmoi repo (optional)"},
-		tui.MenuItem{Label: "Check chezmoi + age setup", Value: "init", Hint: "read-only"},
-		tui.MenuItem{Label: "Export configs to chezmoi", Value: "chezmoi-export", Hint: "preview first; secrets encrypted"},
-		tui.MenuItem{Label: "Apply my chezmoi repo here", Value: "migrate", Hint: "WRITES to ~ and runs your install script"},
-
-		tui.MenuItem{Heading: true, Label: ""},
-		tui.MenuItem{Label: "Not sure? Answer a few questions", Value: "guide", Hint: "get the exact steps for your case"},
-		tui.MenuItem{Label: "Quit", Value: "quit"},
-	)
-	return items
+	return []tui.Node{
+		{Label: "Move to a new " + m, About: "Check, pack, restore and reinstall.", Children: move},
+		{Label: "GitHub backup", About: "Keep your backup in a private GitHub repository.", Children: []tui.Node{
+			{Label: "Save this " + m + " to GitHub", Value: "github push", About: "Private repository, encrypted by default. Signs you in if needed."},
+			{Label: "Restore from GitHub", Value: "github pull", About: "Pick a machine, see what it would change, then write."},
+			{Label: "Sign-in and status", Value: "github status", About: "Who you are signed in as, the repository, and the machines in it."},
+			{Label: "Sign out", Value: "github logout", About: "Forget dothaven's GitHub token and remembered passphrase on this " + m + "."},
+		}},
+		{Label: "Everyday", About: "Quick backups and what they cover.", Children: []tui.Node{
+			{Label: "Quick backup to this " + m, Value: "backup", About: "A folder in dothaven's data directory. Secrets are redacted."},
+			{Label: "What changed since my last backup?", Value: "status", About: "Read-only."},
+			{Label: "Choose what else to back up", Value: "include", About: "Files and folders dothaven does not know about yet."},
+			{Label: "Open the dashboard", Value: "ui", About: "Coverage, backups, secrets and risks in your browser. Local and read-only."},
+		}},
+		{Label: "Check this " + m, About: "Secrets, broken config, what is installed.", Children: []tui.Node{
+			{Label: "Scan my config for secrets", Value: "scan", About: "Tokens and keys sitting in plain files. Read-only."},
+			{Label: "Are my config files valid?", Value: "check", About: "Parses each one. Read-only."},
+			{Label: "See everything installed", Value: "collect", About: "Apps, packages, runtimes and fonts."},
+			{Label: "Check dothaven itself", Value: "doctor", About: "Can dothaven do its job here: keychain, tools, GitHub, disk."},
+		}},
+		{Label: "chezmoi sync (optional)", About: "Keep your config in your own chezmoi repository.", Children: []tui.Node{
+			{Label: "Check chezmoi and age setup", Value: "init", About: "Read-only."},
+			{Label: "Export configs to chezmoi", Value: "chezmoi-export", About: "Shows what it would do first. Secrets are encrypted."},
+			{Label: "Apply my chezmoi repo here", Value: "migrate", About: "Writes to your home folder and runs your install script."},
+		}},
+		{Label: "Not sure? Answer a few questions", Value: "guide", About: "Get the exact steps for your case."},
+		{Label: "Quit", Value: "quit"},
+	}
 }
 
-// actionTitles name each menu choice in the output it produces, so two
-// actions run in a row don't read as one undifferentiated wall.
+// actionTitles head the output of each menu choice, so two actions run in a
+// row are easy to tell apart.
 var actionTitles = map[string]string{
 	"ready":           "Would anything be lost?",
 	"pack":            "Pack everything for a new machine",
@@ -90,15 +92,18 @@ var actionTitles = map[string]string{
 	"github push":     "Save to GitHub",
 	"github pull":     "Restore from GitHub",
 	"github status":   "GitHub",
+	"github logout":   "Sign out of GitHub",
+	"doctor":          "Check dothaven itself",
 	"ui":              "Dashboard",
 }
 
-// newTUICmd is the interactive front door: a menu that runs an action, shows
-// its output, and comes back — until Quit, Esc or Ctrl-C.
+// newTUICmd is the interactive menu: a full-screen list that runs an action
+// in the normal terminal, shows its output, and opens again where it was,
+// until Quit, Esc or q.
 func newTUICmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:           "tui",
-		Short:         "Interactive menu — pick what to do",
+		Short:         "Interactive menu: pick what to do",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -106,45 +111,72 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "the tui command needs an interactive terminal")
 				return ExitError{Code: 1}
 			}
+			root := cmd.Context()
+			var at tui.Place
 			for {
-				action, err := tui.Menu("dothaven", "Keep your setup when you change machines. ↑/↓ to move, enter to pick, esc to quit.", menuItems())
+				action, place, err := tui.RunMenu("dothaven", func() string { return menuStatus(env) }, menuTree(), at)
 				if err != nil {
 					return err
 				}
 				if action == "" || action == "quit" {
 					return nil
 				}
-				if rerr := runTUIAction(cmd, env, action); rerr != nil {
-					// An ExitError already conveyed its outcome (e.g. a drift exit
-					// code); other errors are shown. Either way, stay in the menu.
-					var ee ExitError
-					if !errors.As(rerr, &ee) && !errors.Is(rerr, tui.ErrAborted) {
-						fmt.Fprintln(cmd.ErrOrStderr(), danger("✗ "+rerr.Error()))
-					}
+				at = place
+				runlog.stepf("menu: %s", action)
+
+				// Ctrl-C during an action cancels that action only, and the
+				// menu comes back (see CancelAction).
+				ctx, cancel := context.WithCancel(root)
+				startAction(cancel)
+				cmd.SetContext(ctx)
+				rerr := runTUIAction(cmd, env, action)
+				cancelled := ctx.Err() != nil
+				cmd.SetContext(root)
+				endAction()
+				cancel()
+				var ee ExitError
+				switch {
+				case action == "ui" && rerr == nil:
+					// Ctrl-C is how the dashboard is stopped; it says so itself.
+				case cancelled || errors.Is(rerr, context.Canceled):
+					fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
+				case rerr == nil:
+				case !errors.As(rerr, &ee) && !errors.Is(rerr, tui.ErrAborted):
+					fmt.Fprintln(cmd.ErrOrStderr(), danger("✗ "+rerr.Error()))
 				}
-				// A signal cancelled the shared context (Ctrl-C during an action).
-				// Leave the menu rather than re-dispatch with a dead context, which
-				// would make every subsequent action fail instantly.
-				if cmd.Context().Err() != nil {
+				if root.Err() != nil {
 					return nil
 				}
-				pause()
+				pause(root)
+				// Ctrl-C at the prompt leaves the menu.
+				if root.Err() != nil {
+					return nil
+				}
 			}
 		},
 	}
 }
 
-// pause holds the output on screen until the reader is done with it. Without
-// it, the menu redraws straight over the result of the action just run.
-func pause() {
-	fmt.Print(dim("\n  press enter for the menu "))
-	buf := make([]byte, 1)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || n == 0 || buf[0] == '\n' || buf[0] == '\r' {
-			break
+// menuStatus is the top right corner of the menu: this machine, and whether
+// GitHub is signed in. Local only: it asks GitHub nothing.
+func menuStatus(env *sys.OS) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	gh := "GitHub: not signed in"
+	if _, src, err := resolveToken(ctx, env, false); src != "" {
+		gh = "GitHub: signed in"
+		if errors.Is(err, errRenewDue) {
+			gh = "GitHub: sign-in due for renewal"
 		}
 	}
+	return hostname() + " · " + gh
+}
+
+// pause holds the output on screen until the reader is done with it. Without
+// it, the menu redraws straight over the result of the action just run.
+func pause(ctx context.Context) {
+	fmt.Print(dim("\n  Press Enter to go back to the menu "))
+	waitEnter(ctx)
 	fmt.Println()
 }
 
@@ -205,17 +237,22 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 	if sub.RunE == nil {
 		return sub.Help()
 	}
+	if action == "scan" {
+		// The exit code is for hooks and CI; in the menu it only adds a line
+		// about flags nobody here passes.
+		_ = sub.Flags().Set("no-fail", "true")
+	}
 	sub.SetContext(ctx)
 	return sub.RunE(sub, nil)
 }
 
 // runPack is the whole "before I wipe this machine" job in one pass: check for
 // work that exists nowhere else, offer anything nothing covers, write one
-// encrypted file somewhere it can be carried, and prove it opens.
+// encrypted file somewhere it can be carried, and check that it opens.
 func runPack(cmd *cobra.Command, env *sys.OS) error {
 	ctx := cmd.Context()
 
-	fmt.Println(bold("Step 1 of 4 — anything that exists only here?"))
+	fmt.Println(bold("Step 1 of 4: anything that exists only here?"))
 	r := checkReady(ctx, env, nil, 5)
 	if r.cancelled {
 		return ExitError{Code: 130}
@@ -228,7 +265,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 		}
 	}
 
-	fmt.Println("\n" + bold("Step 2 of 4 — anything else to take?"))
+	fmt.Println("\n" + bold("Step 2 of 4: anything else to take?"))
 	if _, err := reviewUncovered(env, false); err != nil {
 		return err
 	}
@@ -236,7 +273,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 		fmt.Println(dim("  Everything that looks like config is covered."))
 	}
 
-	fmt.Println("\n" + bold("Step 3 of 4 — where should the file go?"))
+	fmt.Println("\n" + bold("Step 3 of 4: where should the file go?"))
 	dest, err := pickDestination(env)
 	if err != nil || dest == "" {
 		return ignoreAbort(err)
@@ -246,7 +283,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 		return err
 	}
 
-	fmt.Println("\n" + bold("Step 4 of 4 — packing"))
+	fmt.Println("\n" + bold("Step 4 of 4: packing"))
 	out, err := runBackup(ctx, cmd, env, backupOpts{output: dest, archive: true, encrypt: true, passphrase: pass})
 	if err != nil {
 		return err
@@ -254,7 +291,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 	n, verr := backup.Verify(out.path, func() (string, error) { return pass, nil })
 	printBackupOutcome(env, out)
 	if verr != nil {
-		fmt.Fprintf(os.Stderr, "\n%s the file did not read back cleanly: %v — do not rely on it; pack again.\n", danger("✗"), verr)
+		fmt.Fprintf(os.Stderr, "\n%s the file did not read back cleanly: %v. Do not rely on it; pack again.\n", danger("✗"), verr)
 		return ExitError{Code: 1}
 	}
 	fmt.Printf("\n%s %s\n", good("✓"), fmt.Sprintf("Checked: the file opens with your passphrase and holds all %d entries.", n))
@@ -272,7 +309,7 @@ func pickDestination(env *sys.OS) (string, error) {
 			}
 			p := filepath.Join("/Volumes", e.Name())
 			if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-				choices = append(choices, tui.Choice{Label: "Drive: " + e.Name(), Value: p, Hint: "straight onto the drive — best"})
+				choices = append(choices, tui.Choice{Label: "Drive: " + e.Name(), Value: p, Hint: "straight onto the drive (best)"})
 			}
 		}
 	}

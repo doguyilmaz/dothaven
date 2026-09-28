@@ -6,8 +6,15 @@ on:
   pull_request:
 
 jobs:
+  # Tests only: release binaries are built by release.yml on a v* tag.
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS as well: most users are on a Mac, and Linux alone never runs
+        # the darwin code paths.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,3 +28,14 @@ jobs:
       - run: go vet ./...
 
       - run: go test ./...
+
+  # A mistake in .goreleaser.yaml should fail here, not on the tag.
+  release-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check

@@ -37,7 +37,7 @@ func TestCollect(t *testing.T) {
 		t.Errorf("AppleLanguages = %+v, want apply/plist/<array>…", e)
 	}
 
-	// Other composites and state never become entries — keeping them would
+	// Other composites and state never become entries. Keeping them would
 	// make the file mostly junk and the summary meaningless.
 	for _, k := range []string{"NSWindow Frame Main", "NSNavRecentPlaces", "lastCheck"} {
 		if _, ok := got[k]; ok {
@@ -62,8 +62,8 @@ func TestCollect(t *testing.T) {
 }
 
 func TestCollectDoesNotLeakSecrets(t *testing.T) {
-	// Preference domains do hold tokens — an app that stores an API key in its
-	// prefs is common. Anything captured here is written to a file and can end
+	// Preference domains do hold tokens: apps that store an API key in their
+	// prefs are common. Anything captured here is written to a file and can end
 	// up in a backup, so it goes through the same scanner as everything else.
 	const withToken = `<?xml version="1.0"?>
 <plist version="1.0">
@@ -137,7 +137,7 @@ func TestWriteArgs(t *testing.T) {
 		t.Errorf("WriteArgs on an unknown type = %v, want nil", got)
 	}
 	// A plist entry that is not an array or dict fragment would be stored as
-	// a string — never written.
+	// a string, so it is never written.
 	if got := WriteArgs(Entry{Domain: "d", Key: "k", Type: "plist", Value: "(a, b)"}); got != nil {
 		t.Errorf("WriteArgs on a non-fragment plist = %v, want nil", got)
 	}

@@ -316,7 +316,7 @@ func TestPgpassIgnoresBenignColonLines(t *testing.T) {
 			t.Errorf("benign colon line flagged as pgpass: %q", line)
 		}
 	}
-	// a genuine pgpass line still matches
+	// a real pgpass line still matches
 	if !hasFinding(ScanContent("pgpass", "db.host:5432:app:user:pw"), "pgpass-line") {
 		t.Error("real pgpass line not detected")
 	}
@@ -419,7 +419,7 @@ func TestRedactionNeverCrossesLines(t *testing.T) {
 		out := ApplyRedactions(content, r)
 		for _, v := range []string{"hunter2hunter2hunter2", "s3cr3ts3cr3ts3cr3t", "correcthorsebattery"} {
 			if strings.Contains(out, v) {
-				t.Errorf("%q redacted to %q — the value survived", content, out)
+				t.Errorf("%q redacted to %q: the value survived", content, out)
 			}
 		}
 		if strings.Count(out, "\n") != strings.Count(content, "\n") {
@@ -478,11 +478,11 @@ func TestDedupeNeverSwitchesRedactionOff(t *testing.T) {
 	} {
 		r := ScanContentFull(".zshrc", c.in)
 		if r.Action == Include {
-			t.Errorf("%q: action include — the file would not be redacted at all", c.in)
+			t.Errorf("%q: action include, so the file would not be redacted at all", c.in)
 			continue
 		}
 		if out := ApplyRedactions(c.in, r); strings.Contains(out, c.secret) {
-			t.Errorf("%q redacted to %q — %q survived", c.in, out, c.secret)
+			t.Errorf("%q redacted to %q: %q survived", c.in, out, c.secret)
 		}
 	}
 }

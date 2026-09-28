@@ -21,7 +21,7 @@ import (
 // "" if none. Sorting by mtime (not name) is correct when a dir holds backups
 // from several machines: a name sort orders by host before timestamp, so it
 // would pick the alphabetically-last host's backup rather than the newest.
-// Archives are ignored — status and diff compare a readable tree.
+// Archives are ignored: status and diff compare a readable tree.
 func latestBackup(dir string) string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -47,8 +47,8 @@ func latestBackup(dir string) string {
 	return filepath.Join(dir, newest)
 }
 
-// newestBackup is the most recent backup of any kind — folder, archive or
-// encrypted file — in any place findBackups looks.
+// newestBackup is the most recent backup of any kind (folder, archive or
+// encrypted file) in any place findBackups looks.
 func newestBackup(env *sys.OS) string {
 	if found := findBackups(env); len(found) > 0 {
 		return found[0].Path
@@ -102,10 +102,10 @@ func readDirTimeout(dir string, d time.Duration) []os.DirEntry {
 	}
 }
 
-// stalled remembers folders that did not answer in time — a network share
-// that went away, a disk spinning up. The goroutine stuck on one cannot be
-// stopped, so the next few minutes do not start another: the dashboard asks
-// every 20 seconds, and they would pile up.
+// stalled remembers folders that did not answer in time, such as a network
+// share that went away or a disk spinning up. The goroutine stuck on one
+// cannot be stopped, so the next few minutes do not start another: the
+// dashboard asks every 20 seconds, and they would pile up.
 var stalled sync.Map // dir → time.Time
 
 func markStalled(dir string) { stalled.Store(dir, time.Now()) }
@@ -271,20 +271,31 @@ func pickBackup(env *sys.OS, title string) (string, error) {
 		choices = append(choices, tui.Choice{Label: shortenPath(shortHome(env, b.Path), 48), Value: b.Path, Hint: hint})
 	}
 	choices = append(choices, tui.Choice{Label: "Type a path…", Value: "\x00type", Hint: "a folder, .tar.gz or .age file"})
-	desc := "Looked in ~/.local/share/dothaven, Downloads, Desktop, Documents and mounted drives."
+	desc := "Found in " + shortHome(env, env.DataDir()) + ", Downloads, Desktop, Documents and mounted drives."
 	if len(found) == 0 {
-		desc = "No backups found in the usual places (dothaven's folder, Downloads, Desktop, drives)."
+		fmt.Printf("No backups found in %s, Downloads, Desktop, Documents or on a mounted drive.\n", shortHome(env, env.DataDir()))
+		fmt.Printf("%s\n\n", dim("Make one on the old machine first: "+kbd("dothaven backup --encrypt")+" for a file, or "+kbd("dothaven github push")+"."))
+		desc = ""
+		choices = append(choices, tui.Choice{Label: "Go back", Value: "\x00back"})
 	}
 	choice, err := tui.Ask(title, desc, choices)
 	if err != nil {
 		return "", err
 	}
+	if choice == "\x00back" {
+		fmt.Println("No backup chosen.")
+		return "", nil
+	}
 	if choice != "\x00type" {
 		return choice, nil
 	}
 	p, err := tui.Input("Path to the backup", "")
-	if err != nil || p == "" {
+	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(p) == "" {
+		fmt.Println("No path given, so nothing was opened.")
+		return "", nil
 	}
 	if strings.HasPrefix(p, "~/") {
 		p = filepath.Join(env.Home(), p[2:])
@@ -305,7 +316,7 @@ func openBackup(ctx context.Context, env *sys.OS, path string) (dir string, clea
 
 // openBackupOnly is openBackup for a command that reads only some of a
 // backup: an archive is still read end to end, but only the named folders
-// (inventory, macos-defaults) are written out — decrypted credentials never
+// (inventory, macos-defaults) are written out, so decrypted credentials never
 // touch the disk for a command that does not need them.
 func openBackupOnly(ctx context.Context, env *sys.OS, path string, dirs ...string) (dir string, cleanup func(), err error) {
 	if isGitHubSpec(path) {

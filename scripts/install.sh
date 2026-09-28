@@ -1,10 +1,10 @@
 #!/bin/sh
-# Install dothaven on a machine that has nothing yet — no Homebrew, no Go.
+# Install dothaven on a machine that has nothing yet: no Homebrew, no Go.
 #
 #   curl -fsSL https://raw.githubusercontent.com/doguyilmaz/dothaven/main/scripts/install.sh | sh
 #
-# A freshly wiped Mac is exactly where dothaven is needed first, and exactly
-# where `brew install` is slowest: Homebrew itself needs the Xcode command-line
+# A freshly wiped Mac is where dothaven is needed first, and where
+# `brew install` is slowest: Homebrew itself needs the Xcode command-line
 # tools before it can install anything. This fetches the release binary for
 # this OS and CPU, checks it against the release's published SHA-256 sums, and
 # puts it in ~/.local/bin (no sudo). The macOS binaries are signed and
@@ -68,7 +68,7 @@ fetch "$url/checksums.txt" "$tmp/checksums.txt" || die "could not download the c
 want=$(awk -v f="$asset" '$2 == f || $2 == "*"f { print $1 }' "$tmp/checksums.txt")
 [ -n "$want" ] || die "$asset is not listed in checksums.txt"
 got=$(sha "$tmp/$asset")
-[ "$want" = "$got" ] || die "checksum mismatch for $asset (expected $want, got $got) — not installing"
+[ "$want" = "$got" ] || die "checksum mismatch for $asset (expected $want, got $got); not installing"
 
 tar -xzf "$tmp/$asset" -C "$tmp" dothaven || die "the archive has no dothaven binary"
 mkdir -p "$bin_dir"
@@ -82,7 +82,7 @@ case ":$PATH:" in
   *) say ""
      say "$bin_dir is not on your PATH yet. For this shell:"
      say "  export PATH=\"$bin_dir:\$PATH\""
-     say "and add that line to your ~/.zshrc (or ~/.bashrc) — a restored one may already have it." ;;
+     say "and add that line to your ~/.zshrc (or ~/.bashrc). A restored one may already have it." ;;
 esac
 say ""
 say "Next: run  dothaven  for the menu, or  dothaven restore  to bring a backup back."

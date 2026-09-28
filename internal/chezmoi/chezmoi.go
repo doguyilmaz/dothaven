@@ -161,8 +161,8 @@ func SecretInFile(path string) bool {
 	return anyHigh(scan.ScanContentFull(path, string(b)).Findings)
 }
 
-// IsSSHPrivateKey detects a private key by content (a key header), so it catches
-// id_ed25519, id_rsa, custom *.key, etc. — not by filename.
+// IsSSHPrivateKey detects a private key by content (a key header), not by
+// filename, so it catches id_ed25519, id_rsa, custom *.key, etc.
 func IsSSHPrivateKey(path string) bool {
 	r := scan.ScanFile(path)
 	if r == nil {
@@ -198,7 +198,8 @@ func FindSshPrivateKeys(home string, listDir func(string) ([]string, error), isP
 }
 
 // GnupgHasSecretKeys reports whether ~/.gnupg holds real private keys
-// (private-keys-v1.d/*.key) — otherwise carrying it captures only runtime cruft.
+// (private-keys-v1.d/*.key). Without them, carrying it captures only runtime
+// cruft.
 func GnupgHasSecretKeys(home string, listDir func(string) ([]string, error)) bool {
 	names, err := listDir(home + "/.gnupg/private-keys-v1.d")
 	if err != nil {
@@ -212,7 +213,7 @@ func GnupgHasSecretKeys(home string, listDir func(string) ([]string, error)) boo
 	return false
 }
 
-// GnupgIgnorePatterns are .chezmoiignore globs for ~/.gnupg runtime cruft —
+// GnupgIgnorePatterns are .chezmoiignore globs for ~/.gnupg runtime cruft:
 // sockets, locks, and the RNG seed. Key material is intentionally NOT ignored.
 func GnupgIgnorePatterns() []string {
 	return []string{".gnupg/S.*", ".gnupg/*.lock", ".gnupg/.#*", ".gnupg/random_seed", ".gnupg/public-keys.d/*.lock"}
@@ -324,9 +325,9 @@ func CrossManagerDuplicates(m Manifest) []string {
 	return dupes
 }
 
-// safeName matches a package name the way the managers spell them — npm's
+// safeName matches a package name the way the managers spell them (npm's
 // @scope/name@1.2.3, pipx and uv names, crates, flatpak app IDs, apt's
-// name:arch and name=version, rustup's stable-aarch64-apple-darwin — and
+// name:arch and name=version, rustup's stable-aarch64-apple-darwin) and
 // nothing a shell reads as syntax. Names come from a backup's inventory,
 // which in a readable GitHub copy anyone with write access could edit; the
 // install script runs them.
@@ -443,7 +444,7 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 
 	// Inventory that collect captures but the script used to drop. Each is
 	// command-guarded and idempotent, so re-running apply is safe. VS Code
-	// extensions are intentionally absent — they ride in the Brewfile already.
+	// extensions are left out on purpose: they are in the Brewfile already.
 	if b, ok := installBlock("pipx", "pipx install", m.PipxPackages); ok {
 		blocks = append(blocks, b)
 	}
@@ -470,7 +471,7 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 		blocks = append(blocks, b)
 	}
 
-	// Linux system packages — guarded by manager presence; sudo may prompt once
+	// Linux system packages, guarded by manager presence. sudo may prompt once
 	// on an interactive apply, and every line is `|| true` so a missing package
 	// never aborts the script.
 	if b, ok := installBlock("apt-get", "sudo apt-get install -y", m.AptPackages); ok {
@@ -496,7 +497,7 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 	// deno: the original module URL isn't recoverable from a bin name, so record
 	// the names as a comment rather than emit a broken `deno install`.
 	if len(m.DenoBins) > 0 {
-		lines := []string{"# deno global bins (reinstall manually — original module URL not captured):"}
+		lines := []string{"# deno global bins (reinstall manually; the original module URL was not captured):"}
 		for _, b := range m.DenoBins {
 			if SafeName(b) {
 				lines = append(lines, "#   "+b)

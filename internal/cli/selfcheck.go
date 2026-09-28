@@ -34,7 +34,7 @@ const (
 )
 
 // checkRow is one line of `dothaven doctor`: what was checked, what was found,
-// and — when it is not fine — what to do about it.
+// and, when it is not fine, what to do about it.
 type checkRow struct {
 	Name   string
 	Status checkStatus
@@ -95,7 +95,30 @@ func runSelfCheck(ctx context.Context, env *sys.OS, version string) []checkSecti
 	}
 	wg.Wait()
 	sections = append(sections, checkSection{"Tools", tools}, checkSection{"GitHub", gh})
+	for _, s := range sections {
+		for i := range s.Rows {
+			s.Rows[i].Detail = tildeAll(env.Home(), s.Rows[i].Detail)
+			s.Rows[i].Fix = tildeAll(env.Home(), s.Rows[i].Fix)
+		}
+	}
 	return sections
+}
+
+// tildeAll writes every path under home in s as ~/…, so a line fits and reads
+// the way people type it. The fixes stay valid shell: ~/ expands unquoted.
+func tildeAll(home, s string) string {
+	if len(home) < 2 {
+		return s
+	}
+	home = strings.TrimSuffix(home, "/")
+	if s == home {
+		return "~"
+	}
+	s = strings.ReplaceAll(s, home+"/", "~/")
+	if strings.HasSuffix(s, " "+home) {
+		s = strings.TrimSuffix(s, home) + "~"
+	}
+	return s
 }
 
 func checkSelf(ctx context.Context, env *sys.OS, version string) []checkRow {
@@ -125,10 +148,10 @@ func checkMachine(env *sys.OS) []checkRow {
 	if sh := os.Getenv("SHELL"); sh != "" {
 		rows = append(rows, checkRow{Name: "shell", Status: statusInfo, Detail: sh})
 	}
-	term := "a terminal — menus and prompts available"
+	term := "a terminal (menus and prompts available)"
 	st := statusOK
 	if !tui.Interactive() {
-		term, st = "not a terminal — commands that change files need --yes", statusInfo
+		term, st = "not a terminal (commands that change files need --yes)", statusInfo
 	}
 	rows = append(rows, checkRow{Name: "terminal", Status: st, Detail: term})
 	for _, r := range checkBrewPaths(env) {
@@ -157,7 +180,7 @@ func checkDir(name, dir string, mustBePrivate bool) []checkRow {
 	row := checkRow{Name: name, Status: statusOK, Detail: dir}
 	if mustBePrivate && fi.Mode().Perm()&0o077 != 0 {
 		row.Status = statusWarn
-		row.Detail = fmt.Sprintf("%s is readable by other users (%04o) — it holds backups", dir, fi.Mode().Perm())
+		row.Detail = fmt.Sprintf("%s is readable by other users (%04o) and holds backups", dir, fi.Mode().Perm())
 		row.Fix = "chmod 700 " + dir
 	}
 	return []checkRow{row}
@@ -212,7 +235,7 @@ func checkSettings(env *sys.OS) []checkRow {
 		}
 		rows = append(rows, row)
 	} else {
-		rows = append(rows, checkRow{Name: "include list", Status: statusInfo, Detail: "none yet — `dothaven include --list` shows what isn't covered"})
+		rows = append(rows, checkRow{Name: "include list", Status: statusInfo, Detail: "none yet (`dothaven include --list` shows what isn't covered)"})
 	}
 	validJSON := func(name, path string) {
 		b, err := os.ReadFile(path)
@@ -233,7 +256,8 @@ func checkSettings(env *sys.OS) []checkRow {
 	}
 	st := secrets(env)
 	row := checkRow{Name: "keychain", Status: statusOK, Detail: "tokens and passphrases go to " + st.Name()}
-	if strings.Contains(st.Name(), "file") {
+	if st.IsFile() {
+		row.Detail = "tokens and passphrases go to owner-only files in " + shortHome(env, st.Dir())
 		row.Status = statusWarn
 		row.Fix = "install a keyring (gnome-keyring / KWallet with secret-tool) for safer storage"
 	}
@@ -271,14 +295,14 @@ func checkTargets(env *sys.OS) []checkRow {
 	rows := []checkRow{{Name: "tracked", Status: statusOK, Detail: fmt.Sprintf("%s from %d sources on this machine (%d with credentials)", plural(files, "file"), present, credentials)}}
 	if len(unreadable) > 0 {
 		rows = append(rows, checkRow{Name: "unreadable", Status: statusWarn, Detail: fmt.Sprintf("%s: %s", plural(len(unreadable), "file"), preview(unreadable, 3)),
-			Fix: "these would be left out of a backup — check their owner and permissions"})
+			Fix: "these would be left out of a backup; check their owner and permissions"})
 	}
 	if len(large) > 0 {
 		rows = append(rows, checkRow{Name: "too large", Status: statusWarn, Detail: fmt.Sprintf("%s over %s: %s", plural(len(large), "file"), humanBytes(backup.MaxFileSize), preview(large, 3)),
 			Fix: "left out of backups; exclude or move them if they are not config"})
 	}
 	if u := uncovered(env); len(u) > 0 {
-		rows = append(rows, checkRow{Name: "not covered", Status: statusInfo, Detail: fmt.Sprintf("%s look like config but are in no backup", plural(len(u), "path")), Fix: "dothaven include --list"})
+		rows = append(rows, checkRow{Name: "not covered", Status: statusInfo, Detail: fmt.Sprintf("%s %s like config but %s in no backup", plural(len(u), "path"), pick(len(u), "looks", "look"), pick(len(u), "is", "are")), Fix: "dothaven include --list"})
 	}
 	return rows
 }
@@ -296,7 +320,7 @@ func checkBackups(env *sys.OS) []checkRow {
 		return []checkRow{{Name: "newest", Status: statusWarn, Detail: "no backup found on this machine or its drives", Fix: "dothaven backup --encrypt"}}
 	}
 	b := found[0]
-	row := checkRow{Name: "newest", Status: statusOK, Detail: fmt.Sprintf("%s, %s old — %s", b.Kind, humanAge(time.Since(b.Mod)), shortHome(env, b.Path))}
+	row := checkRow{Name: "newest", Status: statusOK, Detail: fmt.Sprintf("%s, %s old (%s)", b.Kind, humanAge(time.Since(b.Mod)), shortHome(env, b.Path))}
 	if time.Since(b.Mod) > 7*24*time.Hour {
 		row.Status, row.Fix = statusWarn, "dothaven backup --encrypt"
 	}
@@ -322,7 +346,7 @@ var toolSpecs = []toolSpec{
 	{"defaults", "", "macOS settings in backups", statusWarn, "darwin"},
 	{"zsh", "--version", "`check` of zsh files", statusInfo, ""},
 	{"ssh", "-V", "`check` of ssh config", statusInfo, ""},
-	{"gh", "--version", "GitHub sign-in without a browser", statusInfo, ""},
+	{"gh", "--version", "`github login --gh` (optional)", statusInfo, ""},
 	{"chezmoi", "--version", "the optional chezmoi sync", statusInfo, ""},
 }
 
@@ -339,7 +363,7 @@ func checkTools(ctx context.Context) []checkRow {
 			path, err := exec.LookPath(t.name)
 			switch {
 			case err != nil:
-				row.Status, row.Detail = t.need, "not found — needed for "+t.enables
+				row.Status, row.Detail = t.need, "not found; needed for "+t.enables
 				if t.name == "brew" {
 					row.Fix = homebrewInstall
 				}
@@ -368,7 +392,7 @@ func checkTools(ctx context.Context) []checkRow {
 		order[t.name] = i
 	}
 	sortRows(rows, order)
-	rows = append(rows, checkRow{Name: "age", Status: statusOK, Detail: "built in — encrypted backups need no extra install"})
+	rows = append(rows, checkRow{Name: "age", Status: statusOK, Detail: "built in, so encrypted backups need no extra install"})
 	return rows
 }
 
@@ -407,7 +431,7 @@ func checkGitHub(ctx context.Context, env *sys.OS) []checkRow {
 	case err != nil:
 		rows = append(rows, checkRow{Name: "repository", Status: statusWarn, Detail: err.Error()})
 	case !r.Private:
-		rows = append(rows, checkRow{Name: "repository", Status: statusFail, Detail: repo + " is PUBLIC — dothaven will not write to it", Fix: "make it private on GitHub"})
+		rows = append(rows, checkRow{Name: "repository", Status: statusFail, Detail: repo + " is PUBLIC, so dothaven will not write to it", Fix: "make it private on GitHub"})
 	default:
 		rows = append(rows, checkRow{Name: "repository", Status: statusOK, Detail: repo + " (private)"})
 	}
@@ -415,8 +439,14 @@ func checkGitHub(ctx context.Context, env *sys.OS) []checkRow {
 }
 
 func printSelfCheck(sections []checkSection) error {
-	fmt.Println(bold("dothaven doctor") + dim(" — can dothaven do its job here?"))
+	fmt.Println(bold("dothaven doctor") + dim(": can dothaven do its job here?"))
 	var fails, warns int
+	width := 0
+	for _, s := range sections {
+		for _, r := range s.Rows {
+			width = max(width, len([]rune(r.Name)))
+		}
+	}
 	for _, s := range sections {
 		if len(s.Rows) == 0 {
 			continue
@@ -436,18 +466,19 @@ func printSelfCheck(sections []checkSection) error {
 				mark = danger("✗")
 				fails++
 			}
-			fmt.Printf("  %s %s %s\n", mark, padTo(r.Name, 14), r.Detail)
+			plain := func(s string) string { return s }
+			fmt.Printf("  %s %-*s  %s\n", mark, width, r.Name, paragraph(r.Detail, strings.Repeat(" ", width+6), plain))
 			if r.Fix != "" && r.Status >= statusWarn {
-				fmt.Printf("      %s %s\n", dim("fix:"), kbd(r.Fix))
+				fmt.Printf("      %s %s\n", dim("fix:"), paragraph(r.Fix, "           ", kbd))
 			} else if r.Fix != "" {
-				fmt.Printf("      %s\n", dim(r.Fix))
+				fmt.Printf("      %s\n", paragraph(r.Fix, "      ", dim))
 			}
 		}
 	}
 	fmt.Println()
 	switch {
 	case fails > 0:
-		fmt.Println(danger(fmt.Sprintf("✗ %s, %s — fixes are listed above.", plural(fails, "problem"), plural(warns, "warning"))))
+		fmt.Println(danger(fmt.Sprintf("✗ %s, %s. Fixes are listed above.", plural(fails, "problem"), plural(warns, "warning"))))
 		return ExitError{Code: 1}
 	case warns > 0:
 		fmt.Println(warn(fmt.Sprintf("⚠ Works, with %s worth a look above.", plural(warns, "warning"))))

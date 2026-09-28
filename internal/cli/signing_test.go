@@ -51,9 +51,9 @@ func run(t *testing.T, dir, stdin string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// verifyWithGit stores payload+signature as a real commit object — gpgsig
-// right after the committer line, continuation lines indented, which is what
-// GitHub builds from the API fields — and has git itself check it.
+// verifyWithGit stores payload+signature as a real commit object and has git
+// check it. The layout is what GitHub builds from the API fields: gpgsig right
+// after the committer line, continuation lines indented.
 func verifyWithGit(t *testing.T, repo string, payload []byte, sig string, verify ...string) {
 	t.Helper()
 	head, body, _ := strings.Cut(string(payload), "\n\n")
@@ -78,7 +78,7 @@ func signPayload(t *testing.T, env *sys.OS, repo string) ([]byte, string) {
 	tree := run(t, repo, "", "git", "hash-object", "-t", "tree", "-w", "--stdin")
 	bot := github.Identity{Name: "dothaven[bot]", Email: "2002+dothaven[bot]@users.noreply.github.com"}
 	you := github.NoReply("tester", 1001)
-	payload := github.CommitPayload(tree, "", bot, you, time.Now(), "dothaven: box — encrypted backup, 1 file\n")
+	payload := github.CommitPayload(tree, "", bot, you, time.Now(), "dothaven: box (encrypted backup, 1 file)\n")
 	sig, err := g.signer(env)(context.Background(), payload)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,19 @@ func TestSignsLikeGitWithSSH(t *testing.T) {
 
 func TestSignsLikeGitWithGPG(t *testing.T) {
 	tools := need(t, "git", "gpg")
-	gnupg := t.TempDir()
+	// gpg-agent puts its socket in GNUPGHOME, and a socket path is limited to
+	// 104 bytes on macOS: t.TempDir() there (/var/folders/…/T/Test…/001) is
+	// too long, and the agent never starts. /tmp keeps it short.
+	gnupg, err := os.MkdirTemp("/tmp", "dh-gpg-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if gpgconf, err := exec.LookPath("gpgconf"); err == nil {
+			_ = exec.Command(gpgconf, "--homedir", gnupg, "--kill", "gpg-agent").Run()
+		}
+		os.RemoveAll(gnupg)
+	})
 	t.Setenv("GNUPGHOME", gnupg)
 	run(t, gnupg, "", "gpg", "--batch", "--pinentry-mode", "loopback", "--passphrase", "", "--quick-gen-key", "Tester <1001+tester@users.noreply.github.com>", "ed25519", "sign", "never")
 	env, home := gitHome(t, "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = "+tools["gpg"]+"\n[user]\n\tsigningkey = 1001+tester@users.noreply.github.com\n")

@@ -159,7 +159,7 @@ func sshKeyFile(env *sys.OS, key string) (string, func(), error) {
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	if l := strings.TrimSpace(lines[len(lines)-1]); l != "" {
-		return " — " + l
+		return ": " + l
 	}
 	return ""
 }

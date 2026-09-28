@@ -136,8 +136,8 @@ func ParseZigVersion(text string) string {
 	return ""
 }
 
-// ParseAdbVersion parses `adb version` — the `Version 36.0.2-...` line
-// (platform-tools version).
+// ParseAdbVersion parses the `Version 36.0.2-...` line (the platform-tools
+// version) out of `adb version`.
 func ParseAdbVersion(text string) string {
 	m := runtimesAdbRe.FindStringSubmatch(text)
 	if m == nil {

@@ -14,8 +14,8 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/sys"
 )
 
-// GitHub refuses a path component named .git — a folder, or the .git file a
-// submodule or worktree has instead — so a readable push leaves both out.
+// GitHub refuses a path component named .git (a folder, or the .git file a
+// submodule or worktree has instead), so a readable push leaves both out.
 func TestTreeFilesLeavesOutGitEntries(t *testing.T) {
 	root := t.TempDir()
 	for p, body := range map[string]string{
@@ -116,7 +116,7 @@ func TestRenewTokenAfterAnotherRunRenewed(t *testing.T) {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 
-	// Nobody renewed: the sign-in really is over.
+	// Nobody renewed, so the sign-in is over.
 	if err := st.Set(accountToken, encodeToken(mine)); err != nil {
 		t.Fatal(err)
 	}

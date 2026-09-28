@@ -1,6 +1,6 @@
 # A backup made under another home folder (another username, or macOS to
 # Linux) is restored with this machine's home in its paths: a PATH entry or a
-# hook command pointing into a home that does not exist here would just break.
+# hook command pointing into a home that does not exist here would break.
 exec dothaven restore --dry-run backup-old-20240101000000
 stdout 'made under /Users/olduser'
 stdout '2 files mention the old path'
@@ -17,7 +17,7 @@ grep 'gitdir:' .gitconfig
 
 # Idempotent: the rewritten files read as applied, not as conflicts.
 exec dothaven restore backup-old-20240101000000
-stdout '2 already applied'
+stdout '2 already the same here'
 
 # --keep-paths leaves them as they were.
 rm .zshrc

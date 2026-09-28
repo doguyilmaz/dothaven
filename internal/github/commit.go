@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -27,7 +28,7 @@ type File struct {
 const MaxFile = 95 << 20
 
 // inlineMax is the largest text file sent inline in a tree request instead of
-// as its own blob — one request instead of hundreds for a folder of configs.
+// as its own blob: one request instead of hundreds for a folder of configs.
 const inlineMax = 256 << 10
 
 // inlineBatch bounds how much inline content one tree request carries.
@@ -47,7 +48,7 @@ type treeEntry struct {
 
 // Commit replaces everything under prefix on branch with files (plus extra,
 // small in-memory files such as a README at the repository root) as one
-// commit, and returns its SHA — or "" when nothing changed.
+// commit, and returns its SHA, or "" when nothing changed.
 //
 // The subtree under prefix is rebuilt from scratch, so a file deleted on this
 // machine disappears from the repository too; the rest of the repository
@@ -261,6 +262,7 @@ func (c *Client) buildTree(ctx context.Context, repo string, files []File) (stri
 		wg.Go(func() {
 			for i := range work {
 				shas[i], errs[i] = c.uploadBlob(ctx, repo, blobs[i].Src, blobs[i].Size)
+				c.sent(1)
 			}
 		})
 	}
@@ -296,6 +298,13 @@ func (c *Client) buildTree(ctx context.Context, repo string, files []File) (stri
 		if err != nil {
 			return err
 		}
+		inBatch := 0
+		for _, e := range batch {
+			if e.Content != nil {
+				inBatch++
+			}
+		}
+		c.sent(inBatch)
 		tree, batch, size = t, nil, 0
 		return nil
 	}
@@ -317,6 +326,13 @@ func (c *Client) buildTree(ctx context.Context, repo string, files []File) (stri
 		return "", err
 	}
 	return tree, nil
+}
+
+// sent counts files the server has, for a caller's progress line.
+func (c *Client) sent(n int) {
+	if c.Sent != nil {
+		atomic.AddInt64(c.Sent, int64(n))
+	}
 }
 
 func mode(f File) string {

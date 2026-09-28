@@ -60,7 +60,7 @@ type Entry struct {
 	Exclude []string
 	// LocalOnly never leaves this machine except in a local encrypted backup:
 	// no push to GitHub carries it, not even encrypted. It is for keys that
-	// protect other copies — an age identity opens every file encrypted to it,
+	// protect other copies: an age identity opens every file encrypted to it,
 	// and those files already live in a repository.
 	LocalOnly bool
 }
@@ -77,7 +77,7 @@ func appSupport(rel string) map[string]string {
 // Entries is the full registry. Paths use ~ for home; %USERPROFILE%/%APPDATA%
 // for Windows. (GOOS is "darwin"/"linux"/"windows".)
 var Entries = []Entry{
-	// AI: Claude Code. Global (user-scope) config only — project-level
+	// AI: Claude Code. Global (user-scope) config only; project-level
 	// .claude/ and .mcp.json travel with each project.
 	{ID: "ai.claude.settings", Name: "Claude Settings", Category: "ai", Kind: JSONExtract, Fields: []string{"permissions", "enabledPlugins", "extraKnownMarketplaces", "hooks", "statusLine", "model"}, BackupDest: "ai/claude/settings.json", Sensitivity: Medium,
 		Paths: map[string]string{"darwin": "~/.claude/settings.json", "linux": "~/.claude/settings.json", "windows": "%USERPROFILE%/.claude/settings.json"}},
@@ -232,7 +232,7 @@ var Entries = []Entry{
 	{ID: "cloud.firebase", Name: "Firebase CLI login", Category: "cloud", Kind: File, BackupDest: "cloud/firebase/firebase-tools.json", Sensitivity: High, Paths: unix("~/.config/configstore/firebase-tools.json")},
 	{ID: "cloud.docker.config", Name: "Docker config", Category: "cloud", Kind: File, BackupDest: "cloud/docker/config.json", Sensitivity: High, Paths: map[string]string{"darwin": "~/.docker/config.json", "linux": "~/.docker/config.json", "windows": "%USERPROFILE%/.docker/config.json"}},
 
-	// Cloud CLIs (more) — every credential-bearing entry is High so chezmoi-export
+	// Cloud CLIs (more). Every credential-bearing entry is High so chezmoi-export
 	// encrypts it; with no redactor it is also excluded from a plaintext backup.
 	{ID: "cloud.azure", Name: "Azure CLI", Category: "cloud", Kind: Dir, BackupDest: "cloud/azure", Sensitivity: High, Paths: map[string]string{"darwin": "~/.azure", "linux": "~/.azure", "windows": "%USERPROFILE%/.azure"}, Exclude: []string{"cliextensions", "logs", "commands", "telemetry", "*.log"}},
 	{ID: "cloud.oci", Name: "Oracle Cloud (OCI)", Category: "cloud", Kind: Dir, BackupDest: "cloud/oci", Sensitivity: High, Paths: map[string]string{"darwin": "~/.oci", "linux": "~/.oci"}},
@@ -265,7 +265,7 @@ var Entries = []Entry{
 	{ID: "db.psqlrc", Name: ".psqlrc", Category: "db", Kind: File, BackupDest: "db/.psqlrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.psqlrc", "linux": "~/.psqlrc"}},
 	{ID: "db.sqliterc", Name: ".sqliterc", Category: "db", Kind: File, BackupDest: "db/.sqliterc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.sqliterc", "linux": "~/.sqliterc"}},
 
-	// Editors (more) — VS Code settings, Helix, Doom, Sublime, editorconfig
+	// Editors (more): VS Code settings, Helix, Doom, Sublime, editorconfig
 	{ID: "editor.vscode.settings", Name: "VS Code Settings", Category: "editor", Kind: File, BackupDest: "editor/vscode/settings.json", Sensitivity: Low, Paths: map[string]string{"darwin": "~/Library/Application Support/Code/User/settings.json", "linux": "~/.config/Code/User/settings.json", "windows": "%APPDATA%/Code/User/settings.json"}},
 	{ID: "editor.vscode.keybindings", Name: "VS Code Keybindings", Category: "editor", Kind: File, BackupDest: "editor/vscode/keybindings.json", Sensitivity: Low, Paths: map[string]string{"darwin": "~/Library/Application Support/Code/User/keybindings.json", "linux": "~/.config/Code/User/keybindings.json", "windows": "%APPDATA%/Code/User/keybindings.json"}},
 	{ID: "editor.vscode.snippets", Name: "VS Code Snippets", Category: "editor", Kind: Dir, BackupDest: "editor/vscode/snippets", Sensitivity: Low, Paths: map[string]string{"darwin": "~/Library/Application Support/Code/User/snippets", "linux": "~/.config/Code/User/snippets", "windows": "%APPDATA%/Code/User/snippets"}},
@@ -318,7 +318,7 @@ var Entries = []Entry{
 	{ID: "vm.mise", Name: "mise config", Category: "vm", Kind: File, BackupDest: "vm/mise/config.toml", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/mise/config.toml", "linux": "~/.config/mise/config.toml"}},
 	{ID: "vm.asdfrc", Name: ".asdfrc", Category: "vm", Kind: File, BackupDest: "vm/.asdfrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.asdfrc", "linux": "~/.asdfrc"}},
 
-	// Secrets / bare credential stores (High — never plaintext)
+	// Secrets / bare credential stores (High, never plaintext)
 	// age identities, which chezmoi and sops decrypt with. Without them the
 	// encrypted files in a dotfiles repo cannot be opened on the new machine.
 	{ID: "secrets.age.chezmoi", Name: "chezmoi age key", Category: "secrets", Kind: File, BackupDest: "secrets/age/chezmoi-key.txt", Sensitivity: High, LocalOnly: true, Paths: unix("~/.config/chezmoi/key.txt")},
@@ -327,7 +327,7 @@ var Entries = []Entry{
 	{ID: "secrets.netrc", Name: ".netrc", Category: "secrets", Kind: File, BackupDest: "secrets/.netrc", Sensitivity: High, Paths: map[string]string{"darwin": "~/.netrc", "linux": "~/.netrc", "windows": "%USERPROFILE%/_netrc"}},
 	{ID: "secrets.vault", Name: "Vault token", Category: "secrets", Kind: File, BackupDest: "secrets/.vault-token", Sensitivity: High, Paths: map[string]string{"darwin": "~/.vault-token", "linux": "~/.vault-token"}},
 
-	// Secrets (carried encrypted) — declarative: a no-op until ~/.gnupg has real keys.
+	// Secrets (carried encrypted). Declarative: a no-op until ~/.gnupg has real keys.
 	{ID: "secrets.gnupg", Name: "GnuPG home", Category: "secrets", Kind: Dir, BackupDest: "secrets/gnupg", Sensitivity: High, Paths: map[string]string{"darwin": "~/.gnupg", "linux": "~/.gnupg"}, Exclude: []string{"S.*", "*.lock", ".#*", "random_seed"}},
 
 	// Language & toolchain config (lang). Files that hold tokens by design are
@@ -380,8 +380,8 @@ var Entries = []Entry{
 	{ID: "db.litecli", Name: "litecli config", Category: "db", Kind: File, BackupDest: "db/litecli/config", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.config/litecli/config", "linux": "~/.config/litecli/config"}},
 	{ID: "db.mongosh", Name: ".mongoshrc.js", Category: "db", Kind: File, BackupDest: "db/.mongoshrc.js", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.mongoshrc.js", "linux": "~/.mongoshrc.js"}},
 
-	// Editors (more) — IdeaVim (the portable JetBrains config; full IDE settings
-	// are version/product-specific and out of scope here).
+	// Editors (more): IdeaVim, the portable JetBrains config. Full IDE settings
+	// are version/product-specific and out of scope here.
 	{ID: "editor.ideavim", Name: ".ideavimrc", Category: "editor", Kind: File, BackupDest: "editor/.ideavimrc", Sensitivity: Low, Paths: map[string]string{"darwin": "~/.ideavimrc", "linux": "~/.ideavimrc", "windows": "%USERPROFILE%/.ideavimrc"}},
 
 	// Shell frameworks & plugin manifests.
@@ -406,7 +406,7 @@ var Entries = []Entry{
 	// chezmoi's own config (its age recipient, template data). Its state
 	// database is rebuilt by the first apply.
 	{ID: "dev.chezmoi", Name: "chezmoi config", Category: "dev", Kind: Dir, BackupDest: "dev/chezmoi", Sensitivity: Medium, Paths: unix("~/.config/chezmoi"), Exclude: []string{"*.boltdb"}},
-	// Fonts you installed yourself — downloaded, licensed, patched. Ones from
+	// Fonts you installed yourself: downloaded, licensed, patched. Ones from
 	// Homebrew casks come back with reinstall too; carrying them twice only
 	// costs space.
 	{ID: "fonts.user", Name: "Your fonts", Category: "fonts", Kind: Dir, BackupDest: "fonts", Sensitivity: Low,
@@ -529,8 +529,8 @@ func extractFields(data map[string]any, fields []string) map[string]string {
 		}
 		// Flatten one level, namespacing children as parent.child. A bare child
 		// key would let two sibling objects (or a scalar) collide, and the winner
-		// was decided by random map-iteration order — breaking the deterministic
-		// snapshot guarantee. Namespacing makes it both collision-free and stable.
+		// was decided by random map-iteration order, which broke the
+		// deterministic snapshot guarantee. Namespacing makes it both collision-free and stable.
 		if obj, ok := v.(map[string]any); ok {
 			for _, k := range sortedAnyKeys(obj) {
 				pairs[f+"."+k] = jsString(obj[k])

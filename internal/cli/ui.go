@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -49,16 +48,20 @@ func newUICmd(env *sys.OS, version string) *cobra.Command {
 			if !noOpen {
 				openBrowser(srv.URL)
 			}
+			stopped := make(chan struct{})
 			if term.IsTerminal(int(os.Stdin.Fd())) {
 				fmt.Println(dim("  Press Enter (or Ctrl-C) to stop."))
 				go func() {
-					_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+					defer close(stopped)
+					waitEnter(ctx)
 					cancel()
 				}()
 			} else {
 				fmt.Println(dim("  Ctrl-C to stop."))
+				close(stopped)
 			}
 			<-ctx.Done()
+			<-stopped
 			fmt.Println("Dashboard stopped.")
 			return nil
 		},
@@ -264,8 +267,8 @@ type dashSecretFile struct {
 	Count    int    `json:"count"`
 }
 
-// dashSecrets names the files holding secrets and what kind — never the
-// values, which is also why this panel exists rather than a file browser.
+// dashSecrets names the files holding secrets and what kind, never the values.
+// That is also why this panel exists rather than a file browser.
 func dashSecrets(ctx context.Context, env *sys.OS) (any, error) {
 	results, err := scanTracked(ctx, env, false)
 	if err != nil {

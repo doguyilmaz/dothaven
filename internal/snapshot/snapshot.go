@@ -23,8 +23,8 @@ func (s Snapshot) Serialize() ([]byte, error) {
 
 // Parse decodes a JSON snapshot. Missing section fields default to their zero
 // values (nil map/slice/pointer). A non-object root, malformed JSON, or a
-// non-string pair value is a loud error — doctor/compare read arbitrary files,
-// so we fail fast rather than silently coerce.
+// non-string pair value is a loud error: doctor/compare read arbitrary files,
+// so it fails fast rather than silently coercing.
 func Parse(data []byte) (Snapshot, error) {
 	var s Snapshot
 	if err := json.Unmarshal(data, &s); err != nil {

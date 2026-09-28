@@ -81,7 +81,7 @@ dothaven runs on its own. A few features call tools you may already have; `dotha
 | --- | --- | --- |
 | `git` | `ready` (finding unpushed work) | `ready` cannot check repositories |
 | Homebrew | Listing and reinstalling Homebrew apps (macOS) | The Homebrew part of the inventory and of `reinstall` is skipped |
-| `defaults` | macOS settings (built into macOS) | — |
+| `defaults` | macOS settings (built into macOS) | |
 | `gh` | Signing in to GitHub without a browser | Use `github login --with-token` instead |
 | `zsh`, `ssh` | `check` of zsh files and SSH config | Those files are reported as unchecked |
 | `chezmoi` | The optional chezmoi sync | Only `init`, `chezmoi-export --apply` and `migrate` need it |

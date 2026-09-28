@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping dothaven cover more of the dev universe! Tell us what's
-        missing and where its config lives, and we'll add it to the registry.
+        Tell us which tool is missing and where its config lives, and we will
+        add it to the registry.
   - type: input
     id: tool
     attributes:
@@ -20,7 +20,7 @@ body:
     id: path
     attributes:
       label: Config path(s)
-      description: Where its config lives — macOS and/or Linux.
+      description: Where its config lives, on macOS and/or Linux.
       placeholder: e.g. ~/.config/warp, ~/Library/Application Support/OrbStack
     validations:
       required: true
@@ -30,8 +30,8 @@ body:
       label: Does it hold secrets?
       description: Credential-bearing configs are always age-encrypted on export.
       options:
-        - "No — plain config"
-        - "Yes — credentials/tokens"
+        - "No, plain config"
+        - "Yes, credentials or tokens"
         - "Not sure"
     validations:
       required: true

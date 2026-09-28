@@ -24,7 +24,7 @@ func TestPrivateTempDirIsTrackedAndSwept(t *testing.T) {
 	}
 	done() // removing twice is harmless
 
-	// A folder from a process that is gone is swept — only one with our
+	// A folder from a process that is gone is swept, but only one with our
 	// exact name, our marker, and old enough. Look-alikes are someone's work.
 	old := time.Now().Add(-2 * time.Hour)
 	mk := func(name string, marker bool, at time.Time) string {

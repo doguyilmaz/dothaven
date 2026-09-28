@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// go test has no terminal, so these exercise the off-a-terminal path — the one
+// go test has no terminal, so these exercise the off-a-terminal path, the one
 // that used to let migrate apply unattended.
 func TestConfirmWriteRefusesWithoutATerminal(t *testing.T) {
 	var out bytes.Buffer

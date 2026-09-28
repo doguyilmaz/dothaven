@@ -63,8 +63,8 @@ func listPrefDomains(ctx context.Context) []string {
 
 // capturePrefs reads and classifies every domain.
 func capturePrefs(ctx context.Context, domains []string) ([]macprefs.Entry, macprefs.Counts) {
-	// No domains means no `defaults` tool — this is not a Mac. Returning here
-	// keeps a progress bar and eight goroutines from being started for nothing.
+	// No domains means no `defaults` tool, so this is not a Mac. Returning here
+	// avoids starting a progress bar and eight goroutines for nothing.
 	if len(domains) == 0 {
 		return nil, macprefs.Counts{}
 	}
@@ -83,8 +83,8 @@ func capturePrefs(ctx context.Context, domains []string) ([]macprefs.Entry, macp
 		go func() {
 			defer wg.Done()
 			for d := range workCh {
-				// A domain that cannot be read is a domain we do not have, not
-				// a reason to abandon the other several hundred.
+				// A domain that cannot be read is skipped; the rest are still
+				// read.
 				if out, err := runShell(ctx, "defaults", "export", d, "-"); err == nil {
 					if entries, c, err := macprefs.Collect(d, []byte(out)); err == nil {
 						mu.Lock()
@@ -152,9 +152,8 @@ func readPrefs(path string) (prefsFile, error) {
 	return pf, json.Unmarshal(b, &pf)
 }
 
-// summarisePrefs groups entries by domain, biggest first, for a report that a
-// person can actually read — several thousand keys listed one per line is not
-// a summary of anything.
+// summarisePrefs groups entries by domain, biggest first, so the report stays
+// readable. Several thousand keys listed one per line would not be.
 func summarisePrefs(entries []macprefs.Entry) []string {
 	perDomain := map[string]int{}
 	for _, e := range entries {
@@ -231,12 +230,12 @@ func currentPrefs(ctx context.Context, domains []string) livePrefs {
 	return out
 }
 
-// applyPrefs writes the portable entries back with `defaults write` — only
-// the ones not already set, and on a terminal only the domains you pick.
+// applyPrefs writes the portable entries back with `defaults write`: only the
+// ones not already set, and on a terminal only the domains you pick.
 func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes, all bool) error {
 	// Everything was captured, but only the core domains are written back
-	// unless asked otherwise. The rest is overwhelmingly an application's own
-	// state, and writing thousands of keys nobody chose is not a migration.
+	// unless asked otherwise. The rest is mostly application state that nobody
+	// chose to carry over.
 	var selected []macprefs.Entry
 	var heldBack int
 	for _, e := range entries {
@@ -270,7 +269,7 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 		fmt.Printf("%s %s already set on this Mac.\n", good("✓"), plural(already, "setting"))
 	}
 	if len(todo) == 0 {
-		fmt.Println(good("✓ Nothing to change — your settings are already in place."))
+		fmt.Println(good("✓ Nothing to change. Your settings are already in place."))
 		printPrefsReview(entries, all)
 		return nil
 	}
@@ -289,7 +288,7 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	}
 	printPrefsReview(entries, all)
 	if dryRun {
-		fmt.Printf("\n%s\n", dim("Dry run — nothing was written."))
+		fmt.Printf("\n%s\n", dim("Dry run: nothing was written."))
 		return nil
 	}
 
@@ -379,8 +378,8 @@ func storedNested(ctx context.Context, e macprefs.Entry) bool {
 	return strings.Contains(out, "array") || strings.Contains(out, "dictionary")
 }
 
-// undoPref puts back the value a key had before this run — prev, when it was
-// captured (had) — or removes the key if it had none. Only a value captured
+// undoPref puts back the value a key had before this run (prev, when had says
+// it was captured), or removes the key if it had none. Only a value captured
 // exactly (action apply) is ever written back: a redacted or review-only one
 // would put a mask where a setting was.
 func undoPref(ctx context.Context, e macprefs.Entry, prev macprefs.Entry, had bool) {
@@ -476,7 +475,7 @@ func captureDock(ctx context.Context) []string {
 }
 
 // applyDock rebuilds the Dock from the old machine's app list, keeping only
-// apps installed here — a tile for a missing app is a question mark.
+// apps installed here: a tile for a missing app shows as a question mark.
 func applyDock(ctx context.Context, apps []string, dryRun, assumeYes bool) error {
 	var have, missing []string
 	for _, a := range apps {
@@ -508,7 +507,7 @@ func applyDock(ctx context.Context, apps []string, dryRun, assumeYes bool) error
 	}
 	if len(have) == 0 || dryRun {
 		if dryRun {
-			fmt.Println(dim("  Dry run — the Dock was not changed."))
+			fmt.Println(dim("  Dry run: the Dock was not changed."))
 		}
 		return nil
 	}
@@ -541,13 +540,10 @@ func uniqueDomains(entries []macprefs.Entry) []string {
 	return out
 }
 
-// printPrefsReview lists the settings that were captured and will never be
-// written: their value names the machine they came from — a path into someone
-// else's home directory, an identifier for a display that is not here.
-//
-// They are shown because a value nobody looks at is a value nobody can act on.
-// Captured and then silently dropped is the same as not captured, except it
-// takes up space and gives a false impression of completeness.
+// printPrefsReview lists the settings that were captured but are never
+// written, because their value names the machine they came from: a path into
+// someone else's home directory, or an identifier for a display that is not
+// here. They are listed so they can be set by hand.
 func printPrefsReview(entries []macprefs.Entry, all bool) {
 	var core, other []macprefs.Entry
 	for _, e := range entries {
@@ -564,7 +560,7 @@ func printPrefsReview(entries []macprefs.Entry, all bool) {
 		return
 	}
 
-	fmt.Printf("\n%s %s carried a value from the old machine — set these by hand:\n",
+	fmt.Printf("\n%s %s carried a value from the old machine. Set these by hand:\n",
 		warn("⚠"), plural(len(core)+len(other), "setting"))
 	for _, e := range core {
 		fmt.Printf("  %s %s\n", padTo(e.Domain+" "+e.Key, 46), dim(ellipsize(e.Value, 30)))

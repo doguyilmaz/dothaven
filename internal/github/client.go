@@ -26,7 +26,7 @@ import (
 )
 
 // ClientID is the OAuth app used for browser sign-in (the device flow). It is
-// public by design — the device flow has no client secret — and is set at
+// public by design (the device flow has no client secret) and is set at
 // release time with -ldflags, or with DOTHAVEN_GITHUB_CLIENT_ID.
 var ClientID = ""
 
@@ -76,6 +76,8 @@ type Client struct {
 	// how the last one went.
 	Sign    Signer
 	Signing SignResult
+	// Sent, when set, counts the files of a commit as GitHub receives them.
+	Sent *int64
 }
 
 // ErrNotFound is a 404: missing, or not visible to this token (GitHub does
@@ -91,7 +93,7 @@ type APIError struct {
 func (e *APIError) Error() string { return fmt.Sprintf("GitHub API %d: %s", e.Status, e.Message) }
 
 // New returns a client for github.com. DOTHAVEN_GITHUB_API / _WEB point it
-// elsewhere — for tests, and for GitHub Enterprise — but only at https, or at
+// elsewhere (for tests, and for GitHub Enterprise), but only at https or at
 // plain http on the loopback interface.
 func New(token string) (*Client, error) {
 	c := &Client{API: "https://api.github.com", Web: "https://github.com", Token: token, HTTP: httpClient()}
@@ -118,9 +120,9 @@ func safeBase(raw string) bool {
 	return u.Scheme == "http" && (host == "127.0.0.1" || host == "localhost" || host == "::1")
 }
 
-// httpClient bounds every stage of a request that can stall — connecting,
-// the TLS handshake, waiting for the first response byte — while leaving the
-// body free to take as long as an upload honestly takes. The overall deadline
+// httpClient bounds every stage of a request that can stall (connecting, the
+// TLS handshake, waiting for the first response byte) while leaving the body
+// free to take as long as an upload needs. The overall deadline
 // is the caller's context.
 func httpClient() *http.Client {
 	t := &http.Transport{
@@ -331,11 +333,12 @@ func (c *Client) GetRepo(ctx context.Context, fullName string) (Repo, error) {
 	return r, err
 }
 
-// CreatePrivateRepo creates a private repository under the signed-in user,
-// with an initial commit so it has a branch to write to.
+// CreatePrivateRepo creates an empty private repository under the signed-in
+// user. Empty on purpose: GitHub's own first commit would name the account as
+// its author; dothaven's first push makes the first commit instead.
 func (c *Client) CreatePrivateRepo(ctx context.Context, name, description string) (Repo, error) {
 	b, err := jsonBody(map[string]any{
-		"name": name, "description": description, "private": true, "auto_init": true,
+		"name": name, "description": description, "private": true, "auto_init": false,
 		"has_issues": false, "has_projects": false, "has_wiki": false,
 	})
 	if err != nil {

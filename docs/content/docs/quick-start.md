@@ -5,7 +5,7 @@ weight: 3
 
 This takes about five minutes. You will make a backup, see what it covers, look for secrets in your config, and open the dashboard. Nothing here changes your files.
 
-If you are about to move to a new machine, you can skip ahead to [Moving to a new machine](../migration). This page is the gentle tour.
+If you are about to move to a new machine, go straight to [Moving to a new machine](../migration).
 
 ## 1. Install and check
 
@@ -20,7 +20,7 @@ Other ways to install are on the [Installation](../installation) page. `doctor` 
 ✓ Everything dothaven needs is in place.
 ```
 
-## 2. Or just open the menu
+## 2. Or open the menu
 
 ```bash
 dothaven
@@ -41,7 +41,7 @@ On a terminal it first asks which categories to include (everything is selected)
 The result is a folder in `~/.local/share/dothaven`:
 
 ```text
-✓ Backup saved — 9 files, 400 B
+✓ Backup saved: 9 files, 400 B
   /Users/you/.local/share/dothaven/backup-mymac-20260927232931
   ai (4), git (2), npm (1), shell (1), ssh (1)
   + installed apps & packages list
@@ -52,15 +52,15 @@ The result is a folder in `~/.local/share/dothaven`:
   For a complete copy, keys included: dothaven backup --encrypt
 
 ⚠ Sensitivity report:
-  HIGH   ai/claude/claude.json          GitHub token — redacted
-  HIGH   npm/.npmrc                     npm auth token — redacted
-  MEDIUM ssh/config                     IP address — redacted
+  HIGH   ai/claude/claude.json          GitHub token (redacted)
+  HIGH   npm/.npmrc                     npm auth token (redacted)
+  MEDIUM ssh/config                     IP address (redacted)
 
   3 items redacted. Use --no-redact to include all.
   Redacted files are kept for reference but not restored over your real ones.
 ```
 
-This plain backup is a safe local copy: secret values are masked, and SSH keys and cloud logins are left out and listed. It is good for "what changed since last week?" For moving to a new machine you want the encrypted one: `dothaven backup --encrypt`. The [Backup & restore](../backup-restore) page explains the difference.
+This plain backup is a safe local copy: secret values are masked, and SSH keys and cloud logins are left out and listed. Use it to see what changed since last week. To move to a new machine, use the encrypted one: `dothaven backup --encrypt`. The [Backup & restore](../backup-restore) page explains the difference.
 
 ## 4. See what changed since
 
@@ -87,7 +87,7 @@ dothaven include --list
 ```
 
 ```text
-Not covered by anything (3) — not in your backups:
+Not covered by anything (3), so not in your backups:
   ? ~/.mytoolrc
   ? ~/.config/raycast
   ? ~/bin

@@ -8,13 +8,13 @@ import (
 
 // ScheduledCollector records the jobs this machine runs on a schedule.
 //
-// Both are classic migration losses: they are invisible day to day, nothing
-// reminds you they exist, and a new Mac is simply quieter until you notice
-// months later that a sync or a cleanup stopped happening. Neither lives in a
+// Both are often lost in a migration: they are invisible day to day, nothing
+// reminds you they exist, and on a new Mac nobody notices until months later
+// that a sync or a cleanup stopped happening. Neither lives in a
 // dotfile, so nothing else here would have caught them.
 //
 // The plists in ~/Library/LaunchAgents come through the registry as files; this
-// records crontab, which has no file to point at — it lives in a spool
+// records crontab, which has no file to point at: it lives in a spool
 // directory only the crontab command may read.
 func ScheduledCollector(c Ctx) snapshot.Snapshot {
 	out, err := c.Env.Run(c.Context, "crontab", "-l")
@@ -34,8 +34,7 @@ func ScheduledCollector(c Ctx) snapshot.Snapshot {
 
 // ParseCrontab keeps the entries and drops comments and blank lines. Variable
 // assignments (PATH=, MAILTO=) are kept: a job that runs without them behaves
-// differently, which is exactly the kind of difference that is hard to find
-// later.
+// differently, and that kind of difference is hard to find later.
 func ParseCrontab(text string) []string {
 	var jobs []string
 	for _, line := range strings.Split(text, "\n") {

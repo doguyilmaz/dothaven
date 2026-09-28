@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/cli"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -18,30 +19,40 @@ import (
 var version = "dev"
 
 func main() {
-	// Ctrl-C / SIGTERM handling, two-tier so a command can never become
-	// un-interruptible: the FIRST signal cancels the context (commands that
-	// observe it — the scan walk, exec'd children via CommandContext — stop
-	// gracefully); the SECOND forces an immediate exit so a command that ignores
-	// the context still dies on a second Ctrl-C. (A plain signal.NotifyContext
-	// would disable the default kill-on-SIGINT and leave such commands wedged.)
+	// Ctrl-C and SIGTERM, in two tiers so a command can never become
+	// uninterruptible: the first signal cancels the context (the walk, the
+	// upload and exec'd children stop), and the second exits at once, so a
+	// command that ignores the context still ends. A plain
+	// signal.NotifyContext would leave such a command wedged.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigCh := make(chan os.Signal, 2)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		first := <-sigCh
+		var first os.Signal
+		for {
+			first = <-sigCh
+			// In the menu, Ctrl-C cancels the action that is running and the
+			// menu comes back; a second one while it winds down quits.
+			ended, ok := cli.CancelAction()
+			if !ok {
+				break
+			}
+			fmt.Fprintln(os.Stderr, "\nStopping… press Ctrl-C again to quit dothaven.")
+			select {
+			case <-ended:
+				continue
+			case first = <-sigCh:
+			}
+			forceExit(first)
+		}
+		// Said at once: work that is stuck (a read macOS is holding for a
+		// privacy prompt) may take a while to notice the cancel, and a Ctrl-C
+		// with no answer gets pressed twenty times.
+		fmt.Fprintln(os.Stderr, "\nStopping… press Ctrl-C again to quit now.")
 		cancel()
 		<-sigCh // a second signal force-exits, even if a command ignores the context
-		// No defer runs past os.Exit: remove decrypted temporary files here.
-		sys.RemoveTempDirs()
-		// Exit code reflects the signal that initiated shutdown (the cause), using
-		// the conventional 128+signum so a supervisor can tell SIGINT (130) from
-		// SIGTERM (143).
-		code := 130
-		if first == syscall.SIGTERM {
-			code = 143
-		}
-		os.Exit(code)
+		forceExit(first)
 	}()
 
 	if err := cli.Execute(ctx, sys.Real(), version); err != nil {
@@ -52,4 +63,25 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+// forceExit quits now, after at most a second of removing decrypted
+// temporary files: no defer runs past os.Exit, and a quit must not wait on
+// cleanup. The exit code is 128 plus the signal that started the shutdown, so
+// a supervisor can tell SIGINT (130) from SIGTERM (143).
+func forceExit(first os.Signal) {
+	done := make(chan struct{})
+	go func() {
+		sys.RemoveTempDirs()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+	}
+	code := 130
+	if first == syscall.SIGTERM {
+		code = 143
+	}
+	os.Exit(code)
 }

@@ -70,8 +70,8 @@ func formatDetailed(results []scan.Result) string {
 	return strings.Join(lines, "\n")
 }
 
-// scanTracked scans every file a backup would carry — the registry and your
-// includes — which is the question "are there secrets in my config?".
+// scanTracked scans every file a backup would carry (the registry and your
+// includes), which answers "are there secrets in my config?".
 func scanTracked(ctx context.Context, env *sys.OS, progress bool) ([]scan.Result, error) {
 	var files []string
 	for _, t := range registry.BackupTargets(env.Home(), allEntries(env)) {
@@ -109,12 +109,10 @@ func newScanCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "scan [path]",
 		Short: "Find secrets in your config, or in any file or folder (exits 2 if any are HIGH)",
-		Long: "With no path, scans every config file dothaven tracks — the ones a backup\n" +
-			"would carry. With a path, scans that file or folder.\n\n" +
-			"Exits 2 when anything HIGH turns up, so this can gate a commit hook or a CI\n" +
-			"job — a scanner that always exits 0 can only ever be read by a human, and\n" +
-			"the point of scanning is to catch what a human missed. Use --no-fail for a\n" +
-			"report without the verdict.",
+		Long: "With no path, scans every config file dothaven tracks (the ones a backup\n" +
+			"would carry). With a path, scans that file or folder.\n\n" +
+			"Exits 2 when anything HIGH turns up, so it can gate a commit hook or a CI job.\n" +
+			"Use --no-fail for the report without the exit code.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			var results []scan.Result
@@ -149,7 +147,7 @@ func newScanCmd(env *sys.OS) *cobra.Command {
 			fmt.Println(formatDetailed(results))
 			fmt.Println(scan.FormatReport(scan.Summarize(results), scan.ReportOptions{Color: colorOn(), Scan: true}))
 			if high > 0 && !noFail {
-				fmt.Fprintf(os.Stderr, "\n%s\n", danger(fmt.Sprintf("%s. Exiting 2 — pass --no-fail to ignore.", plural(high, "HIGH finding"))))
+				fmt.Fprintf(os.Stderr, "\n%s\n", danger(fmt.Sprintf("%s. Exiting 2 (pass --no-fail to ignore).", plural(high, "HIGH finding"))))
 				return ExitError{Code: 2}
 			}
 			return nil
@@ -164,7 +162,7 @@ func newSecurityCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "security [path]",
 		Short: "Write a Markdown report of the secrets in your config (default SECURITY.md)",
-		Long: "The same scan as `dothaven scan` — your tracked config, or the path given —\n" +
+		Long: "The same scan as `dothaven scan` (your tracked config, or the path given),\n" +
 			"written as a Markdown report. It names files, rules and line numbers, never values.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -191,7 +189,7 @@ func newSecurityCmd(env *sys.OS) *cobra.Command {
 					withFindings++
 				}
 			}
-			fmt.Printf("Security report written to: %s\n  %d scanned, %d with findings.\n", out, len(results), withFindings)
+			fmt.Printf("Security report written to: %s\n  %d scanned, %d with findings.\n", shortHome(env, out), len(results), withFindings)
 			return nil
 		},
 	}

@@ -36,7 +36,9 @@ func runShell(ctx context.Context, name string, args ...string) (string, error) 
 	// from `chezmoi apply`'s install script) can't keep Wait() blocked past the
 	// deadline after CommandContext SIGKILLs the direct child.
 	cmd.WaitDelay = 5 * time.Second
+	start := time.Now()
 	out, err := cmd.CombinedOutput()
+	runlog.command(append([]string{name}, args...), time.Since(start), err)
 	return strings.TrimSpace(string(out)), err
 }
 
@@ -54,10 +56,10 @@ func templatizeSource(ctx context.Context, src, home string) {
 		return
 	}
 	if out, changed := chezmoi.Templatize(string(raw), home); changed {
-		// Not fatal — the verbatim copy is still valid — but not silent
-		// either: without the template the file keeps this machine's home
-		// path baked in, which fails on the next machine under a different
-		// username, and does so long after this command finished.
+		// Not fatal (the verbatim copy is still valid), but reported: without
+		// the template the file keeps this machine's home path, which breaks
+		// on a machine with a different username, long after this command
+		// finished.
 		if err := os.WriteFile(sp, []byte(out), 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "  ⚠ could not templatize %s (kept verbatim): %v\n", src, err)
 		}
@@ -73,8 +75,8 @@ type itemCount struct{ total, encrypted int }
 // expandExport turns the plan into the files chezmoi adds. A directory is
 // walked with the same rules as a backup (symlinks followed, sockets and the
 // item's excludes skipped) plus two of its own: no nested .git (the source is
-// itself a repository) and nothing over chezmoiMaxFile. A file reached twice —
-// ~/.ssh/config alone and inside ~/.ssh — is added once, encrypted if either
+// itself a repository) and nothing over chezmoiMaxFile. A file reached twice
+// (~/.ssh/config alone and inside ~/.ssh) is added once, encrypted if either
 // path says so.
 func expandExport(plan []chezmoi.PlanItem, entries []registry.Entry, home string) ([]chezmoi.FileAdd, map[string]itemCount, []backup.Skipped) {
 	byID := map[string]registry.Entry{}
@@ -121,7 +123,7 @@ func expandExport(plan []chezmoi.PlanItem, entries []registry.Entry, home string
 	return out, counts, tooBig
 }
 
-// mentionsHome reports whether a file names the home directory — the one
+// mentionsHome reports whether a file names the home directory, the only
 // thing a template rewrite changes.
 func mentionsHome(home string) func(string) bool {
 	return func(p string) bool {
@@ -252,7 +254,7 @@ func manifestFromSnapshot(snap snapshot.Snapshot, pin bool) chezmoi.Manifest {
 		return out
 	}
 
-	// The Brewfile is embedded verbatim into an unencrypted script — redact any
+	// The Brewfile is embedded verbatim into an unencrypted script. Redact any
 	// inline credentials (e.g. a private tap's https://user:pass@host) first, and
 	// drop it entirely on a skip-action secret (a private key): ApplyRedactions
 	// only masks redact-action findings, so embedding a skip-action body would
@@ -300,8 +302,11 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "chezmoi-export",
 		Short: "Plan (or apply) adding configs to chezmoi, encrypting secrets",
-		Long:  "Builds a chezmoi-add plan — plain for configs, --encrypt for secrets — plus a\nrun_onchange install script. Dry-run by default; --apply executes (needs chezmoi + age).",
-		Args:  cobra.NoArgs,
+		Long: "Builds a chezmoi-add plan (plain for configs, --encrypt for secrets) plus a\n" +
+			"run_onchange install script, and shows it. On a terminal it then asks whether\n" +
+			"to carry it out; off one it changes nothing unless you pass --apply (needs\n" +
+			"chezmoi, and age for the encrypted files).",
+		Args: cobra.NoArgs,
 		// A partial-apply failure returns a message-less ExitError after printing
 		// its own diagnostics; don't let cobra also print an "Error:" line.
 		SilenceErrors: true,
@@ -316,7 +321,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				groups = append(groups,
 					tui.Group{Name: "brew", About: "Homebrew formulae & casks, reinstalled on apply"},
 					tui.Group{Name: "packages", About: "global npm/pnpm/bun/pipx/cargo… packages"})
-				chosen, err := tui.SelectCategories("What to export to chezmoi", groups)
+				chosen, err := tui.SelectCategories("What to export to chezmoi", "Everything is selected. 🔒 marks what chezmoi stores encrypted.", groups)
 				if err != nil {
 					return err
 				}
@@ -357,7 +362,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 
 			files, perItem, tooBig := expandExport(plan, entries, home)
 			if len(files) == 0 && !wantInstallScript {
-				fmt.Println("Nothing to export — no managed configs found on this machine.")
+				fmt.Println("Nothing to export: no managed configs found on this machine.")
 				return nil
 			}
 
@@ -370,7 +375,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			hasEncrypt := encrypted > 0
 
 			if len(plan) > 0 {
-				fmt.Printf("chezmoi-export plan — %s, %d encrypted:\n\n", plural(len(files), "file"), encrypted)
+				fmt.Printf("chezmoi-export plan (%s, %d encrypted):\n\n", plural(len(files), "file"), encrypted)
 				for _, p := range plan {
 					n := perItem[p.Src]
 					if n.total == 0 {
@@ -394,7 +399,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				}
 			}
 			if len(tooBig) > 0 {
-				fmt.Printf("\n  %s %s over %s left out (a git repo is no place for them):\n", warn("⚠"), plural(len(tooBig), "file"), humanBytes(chezmoiMaxFile))
+				fmt.Printf("\n  %s %s over %s left out (too large for a git repo):\n", warn("⚠"), plural(len(tooBig), "file"), humanBytes(chezmoiMaxFile))
 				var lines []string
 				for _, s := range tooBig {
 					lines = append(lines, fmt.Sprintf("%s  %s", s.Dest, dim(humanBytes(s.Size))))
@@ -413,7 +418,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if conflicts := chezmoi.SettingsSyncConflicts(plan, env.Exists); len(conflicts) > 0 {
-				fmt.Println(warn("\n⚠ Editor Settings Sync looks active — chezmoi and the editor's cloud sync will"))
+				fmt.Println(warn("\n⚠ Editor Settings Sync looks active. chezmoi and the editor's cloud sync will"))
 				fmt.Println("  both rewrite these, causing drift. Disable one (chezmoi-managed or Settings Sync):")
 				for _, c := range conflicts {
 					fmt.Printf("    %s\n", c)
@@ -421,12 +426,24 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if hasEncrypt {
-				fmt.Printf("\n🔒 Encrypted paths are recoverable only with your age key (%s/.config/chezmoi/key.txt).\n   Back it up offline before you rely on this — a lost key means those files are gone for good.\n", home)
+				fmt.Printf("\n%s Encrypted files open only with your age key (%s).\n  Back it up offline before you rely on this. Without it, those files cannot be recovered.\n", warn("⚠"), shortHome(env, home+"/.config/chezmoi/key.txt"))
 			}
 
 			if !apply {
-				fmt.Printf("\n%s Re-run with %s to execute.\n", dim("Dry-run."), kbd("--apply"))
-				return nil
+				// On a terminal, the plan is the question; off one it stays a
+				// dry run, as scripts expect.
+				ok := false
+				if tui.Interactive() {
+					fmt.Println()
+					var err error
+					if ok, err = tui.Confirm("Carry out this plan now? It adds these files to your chezmoi source."); err != nil {
+						return ignoreAbort(err)
+					}
+				}
+				if !ok {
+					fmt.Printf("\n%s Run it with %s to carry it out.\n", dim("Dry run, nothing changed."), kbd("dothaven chezmoi-export --apply"))
+					return nil
+				}
 			}
 
 			if v, err := runShell(ctx, "chezmoi", "--version"); err != nil || v == "" {
@@ -435,9 +452,9 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 			sourcePath, _ := runShell(ctx, "chezmoi", "source-path")
 
-			// Preflight: if the plan encrypts anything, age must be configured —
-			// otherwise the very first `add --encrypt` fails. Abort early with a
-			// clear message instead of a confusing per-file error.
+			// Preflight: if the plan encrypts anything, age must be configured,
+			// or the first `add --encrypt` fails. Stop early with one clear
+			// message instead of a per-file error.
 			if hasEncrypt {
 				configured := false
 				if b, err := os.ReadFile(home + "/.config/chezmoi/chezmoi.toml"); err == nil {
@@ -445,21 +462,21 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				}
 				if !configured {
 					fmt.Fprintln(os.Stderr, danger("\n✗ This plan encrypts secrets, but age encryption is not configured in chezmoi.toml."))
-					fmt.Fprintln(os.Stderr, "  Run `dothaven init`, configure your age key, then re-run with --apply.")
+					fmt.Fprintln(os.Stderr, "  Run `dothaven init` to set up your age key, then export again.")
 					return ExitError{Code: 1}
 				}
 
-				// Age-key safety rail: encrypted secrets are recoverable only with
-				// the age key, so a human must acknowledge it's backed up before we
-				// write ciphertext they could otherwise lose forever. CI/non-TTY
-				// can't be prompted — the warning above still printed for them.
+				// Encrypted secrets are recoverable only with the age key, so a
+				// person must confirm it is backed up before any ciphertext is
+				// written. CI and other non-TTY runs cannot be asked; the warning
+				// above was still printed for them.
 				if tui.Interactive() {
 					ok, err := tui.Confirm("Have you backed up your age key offline?")
 					if err != nil {
 						return err
 					}
 					if !ok {
-						fmt.Fprintln(os.Stderr, "\nAborted. Back up your age key first, then re-run with --apply.")
+						fmt.Fprintln(os.Stderr, "\nStopped. Back up your age key first, then export again.")
 						return ExitError{Code: 1}
 					}
 				}
@@ -535,7 +552,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 
 			if failed > 0 {
 				if failedEncrypted > 0 {
-					fmt.Fprintln(os.Stderr, danger(fmt.Sprintf("\n✗ %d operation(s) failed — %d were encrypted secrets that were NOT carried.", failed, failedEncrypted)))
+					fmt.Fprintln(os.Stderr, danger(fmt.Sprintf("\n✗ %d operation(s) failed, %d of them encrypted secrets that were NOT carried.", failed, failedEncrypted)))
 				} else {
 					fmt.Fprintln(os.Stderr, danger(fmt.Sprintf("\n✗ %d operation(s) failed.", failed)))
 				}
@@ -547,20 +564,17 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&apply, "apply", false, "execute the plan (default: dry-run)")
+	c.Flags().BoolVar(&apply, "apply", false, "carry out the plan without asking (off a terminal the default is a dry run)")
 	c.Flags().BoolVar(&pin, "pin", false, "pin global packages to their captured version")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories/groups (comma-separated)")
 	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories/groups (comma-separated)")
 	return c
 }
 
-// printChezmoiHandoff says where the files went and what to do next.
-//
-// The old ending was "Done. Review with `chezmoi diff`, then commit your
-// private chezmoi source repo" — true, and useless to anyone who did not
-// already know where that repo is, how to get a shell in it, or that nothing
-// has left this machine until it is pushed. Adding files to a local repo feels
-// like finishing, which is exactly why the gap needs naming.
+// printChezmoiHandoff says where the files went and what to do next: where the
+// source repo is, how to get a shell in it, and that nothing has left this
+// machine until it is pushed. Adding files to a local repo looks finished, so
+// the missing push has to be spelled out.
 func printChezmoiHandoff(ctx context.Context, sourcePath string) {
 	if sourcePath == "" {
 		sourcePath, _ = runShell(ctx, "chezmoi", "source-path")
@@ -580,7 +594,7 @@ func printChezmoiHandoff(ctx context.Context, sourcePath string) {
 	fmt.Println("  git add -A && git commit -m 'update dotfiles'")
 
 	if strings.TrimSpace(remote) == "" {
-		fmt.Println("\n  ⚠ No git remote yet — nothing has left this machine.")
+		fmt.Println("\n  ⚠ No git remote yet, so nothing has left this machine.")
 		fmt.Println("      git remote add origin <your-private-repo>")
 		fmt.Printf("      git push -u origin %s\n", branch)
 		fmt.Println("    Private, not public: even encrypted files show which services you use.")

@@ -14,7 +14,7 @@ import (
 )
 
 // isInstallable reports whether a section is installable inventory worth a parity
-// check — things you can reinstall on a fresh machine.
+// check: things you can reinstall on a fresh machine.
 func isInstallable(id string) bool {
 	return strings.HasPrefix(id, "packages.") ||
 		strings.HasPrefix(id, "runtimes.") ||
@@ -26,7 +26,7 @@ func isInstallable(id string) bool {
 }
 
 // keyOf is an item's parity identity: columns[0] (the name) falling back to raw.
-// Keying on name ignores version drift — parity asks "present?", not "same version?".
+// Keying on name ignores version drift: parity asks "present?", not "same version?".
 func keyOf(it snapshot.Item) string {
 	if len(it.Columns) > 0 {
 		return it.Columns[0]
@@ -148,7 +148,7 @@ func newMissingCmd(env *sys.OS) *cobra.Command {
 			"installs them for you. Exits 1 if anything is missing.",
 		Args: cobra.MaximumNArgs(1),
 		// A drift result returns a non-zero exit (CI-friendly), which is a normal
-		// outcome — not an error to print. The report is already on stdout.
+		// outcome, not an error to print. The report is already on stdout.
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := ""
@@ -178,7 +178,7 @@ func runMissing(cmd *cobra.Command, env *sys.OS, path string) error {
 	}
 	snap := gatherInventory(cmd.Context(), env)
 	if cerr := cmd.Context().Err(); cerr != nil {
-		return ExitError{Code: 130} // cancelled mid-collect — a partial snapshot gives a bogus verdict
+		return ExitError{Code: 130} // cancelled mid-collect: a partial snapshot gives a wrong verdict
 	}
 	missing := findMissing(want, snap)
 
@@ -189,7 +189,7 @@ func runMissing(cmd *cobra.Command, env *sys.OS, path string) error {
 	sort.Strings(ids)
 
 	if len(ids) == 0 {
-		fmt.Println(good("✓ Nothing missing — everything installable in that backup is here."))
+		fmt.Println(good("✓ Nothing missing. Everything installable in that backup is here."))
 		return nil
 	}
 

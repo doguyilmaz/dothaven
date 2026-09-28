@@ -81,9 +81,7 @@ func TestUnknownFormatIsUncheckedNotOK(t *testing.T) {
 }
 
 // CI caught this on Linux, where zsh is not installed: `zsh -n .zshrc` failed
-// to exec and every valid .zshrc was reported broken. A health check that
-// invents faults costs you the habit of reading it — the same failure mode as a
-// secret scanner that flags your shell theme.
+// to exec and every valid .zshrc was reported broken.
 func TestMissingValidatorIsUncheckedNotBroken(t *testing.T) {
 	noZsh := func(context.Context, string, ...string) (string, error) {
 		return "", &exec.Error{Name: "zsh", Err: exec.ErrNotFound}

@@ -65,7 +65,7 @@ func TestSteps(t *testing.T) {
 	}
 
 	// `brew update` refreshes every tap on the machine, so one tap that has
-	// been deleted upstream makes it exit non-zero — with nothing to say about
+	// been deleted upstream makes it exit non-zero, which says nothing about
 	// whether dothaven can be upgraded. Aborting there left the upgrade
 	// impossible until the unrelated tap was fixed.
 	if !got[0].Optional {
@@ -84,7 +84,7 @@ func TestSteps(t *testing.T) {
 		t.Error("the only step there is cannot be optional")
 	}
 
-	// Nothing to run for a loose binary — the command must fall back to
+	// Nothing to run for a loose binary. The command must fall back to
 	// printing the release page rather than executing something.
 	if got := Steps(Manual); got != nil {
 		t.Errorf("Steps(Manual) = %v, want nil", got)

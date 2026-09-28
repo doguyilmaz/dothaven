@@ -18,12 +18,12 @@ type macDefaultsDomain struct {
 	Name string
 }
 
-// macDefaultsDomains is the curated allowlist. Deliberately app-level prefs that
-// are portable as a whole — iTerm2/Terminal profiles, window managers, hotkey
-// tools. System domains (com.apple.dock, com.apple.finder, NSGlobalDomain) are
-// intentionally excluded: they carry host-specific keys (display/Spaces UUIDs,
-// absolute screenshot paths) that corrupt a new machine if imported verbatim,
-// and need per-key curation — a separate step.
+// macDefaultsDomains is the curated allowlist: app-level prefs that are portable
+// as a whole (iTerm2/Terminal profiles, window managers, hotkey tools). System
+// domains (com.apple.dock, com.apple.finder, NSGlobalDomain) are excluded: they
+// carry host-specific keys (display/Spaces UUIDs, absolute screenshot paths)
+// that corrupt a new machine if imported verbatim, and need per-key curation,
+// which is a separate step.
 func macDefaultsDomains() []macDefaultsDomain {
 	return []macDefaultsDomain{
 		{"com.googlecode.iterm2", "iTerm2"},
@@ -42,7 +42,7 @@ func defaultsDomainFromFile(name string) string {
 	return strings.TrimSuffix(name, ".plist")
 }
 
-// defaultsHasKeys reports whether an exported plist actually holds preferences.
+// defaultsHasKeys reports whether an exported plist holds any preferences.
 // `defaults export` of an absent domain returns an empty <dict/>, which we skip.
 func defaultsHasKeys(plist string) bool { return strings.Contains(plist, "<key>") }
 
@@ -86,10 +86,10 @@ func newDefaultsExportCmd(env *sys.OS) *cobra.Command {
 				fmt.Printf("  ✔ %s (%s)\n", d.Name, d.ID)
 				n++
 			}
-			// The wide pass: every domain on the machine, key by key, so the
-			// settings somebody actually changed — natural scroll, hot
-			// corners, Finder options — come along too. Whole-domain import
-			// cannot do this safely, which is why it is a separate mechanism.
+			// The wide pass: every domain on the machine, key by key, so
+			// changed settings (natural scroll, hot corners, Finder options)
+			// come along too. Whole-domain import cannot do this safely, which
+			// is why it is a separate mechanism.
 			domains := listPrefDomains(ctx)
 			entries, counts := capturePrefs(ctx, domains)
 			if len(entries) > 0 {
@@ -150,7 +150,7 @@ func newDefaultsImportCmd(env *sys.OS) *cobra.Command {
 	return c
 }
 
-// importDefaults replays captured preferences from dir — a backup, an export
+// importDefaults replays captured preferences from dir: a backup, an export
 // folder, or the macos-defaults folder inside either.
 func importDefaults(ctx context.Context, env *sys.OS, dir string, dryRun, assumeYes, allDomains bool) error {
 	// Accept either the macos-defaults dir or the parent that contains it.
@@ -173,7 +173,7 @@ func importDefaults(ctx context.Context, env *sys.OS, dir string, dryRun, assume
 	}
 	// The per-key half, if the export wrote one. Done first: these are
 	// the system settings somebody notices missing, and they must not
-	// be skipped just because no app plists came along.
+	// be skipped when no app plists came along.
 	pf, prefsErr := readPrefs(filepath.Join(dir, prefsFileName))
 	if prefsErr == nil && len(pf.Entries) > 0 {
 		printHeader("System preferences")
@@ -192,7 +192,7 @@ func importDefaults(ctx context.Context, env *sys.OS, dir string, dryRun, assume
 		if prefsErr == nil {
 			return nil
 		}
-		fmt.Printf("No saved macOS settings in %s — nothing to import.\n", dir)
+		fmt.Printf("No saved macOS settings in %s. Nothing to import.\n", dir)
 		return nil
 	}
 

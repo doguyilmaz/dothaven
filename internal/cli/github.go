@@ -57,6 +57,10 @@ type githubConfig struct {
 	Repo   string `json:"repo,omitempty"`
 	Branch string `json:"branch,omitempty"`
 	Mode   string `json:"mode,omitempty"`
+	// UseGH is set by `github login --gh`: sign in with the GitHub CLI's
+	// login instead of dothaven's own. Never assumed when the build has a
+	// sign-in app, so a gh login is not picked up without asking.
+	UseGH bool `json:"use_gh,omitempty"`
 }
 
 func githubConfigPath(env *sys.OS) string { return filepath.Join(configDir(env), "github.json") }
@@ -101,17 +105,29 @@ func resolveToken(ctx context.Context, env *sys.OS, renew bool) (string, string,
 		t, err = renewToken(ctx, st, t)
 		return t.Access, st.Name(), err
 	}
-	if _, err := exec.LookPath("gh"); err == nil {
-		if t, err := runShell(ctx, "gh", "auth", "token"); err == nil && strings.TrimSpace(t) != "" {
-			return strings.TrimSpace(t), "the GitHub CLI (gh)", nil
+	if github.ClientIDFromEnv() == "" || loadGitHubConfig(env).UseGH {
+		if t := ghToken(ctx); t != "" {
+			return t, "the GitHub CLI (gh)", nil
 		}
 	}
 	return "", "", nil
 }
 
+// ghToken is the GitHub CLI's login, or "".
+func ghToken(ctx context.Context) string {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return ""
+	}
+	t, err := runShell(ctx, "gh", "auth", "token")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(t)
+}
+
 var (
-	errNotSignedIn = errors.New("not signed in to GitHub — run: dothaven github login")
-	errRenewDue    = errors.New("the GitHub sign-in is due for renewal — any dothaven github command renews it: dothaven github status")
+	errNotSignedIn = errors.New("not signed in to GitHub. Run: dothaven github login")
+	errRenewDue    = errors.New("the GitHub sign-in is due for renewal. Any dothaven github command renews it: dothaven github status")
 )
 
 // encodeToken is how a sign-in is kept: a bare token when it does not expire
@@ -135,8 +151,8 @@ func decodeToken(s string) github.Token {
 
 // renewToken trades a stale GitHub App token for a fresh pair and keeps it.
 // GitHub replaces the refresh token on every use, so when two runs renew at
-// once the second finds its refresh token spent — and the first one's new
-// pair already stored, which it then uses.
+// once, the second finds its refresh token spent and the first run's new pair
+// already stored. It uses that pair.
 func renewToken(ctx context.Context, st *secretstore.Store, t github.Token) (github.Token, error) {
 	clientID := github.ClientIDFromEnv()
 	if clientID == "" {
@@ -195,7 +211,7 @@ func githubClient(ctx context.Context, env *sys.OS) (*github.Client, github.User
 	if err != nil {
 		var apiErr *github.APIError
 		if errors.As(err, &apiErr) && apiErr.Status == 401 {
-			return nil, github.User{}, errors.New("GitHub rejected the saved token (expired or revoked) — run: dothaven github login")
+			return nil, github.User{}, errors.New("GitHub rejected the saved token (expired or revoked). Run: dothaven github login")
 		}
 		return nil, github.User{}, err
 	}
@@ -218,8 +234,8 @@ func newGitHubCmd(env *sys.OS) *cobra.Command {
 		Use:   "github",
 		Short: "Keep your backup in a private GitHub repository",
 		Long: "Pushes this machine's backup to a private repository on your GitHub account\n" +
-			"(created for you as " + defaultRepoName + "), and restores from it on another machine —\n" +
-			"no git needed on either side.\n\n" +
+			"(created for you as " + defaultRepoName + ") and restores from it on another machine.\n" +
+			"Neither side needs git.\n\n" +
 			"  dothaven github login       sign in (opens the browser), or reuse your gh login\n" +
 			"  dothaven github push        back this machine up to the repo\n" +
 			"  dothaven restore github     on a new machine: restore from the repo\n" +
@@ -239,25 +255,48 @@ func newGitHubCmd(env *sys.OS) *cobra.Command {
 }
 
 func newGitHubLoginCmd(env *sys.OS) *cobra.Command {
-	var withToken bool
+	var withToken, useGH bool
 	c := &cobra.Command{
 		Use:   "login",
-		Short: "Sign in to GitHub (browser, gh CLI, or a token on stdin)",
-		Long: "Opens github.com in your browser with a one-time code; approve it and the\n" +
-			"terminal carries on by itself. The token is kept in your system keychain.\n\n" +
-			"Already signed in to the GitHub CLI (gh)? dothaven uses that login and stores\n" +
-			"nothing of its own.\n\n" +
-			"Most locked down: a fine-grained token that can only touch the one repository\n" +
-			"(Contents: read & write, Administration: read & write to create it):\n" +
+		Short: "Sign in to GitHub (browser, a token on stdin, or your gh login)",
+		Long: "Opens github.com in your browser with a one-time code. Approve it there and\n" +
+			"the terminal carries on by itself. The token is kept in your system keychain.\n\n" +
+			"To use the GitHub CLI's login instead, and store nothing of dothaven's own:\n" +
+			"  dothaven github login --gh\n\n" +
+			"Most locked down: a fine-grained token that can only touch one repository\n" +
+			"(Contents: read and write; Administration: read and write to create it):\n" +
 			"  dothaven github login --with-token < token.txt",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if useGH {
+				return githubLoginGH(cmd.Context(), env)
+			}
 			return githubLogin(cmd.Context(), env, withToken)
 		},
 	}
 	c.Flags().BoolVar(&withToken, "with-token", false, "read a token from stdin instead of opening the browser")
+	c.Flags().BoolVar(&useGH, "gh", false, "use the GitHub CLI's login instead of signing in")
+	c.MarkFlagsMutuallyExclusive("with-token", "gh")
 	return c
+}
+
+// githubLoginGH switches to the GitHub CLI's login, on request only.
+func githubLoginGH(ctx context.Context, env *sys.OS) error {
+	if ghToken(ctx) == "" {
+		fmt.Println("The GitHub CLI is not signed in. Sign in there first:")
+		fmt.Printf("  %s\n", kbd("gh auth login"))
+		return ExitError{Code: 1}
+	}
+	cfg := loadGitHubConfig(env)
+	cfg.UseGH = true
+	if err := saveGitHubConfig(env, cfg); err != nil {
+		return err
+	}
+	_ = secrets(env).Delete(accountToken)
+	fmt.Printf("%s dothaven now uses your GitHub CLI login and stores no token of its own.\n", good("✓"))
+	fmt.Println(dim("  To sign in with dothaven itself again: dothaven github logout, then dothaven github login"))
+	return nil
 }
 
 func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
@@ -273,6 +312,10 @@ func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
 		}
 		if err := st.Set(accountToken, encodeToken(tok)); err != nil {
 			return fmt.Errorf("could not save the token: %w", err)
+		}
+		if cfg := loadGitHubConfig(env); cfg.UseGH {
+			cfg.UseGH = false
+			_ = saveGitHubConfig(env, cfg)
 		}
 		fmt.Printf("%s Signed in as %s. Token kept in %s.\n", good("✓"), bold(me.Login), st.Name())
 		if github.IsAppToken(tok.Access) {
@@ -298,11 +341,11 @@ func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
 	clientID := github.ClientIDFromEnv()
 	if clientID == "" {
 		if _, err := exec.LookPath("gh"); err == nil {
-			if t, err := runShell(ctx, "gh", "auth", "token"); err == nil && strings.TrimSpace(t) != "" {
-				fmt.Printf("%s Using your GitHub CLI login — dothaven stores nothing of its own.\n", good("✓"))
+			if ghToken(ctx) != "" {
+				fmt.Printf("%s Using your GitHub CLI login. dothaven stores nothing of its own.\n", good("✓"))
 				return nil
 			}
-			fmt.Println("Sign in with the GitHub CLI first — dothaven will use that login:")
+			fmt.Println("This build has no sign-in app. Sign in with the GitHub CLI, and dothaven uses that:")
 			fmt.Printf("  %s\n", kbd("gh auth login"))
 			return ExitError{Code: 1}
 		}
@@ -374,6 +417,10 @@ func newGitHubLogoutCmd(env *sys.OS) *cobra.Command {
 			st := secrets(env)
 			_ = st.Delete(accountToken)
 			_ = st.Delete(accountPassphrase)
+			if cfg := loadGitHubConfig(env); cfg.UseGH {
+				cfg.UseGH = false
+				_ = saveGitHubConfig(env, cfg)
+			}
 			fmt.Printf("%s Removed dothaven's GitHub token and remembered passphrase from %s.\n", good("✓"), st.Name())
 			if _, src, _ := resolveToken(cmd.Context(), env, false); src != "" {
 				fmt.Printf("  %s still signed in through %s.\n", dim("•"), src)
@@ -445,18 +492,27 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 		repo = me.Login + "/" + defaultRepoName
 	}
 	fmt.Printf("%s %s %s\n", bold("Signed in as"), me.Login, dim("(via "+src+")"))
+	by := me.Login
+	if slug := github.AppSlugFromEnv(); slug != "" {
+		if bot, err := c.Bot(ctx, slug); err == nil {
+			by = bot.Name + ", committed by " + me.Login
+		} else {
+			by = me.Login + " " + warn("(GitHub has no bot "+slug+"[bot]; check the app's name)")
+		}
+	}
+	fmt.Printf("%s authored by %s\n", bold("Commits:"), by)
 	if g, ok := loadGitSigning(ctx); ok {
-		fmt.Printf("%s %s %s\n", bold("Commits:"), "signed with "+g.describe(), dim("(from your git config)"))
+		fmt.Printf("         signed with %s %s\n", g.describe(), dim("(from your git config)"))
 	} else {
-		fmt.Printf("%s %s\n", bold("Commits:"), dim("unsigned; for GitHub's Verified badge, have git sign commits (GitHub sync docs → Verified commits)"))
+		fmt.Printf("         %s\n", dim("unsigned. To get GitHub's Verified badge, have git sign commits (see Verified commits in the GitHub docs)."))
 	}
 	r, err := c.GetRepo(ctx, repo)
 	if errors.Is(err, github.ErrNotFound) {
 		if h := appAccessHint(tok, repo); h != "" {
-			fmt.Printf("%s %s %s\n%s\n", bold("Repository:"), repo, dim("— not created yet, or the dothaven app has no access to it."), dim(strings.TrimPrefix(h, "\n")))
+			fmt.Printf("%s %s %s\n%s\n", bold("Repository:"), repo, dim("(not created yet, or the dothaven app has no access to it)"), dim(strings.TrimPrefix(h, "\n")))
 			return nil
 		}
-		fmt.Printf("%s %s %s\n", bold("Repository:"), repo, dim("— not created yet; `dothaven github push` creates it (private)"))
+		fmt.Printf("%s %s %s\n", bold("Repository:"), repo, dim("(not created yet; `dothaven github push` creates it as a private repository)"))
 		return nil
 	}
 	if err != nil {
@@ -464,7 +520,7 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 	}
 	vis := good("private")
 	if !r.Private {
-		vis = danger("PUBLIC — dothaven will not write to it")
+		vis = danger("PUBLIC: dothaven will not write to it")
 	}
 	fmt.Printf("%s %s (%s)\n", bold("Repository:"), r.HTMLURL, vis)
 	machines, _ := c.Dir(ctx, repo, "machines")
@@ -539,6 +595,47 @@ func createRepoErr(tok, repo string, err error) error {
 	return fmt.Errorf("could not create %s: %w", repo, err)
 }
 
+// largeReadable is how many files a readable push holds before dothaven asks.
+// Readable pushes are for browsing config on GitHub; tens of thousands of
+// files (a plugin folder, say) take long to upload and bury the config.
+const largeReadable = 3000
+
+// confirmLargeReadable asks before a readable push of more than
+// largeReadable files, naming the folders that make it large.
+func confirmLargeReadable(files []github.File, yes bool) bool {
+	if len(files) <= largeReadable || yes {
+		return true
+	}
+	counts := map[string]int{}
+	for _, f := range files {
+		parts := strings.SplitN(f.Path, "/", 4)
+		if len(parts) > 3 {
+			parts = parts[:3]
+		}
+		counts[strings.Join(parts, "/")]++
+	}
+	type folder struct {
+		name string
+		n    int
+	}
+	var top []folder
+	for k, n := range counts {
+		top = append(top, folder{k, n})
+	}
+	sort.Slice(top, func(i, j int) bool { return top[i].n > top[j].n })
+	fmt.Printf("\n%s This readable push has %s. Most of them are in:\n", warn("⚠"), plural(len(files), "file"))
+	for _, f := range top[:min(3, len(top))] {
+		fmt.Printf("  %-44s %s\n", f.name, plural(f.n, "file"))
+	}
+	fmt.Println(dim("  An encrypted push uploads one file instead (--mode encrypted), or leave a category out with --skip."))
+	if !tui.Interactive() {
+		fmt.Println(dim("  Continuing, as this is not a terminal. Pass --yes to skip this note."))
+		return true
+	}
+	ok, err := tui.Confirm(fmt.Sprintf("Upload %s as readable files anyway?", plural(len(files), "file")))
+	return err == nil && ok
+}
+
 func readMachineMeta(ctx context.Context, c *github.Client, repo, m string) machineMeta {
 	var meta machineMeta
 	if b, err := c.Raw(ctx, repo, "machines/"+m+"/dothaven.json"); err == nil {
@@ -587,7 +684,7 @@ func newGitHubPushCmd(env *sys.OS) *cobra.Command {
 			return githubPush(cmd, env, pushOpts{mode: mode, repo: repo, machine: machine, only: only, skip: skip, yes: assumeYes})
 		},
 	}
-	c.Flags().StringVar(&mode, "mode", "", "encrypted (default), split, or plain — explained in dothaven github --help")
+	c.Flags().StringVar(&mode, "mode", "", "encrypted (default), split, or plain (see dothaven github --help)")
 	c.Flags().StringVar(&repo, "repo", "", "owner/name (default: <you>/"+defaultRepoName+")")
 	c.Flags().StringVar(&machine, "machine", "", "folder name for this machine in the repo (default: hostname)")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories")
@@ -624,20 +721,20 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		if owner != me.Login {
 			return fmt.Errorf("%s does not exist, or this sign-in cannot see it (dothaven only creates repositories on your own account)%s", repo, appAccessHint(c.Token, repo))
 		}
-		if err := confirmWrite(os.Stderr, fmt.Sprintf("Create the private repository %s?", repo), o.yes); err != nil {
+		if err := confirmWith(os.Stderr, fmt.Sprintf("Create the private repository %s?", repo), o.yes, true); err != nil {
 			return err
 		}
-		if r, err = c.CreatePrivateRepo(ctx, name, "Private backup of my dev setup, made by dothaven — keep this private."); err != nil {
+		if r, err = c.CreatePrivateRepo(ctx, name, "Private backup of my dev setup, made by dothaven. Keep this private."); err != nil {
 			return createRepoErr(c.Token, repo, err)
 		}
 		fmt.Printf("%s Created %s (private)\n", good("✓"), r.HTMLURL)
 	case err != nil:
 		return err
 	}
-	// The line that does not move: even an encrypted backup says which
-	// services you use, and a plain one is your config for anyone to read.
+	// Never write to a public repository: even an encrypted backup shows which
+	// services you use, and a plain one is readable config.
 	if !r.Private {
-		return fmt.Errorf("%s is PUBLIC — dothaven only writes to private repositories. Make it private on GitHub, or pick another with --repo", r.FullName)
+		return fmt.Errorf("%s is PUBLIC, and dothaven only writes to private repositories. Make it private on GitHub, or pick another with --repo", r.FullName)
 	}
 
 	mode := firstNonEmpty(o.mode, cfg.Mode)
@@ -673,12 +770,20 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	if !contains(o.only, "fonts") && !contains(skip, "fonts") {
 		skip = append(append([]string(nil), skip...), "fonts")
 		if dirHasFiles(filepath.Join(env.Home(), fontsDir())) {
-			fmt.Println(dim("Your fonts stay out of GitHub pushes (large binaries) — `dothaven backup --encrypt` carries them, or add --only fonts,…"))
+			fmt.Println(dim("Your fonts stay out of GitHub pushes (large binaries). `dothaven backup --encrypt` carries them, or add --only fonts,…"))
 		}
 	}
+	runlog.stepf("push %s as %s, mode %s", r.FullName, machine, mode)
 	files, out, err := buildPushFiles(ctx, cmd, env, tmp, mode, pass, o.only, skip, digest)
 	if err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintln(os.Stderr, "Push cancelled. Nothing was uploaded.")
+			return ExitError{Code: 130}
+		}
 		return err
+	}
+	if mode != modeEncrypted && !confirmLargeReadable(files, o.yes) {
+		return ExitError{Code: 1}
 	}
 	// Encrypted means encrypted: check the bytes about to leave this machine,
 	// not the flag that asked for them.
@@ -705,11 +810,11 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		if samePassphrase(remote, header, pass) {
 			cfg.Repo, cfg.Mode = r.FullName, mode
 			_ = saveGitHubConfig(env, cfg)
-			fmt.Printf("%s Already up to date — nothing changed since the last push (%s).\n", good("✓"), shortDate(remote.Created))
+			fmt.Printf("%s Already up to date. Nothing changed since the last push (%s).\n", good("✓"), shortDate(remote.Created))
 			printLeftOut(out.res, mode != modePlain, "dothaven github push --mode encrypted")
 			return nil
 		}
-		fmt.Println(dim("Nothing changed, but the copy on GitHub was made with a different passphrase — replacing it with one yours opens."))
+		fmt.Println(dim("Nothing changed, but the copy on GitHub was made with a different passphrase. Replacing it with a copy your passphrase opens."))
 	}
 	var headerB64 string
 	if header != nil {
@@ -730,12 +835,18 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	for _, f := range files {
 		total += f.Size
 	}
-	fmt.Printf("\nUploading %s (%s) to %s …\n", plural(len(files), "file"), humanBytes(total), r.FullName)
+	fmt.Printf("\nUploading %s (%s) to %s\n", plural(len(files), "file"), humanBytes(total), r.FullName)
+	runlog.stepf("uploading %d files (%s)", len(files), humanBytes(total))
+	var sent int64
+	c.Sent = &sent
+	stop := startActivity("Uploading", &sent, len(files), nil)
 	sha, err := c.Commit(ctx, r.FullName, firstNonEmpty(r.DefaultBranch, cfg.Branch), "machines/"+machine, files,
 		map[string]string{"README.md": repoReadme(r.FullName)},
-		fmt.Sprintf("dothaven: %s — %s backup, %s", machine, mode, plural(out.res.TotalFiles, "file")))
+		fmt.Sprintf("dothaven: %s (%s backup, %s)", machine, mode, plural(out.res.TotalFiles, "file")))
+	stop()
 	if err != nil {
 		if ctx.Err() != nil {
+			fmt.Fprintln(os.Stderr, "Push cancelled. Nothing was committed; the last push on GitHub is unchanged.")
 			return ExitError{Code: 130}
 		}
 		if errors.Is(err, github.ErrNotFound) {
@@ -748,7 +859,7 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		fmt.Fprintf(os.Stderr, "  %s could not save your repo choice: %v\n", warn("⚠"), err)
 	}
 	if sha == "" {
-		fmt.Printf("%s Already up to date — nothing changed since the last push.\n", good("✓"))
+		fmt.Printf("%s Already up to date. Nothing changed since the last push.\n", good("✓"))
 		printLeftOut(out.res, mode != modePlain, "dothaven github push --mode encrypted")
 		return nil
 	}
@@ -809,9 +920,9 @@ func firstNonEmpty(vals ...string) string {
 
 func askPushMode() (string, error) {
 	return tui.Ask("How should it be stored?", "You can change this on any later push with --mode.", []tui.Choice{
-		{Label: "Encrypted — everything, keys included", Value: modeEncrypted, Hint: "one file only your passphrase opens (recommended)"},
-		{Label: "Readable, with secrets encrypted", Value: modeSplit, Hint: "browse and diff config on GitHub; credentials in an encrypted bundle"},
-		{Label: "Readable, secrets redacted", Value: modePlain, Hint: "no passphrase; SSH keys and logins are NOT included"},
+		{Label: "Encrypted, keys included", Value: modeEncrypted, Hint: "one file, opened by your passphrase (recommended)"},
+		{Label: "Readable, secrets encrypted", Value: modeSplit, Hint: "browse config on GitHub; keys stay encrypted"},
+		{Label: "Readable, secrets redacted", Value: modePlain, Hint: "no passphrase; SSH keys and logins left out"},
 	})
 }
 
@@ -828,7 +939,7 @@ func pushPassphrase(env *sys.OS) (string, error) {
 		// Saved by an older version, in a form that may not read back as
 		// typed. A wrong remembered passphrase would silently encrypt the
 		// copy on GitHub with something you don't know; ask once instead.
-		fmt.Println(dim("Your remembered passphrase was saved by an older dothaven — type it once more so it is stored exactly."))
+		fmt.Println(dim("Your remembered passphrase was saved by an older dothaven. Type it once more so it is stored exactly."))
 	}
 	if err == nil && exact && len([]rune(p)) >= minPassphrase {
 		fmt.Println(dim("Using your remembered backup passphrase (forget it with `dothaven github logout`)."))
@@ -839,7 +950,7 @@ func pushPassphrase(env *sys.OS) (string, error) {
 		return "", err
 	}
 	if tui.Interactive() {
-		if ok, _ := tui.Confirm("Remember this passphrase on this machine (in " + st.Name() + ") so later pushes don't ask?"); ok {
+		if ok, _ := tui.Confirm("Remember this passphrase in " + st.Name() + ", so later pushes don't ask?"); ok {
 			if err := st.Set(accountPassphrase, p); err != nil {
 				fmt.Fprintf(os.Stderr, "  %s could not remember it: %v\n", warn("⚠"), err)
 			}
@@ -870,7 +981,7 @@ func buildPushFiles(ctx context.Context, cmd *cobra.Command, env *sys.OS, tmp, m
 			return nil, res, err
 		}
 		if fi.Size() > github.MaxFile {
-			return nil, res, fmt.Errorf("the encrypted backup is %s; GitHub takes 100 MB per file at most — leave out something large with --skip, or use --mode split", humanBytes(fi.Size()))
+			return nil, res, fmt.Errorf("the encrypted backup is %s, and GitHub takes at most 100 MB per file. Leave out something large with --skip, or use --mode split", humanBytes(fi.Size()))
 		}
 		return []github.File{{Path: "backup.tar.gz.age", Src: res.path, Size: fi.Size()}}, res, nil
 
@@ -913,7 +1024,7 @@ func buildPushFiles(ctx context.Context, cmd *cobra.Command, env *sys.OS, tmp, m
 
 func backupErr(err error) error {
 	if errors.Is(err, backup.ErrNothingToWrite) {
-		return fmt.Errorf("nothing to back up — no tracked files found for this selection")
+		return fmt.Errorf("nothing to back up: no tracked files found for this selection")
 	}
 	return err
 }
@@ -958,7 +1069,7 @@ func treeFiles(root string) ([]github.File, error) {
 
 func repoReadme(full string) string {
 	return "# dothaven backup\n\n" +
-		"A private backup of my dev setup — dotfiles, editor and AI-tool config, app list —\n" +
+		"A private backup of my dev setup (dotfiles, editor and AI-tool config, app list),\n" +
 		"written by [dothaven](https://github.com/doguyilmaz/dothaven). Each machine has a folder under `machines/`.\n\n" +
 		"**Keep this repository private.** Encrypted parts (`*.age`) open only with the passphrase\n" +
 		"chosen when they were pushed; git history keeps every earlier push.\n\n" +
@@ -1032,13 +1143,13 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string, dirs ...str
 	r, err := c.GetRepo(ctx, repo)
 	if err != nil {
 		if errors.Is(err, github.ErrNotFound) {
-			return "", noop, fmt.Errorf("no repository %s (or this login cannot see it) — push from the old machine first: dothaven github push%s", repo, appAccessHint(c.Token, repo))
+			return "", noop, fmt.Errorf("no repository %s (or this login cannot see it). Push from the old machine first: dothaven github push%s", repo, appAccessHint(c.Token, repo))
 		}
 		return "", noop, err
 	}
 	machines, err := c.Dir(ctx, repo, "machines")
 	if err != nil || len(machines) == 0 {
-		return "", noop, fmt.Errorf("%s has no machine backups yet — run `dothaven github push` on the old machine", repo)
+		return "", noop, fmt.Errorf("%s has no machine backups yet. Run `dothaven github push` on the old machine", repo)
 	}
 	if machine == "" {
 		switch {
@@ -1054,7 +1165,7 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string, dirs ...str
 				return "", noop, err
 			}
 		default:
-			return "", noop, fmt.Errorf("%s holds several machines (%s) — pick one: dothaven github pull --machine <name>", repo, strings.Join(machines, ", "))
+			return "", noop, fmt.Errorf("%s holds several machines (%s). Pick one: dothaven github pull --machine <name>", repo, strings.Join(machines, ", "))
 		}
 	} else if !contains(machines, machine) {
 		return "", noop, fmt.Errorf("no machine %q in %s (have: %s)", machine, repo, strings.Join(machines, ", "))

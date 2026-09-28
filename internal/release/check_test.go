@@ -100,7 +100,7 @@ func TestLatestSkipsNetworkWhileCacheIsFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f.calls != 1 {
-		t.Errorf("fetcher called %d times, want 1 — the second call must be served from cache", f.calls)
+		t.Errorf("fetcher called %d times, want 1: the second call must be served from cache", f.calls)
 	}
 
 	// Past the TTL it checks again.
@@ -125,7 +125,7 @@ func TestLatestForceIgnoresFreshCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f.calls != 2 {
-		t.Errorf("fetcher called %d times, want 2 — an explicit upgrade must not trust the cache", f.calls)
+		t.Errorf("fetcher called %d times, want 2: an explicit upgrade must not trust the cache", f.calls)
 	}
 }
 

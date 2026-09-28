@@ -39,13 +39,13 @@ Config can be rebuilt. Uncommitted changes, unpushed commits and stashes cannot,
 - how old your **newest backup** is.
 
 ```text
-1 repository with no remote — these exist ONLY on this machine:
+1 repository with no remote. These exist ONLY on this machine:
   ✗ ~/code/prototype                              12 commits, 1 file uncommitted
 
 1 repository with gitignored files a fresh clone won't bring back:
   ⚠ ~/code/api                                    .env
 
-❌ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
+✗ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
 ```
 
 Fix what it lists: add a remote and push, commit and push (a stash is not pushed by pushing a branch), and copy ignored files you need. For a gitignored file you want in your backup, `dothaven include ~/code/api/.env` carries it in the encrypted backup.
@@ -84,13 +84,13 @@ The result is one file, `backup-<host>-<timestamp>.tar.gz.age`, holding:
 - your macOS settings: trackpad, keyboard, Finder, hot corners, keyboard shortcuts and layouts, language order, and the apps in your Dock.
 
 ```text
-✓ Encrypted backup saved — 194 files, 3.1 MB
+✓ Encrypted backup saved: 194 files, 3.1 MB
   /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
   ai (58), cloud (6), editor (97), git (9), npm (1), shell (14), ssh (5), terminal (4)
   + installed apps & packages list, 214 macOS settings
 
 Next:
-  Copy this file off this machine — a USB drive, cloud storage, another computer.
+  Copy this file off this machine: to a USB drive, cloud storage or another computer.
   It lives on the disk you are about to replace.
   On the new machine: dothaven restore backup-mymac-20260927232938.tar.gz.age
   You will need the passphrase. Nothing can open this file without it.
@@ -249,7 +249,7 @@ On the old machine:
 
 ```bash
 dothaven init                      # checks chezmoi, the age key and the source repo; prints what to fix
-dothaven chezmoi-export            # dry run: shows what would be added, and what encrypted
+dothaven chezmoi-export            # shows what would be added and encrypted, then asks
 dothaven chezmoi-export --apply    # adds the files to your chezmoi source
 chezmoi cd                         # then commit and push the source repo (keep it private)
 ```

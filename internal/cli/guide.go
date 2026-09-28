@@ -127,9 +127,9 @@ func runGuide(f machineFacts, ask asker) (*plan, error) {
 	return nil, nil
 }
 
-// askProfile asks what kind of work the user does. This is the question that
-// earns its place: it changes what is worth capturing, what is worth checking,
-// and what this tool does not cover — none of which is on disk to detect.
+// askProfile asks what kind of work the user does. The answer changes what is
+// worth capturing, what is worth checking, and what this tool does not cover,
+// and none of that can be detected on disk.
 func askProfile(ask asker) (string, error) {
 	return ask("What kind of work do you do?", "So the advice covers the right things.", []tui.Choice{
 		{Label: "Backend", Value: "backend", Hint: "services, databases, containers"},
@@ -148,7 +148,7 @@ func profileNotes(profile string) []string {
 	switch profile {
 	case "backend":
 		return []string{
-			"Database client configs travel (.pgpass, .my.cnf, psqlrc, mongosh). The data in those databases does not — dump anything you need separately.",
+			"Database client configs travel (.pgpass, .my.cnf, psqlrc, mongosh). The data in those databases does not, so dump anything you need separately.",
 			"Homebrew service configs (nginx, mysql, redis) need `dothaven services export`; a normal backup does not include them.",
 			"Docker and Podman configs travel. Images and volumes do not.",
 		}
@@ -156,28 +156,28 @@ func profileNotes(profile string) []string {
 		return []string{
 			"Global npm/pnpm/yarn/bun packages are recorded as a list and reinstalled, not copied.",
 			"Editor extensions are captured by name; VS Code and Cursor reinstall them from that list.",
-			"Browser profiles and their extensions are out of scope — use the browser's own sync.",
+			"Browser profiles and their extensions are out of scope. Use the browser's own sync.",
 		}
 	case "mobile":
 		return []string{
-			"Simulator runtimes, Android AVDs and SDK packages are recorded as a list, not copied — they are gigabytes and rebuild from a name. `dothaven list mobile` shows what you had.",
-			"Signing certificates and provisioning profiles live in the Keychain and are NOT captured. Export those from Xcode yourself, or re-download them — this is the one that stops a build on the new machine.",
+			"Simulator runtimes, Android AVDs and SDK packages are recorded as a list, not copied, because they take gigabytes and reinstall by name. `dothaven list mobile` shows what you had.",
+			"Signing certificates and provisioning profiles live in the Keychain and are NOT captured. Export them from Xcode yourself, or download them again. Without them, builds fail on the new machine.",
 			"CocoaPods and Gradle caches are excluded on purpose; they rebuild from your lockfiles.",
 		}
 	case "devops":
 		return []string{
-			"kubeconfig, helm repos, terraform and cloud CLI configs travel — and most hold credentials, which is the reason to use an encrypted export rather than a plain backup.",
+			"kubeconfig, helm repos, terraform and cloud CLI configs travel. Most hold credentials, so use an encrypted export rather than a plain backup.",
 			"SSH config travels. SSH private keys are never written into a plain backup, by design.",
 			"Run `dothaven scan ~/.kube` before sharing anything: kubeconfigs commonly embed tokens.",
 		}
 	case "data":
 		return []string{
-			"Python, conda and version-manager configs travel. Virtual environments and installed packages do not — they rebuild from your requirements or environment files.",
+			"Python, conda and version-manager configs travel. Virtual environments and installed packages do not. They are rebuilt from your requirements or environment files.",
 			"Jupyter config travels; notebooks are your own files, so back those up normally.",
 		}
 	case "all":
 		return []string{
-			"Everything installed is recorded as a list and reinstalled, not copied — that is why a backup is small and a restore needs a network.",
+			"Everything installed is recorded as a list and reinstalled, not copied. That is why a backup is small and a restore needs a network connection.",
 		}
 	}
 	return nil
@@ -200,7 +200,7 @@ func guideBackup(ask asker) (*plan, error) {
 	p := &plan{reason: "A backup copies your config, the list of what you have installed, and your macOS settings. Restoring it puts the files back; `reinstall` brings the apps back."}
 	switch where {
 	case "portable":
-		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "One encrypted file with everything — SSH keys, cloud logins and tokens included — plus your installed apps and macOS settings.")
+		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "One encrypted file with everything (SSH keys, cloud logins and tokens included), plus your installed apps and macOS settings.")
 		p.note("You choose a passphrase; nothing can open the file without it. Keep it in a password manager.")
 	case "github":
 		p.add("dothaven github push", "Creates a private repo on your account and pushes this machine to it, encrypted by default.")
@@ -210,19 +210,19 @@ func guideBackup(ask asker) (*plan, error) {
 	if profile == "backend" || profile == "all" {
 		p.add("dothaven services export", "Homebrew service configs (nginx, mysql, redis) are not part of a normal backup.")
 	}
-	p.add("dothaven include --list", "What looks like config but no backup covers yet — add anything you care about.")
+	p.add("dothaven include --list", "Lists what looks like config but is in no backup yet. Add anything you want kept.")
 	if where == "local" {
-		p.add("dothaven status", "Confirms what it captured, so \"I have a backup\" is something you checked.")
+		p.add("dothaven status", "Shows what the backup captured, so you can check it.")
 	}
 	p.notes = append(p.notes, profileNotes(profile)...)
 	return p, nil
 }
 
-// askCarry is how the setup gets from here to the other machine. It is the
-// question that decides the commands; everything else follows from it.
+// askCarry asks how the setup gets from here to the other machine. The answer
+// decides the commands.
 func askCarry(ask asker) (string, error) {
 	return ask("How do you want to carry it across?", "", []tui.Choice{
-		{Label: "One encrypted file", Value: "file", Hint: "USB drive, AirDrop, cloud storage — simplest; keys included"},
+		{Label: "One encrypted file", Value: "file", Hint: "USB drive, AirDrop, cloud storage (simplest, keys included)"},
 		{Label: "My private GitHub repo", Value: "github", Hint: "restore anywhere with a login and your passphrase"},
 		{Label: "A chezmoi repo, kept in sync", Value: "chezmoi", Hint: "for keeping several machines in step"},
 	})
@@ -233,7 +233,7 @@ func carrySteps(p *plan, f machineFacts, carry string) {
 	switch carry {
 	case "github":
 		p.reason = "The backup goes to a private repository on your GitHub account, encrypted, so the new machine needs only a login and your passphrase."
-		p.add("dothaven github push", "Signs in if needed, creates the private repo, and pushes this machine — keys and logins included, encrypted.")
+		p.add("dothaven github push", "Signs in if needed, creates the private repo, and pushes this machine encrypted, keys and logins included.")
 	case "chezmoi":
 		p.reason = "chezmoi keeps machines in step from a git repo, with secrets age-encrypted. It is more setup than a file, and the age key matters more than the files."
 		if !f.chezmoiInstalled || !f.ageReady {
@@ -242,11 +242,11 @@ func carrySteps(p *plan, f machineFacts, carry string) {
 			return
 		}
 		p.add("dothaven chezmoi-export", "Preview: which files travel plain, which get encrypted.")
-		p.add("dothaven chezmoi-export --apply", "Then push the repo — that is what the new machine pulls.")
+		p.add("dothaven chezmoi-export --apply", "Then push the repo. The new machine pulls from it.")
 	default:
-		p.reason = "One encrypted file carries everything — config, keys, logins, your app list and macOS settings — and opens with your passphrase on the other side. Nothing else to set up."
+		p.reason = "One encrypted file carries everything (config, keys, logins, your app list and macOS settings) and opens with your passphrase on the other machine. There is nothing else to set up."
 		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "Writes the file straight onto the drive. It is never on disk unencrypted, not even briefly.")
-		p.warn("Check the file is off this machine before you wipe it.", "A backup that lives on the disk being erased is not a backup.")
+		p.warn("Check the file is off this machine before you wipe it.", "A backup on the disk being erased is lost with it.")
 	}
 }
 
@@ -284,10 +284,10 @@ func guideClone(f machineFacts, ask asker) (*plan, error) {
 	case f.latestBackup != "":
 		p.add("dothaven restore --dry-run "+f.latestBackup, "Lists every file it would write, and every conflict.")
 		p.add("dothaven restore "+f.latestBackup, "Lets you pick what to apply, asks about each conflict, and keeps a pre-restore snapshot.")
-		p.add("dothaven defaults import "+f.latestBackup, "Puts the Mac's own settings back — the ones no dotfile holds.")
+		p.add("dothaven defaults import "+f.latestBackup, "Puts back the Mac's own settings, which no dotfile holds.")
 		p.add("dothaven reinstall "+f.latestBackup, "Installs the apps and packages you had that this machine lacks.")
 	default:
-		p.add("dothaven restore", "Finds backups on your drives, Downloads and Desktop, and lets you pick — or type a path.")
+		p.add("dothaven restore", "Finds backups on your drives, Downloads and Desktop and lets you pick one, or type a path.")
 		p.add("dothaven restore github", "Or, if you pushed to GitHub: sign in and restore from your private repo.")
 		p.warn("Nothing found on this machine yet.", "Plug in the drive with the backup file, or use the GitHub option.")
 	}
@@ -296,8 +296,9 @@ func guideClone(f machineFacts, ask asker) (*plan, error) {
 	return p, nil
 }
 
-// guideWipe is the path with the only irreversible mistake in it. Config can be
-// rebuilt; a stash that existed on one disk cannot. So the order is fixed.
+// guideWipe is the path with the only irreversible mistake in it: config can be
+// rebuilt, but a stash that existed on one disk cannot. Unsaved work is always
+// checked first.
 func guideWipe(f machineFacts, ask asker) (*plan, error) {
 	p := &plan{reason: "Config is replaceable and code is not, so unsaved work comes first. Everything else can be redone from a backup."}
 	p.add("dothaven ready", "Every repository, checked for changes, commits, stashes and ignored .env files that exist on no remote.")
@@ -310,7 +311,7 @@ func guideWipe(f machineFacts, ask asker) (*plan, error) {
 		return nil, err
 	}
 	if after == "same" {
-		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "Everything, keys included, in one encrypted file — to restore from afterwards.")
+		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "Everything, keys included, in one encrypted file to restore from afterwards.")
 		p.warn("Copy the backup off this machine before erasing it.", "It lives on the disk you are about to wipe unless you wrote it to a drive.")
 		return p, nil
 	}
@@ -393,7 +394,7 @@ func guideSee(ask asker) (*plan, error) {
 	case "data":
 		p.add("dothaven list lang", "Python and friends. Try `vm` for environments.")
 	default:
-		p.add("dothaven list shell", "One section at a time — the name is fuzzy-matched.")
+		p.add("dothaven list shell", "One section at a time. The name is fuzzy-matched.")
 	}
 	p.notes = append(p.notes, profileNotes(profile)...)
 	return p, nil
@@ -401,30 +402,31 @@ func guideSee(ask asker) (*plan, error) {
 
 func printPlan(p plan) {
 	fmt.Println()
-	fmt.Println(bold("Here's what I'd do:"))
+	fmt.Println(bold("What to do:"))
 	fmt.Println()
 	n := 0
+	plain := func(s string) string { return s }
 	for _, s := range p.steps {
 		if s.warn {
-			fmt.Printf("  %s  %s\n     %s\n\n", warn("⚠"), warn(s.cmd), dim(s.why))
+			fmt.Printf("  %s  %s\n     %s\n\n", warn("⚠"), warn(s.cmd), paragraph(s.why, "     ", dim))
 			continue
 		}
 		n++
-		fmt.Printf("  %s %s\n     %s\n\n", dim(fmt.Sprintf("%d.", n)), kbd(s.cmd), dim(s.why))
+		fmt.Printf("  %s %s\n     %s\n\n", dim(fmt.Sprintf("%d.", n)), kbd(s.cmd), paragraph(s.why, "     ", dim))
 	}
 	if p.reason != "" {
-		fmt.Printf("%s %s\n", bold("Why:"), p.reason)
+		fmt.Printf("%s %s\n", bold("Why:"), paragraph(p.reason, "     ", plain))
 	}
 	if len(p.notes) > 0 {
 		fmt.Println("\n" + bold("Worth knowing:"))
 		for _, note := range p.notes {
-			fmt.Printf("  %s %s\n", dim("•"), note)
+			fmt.Printf("  %s %s\n", dim("•"), paragraph(note, "    ", plain))
 		}
 	}
 }
 
-// runPlanStep dispatches a step's command through the root, so it runs exactly
-// as if it had been typed — same confirmations, same flags.
+// runPlanStep dispatches a step's command through the root, so it runs as if
+// typed, with the same confirmations and flags.
 func runPlanStep(cmd *cobra.Command, env *sys.OS, line string) error {
 	fields := strings.Fields(line)
 	if len(fields) < 2 || fields[0] != "dothaven" {

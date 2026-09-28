@@ -3,7 +3,7 @@ title: Security
 weight: 11
 ---
 
-A backup of your dev setup is, among other things, a collection of your keys and tokens. This page explains exactly where secrets can end up, what dothaven does to keep them safe in each place, and why.
+A backup of your dev setup is, among other things, a collection of your keys and tokens. This page explains where secrets can end up, what dothaven does to keep them safe in each place, and why.
 
 The short version:
 
@@ -19,7 +19,7 @@ All scanning and encryption happen inside the dothaven binary. Nothing is sent a
 | Output | Secret values in files | Credential files (`~/.ssh`, `~/.aws/credentials`, …) | Files with a private key |
 | --- | --- | --- | --- |
 | `backup`, `backup --archive` | Masked as `[REDACTED]` | Left out, listed | Left out, listed |
-| `backup --no-redact` | Raw | Included | Included, with a loud warning |
+| `backup --no-redact` | Raw | Included | Included, with a warning in red |
 | `backup --encrypt` | Raw, inside the encryption | Included, encrypted | Included, encrypted |
 | `github push` (encrypted, default) | Same as `--encrypt` | | |
 | `github push --mode split` | Any file with a secret goes into the encrypted bundle | Encrypted bundle | Encrypted bundle |
@@ -35,7 +35,7 @@ Everything dothaven writes for itself (backups, snapshots, the security report, 
 
 Every file that goes into a plain backup passes a gate first:
 
-1. **Credential entries are left out.** A registry entry marked high-sensitivity with no dedicated redactor, such as `~/.ssh`, `~/.aws/credentials`, kubeconfig, `~/.gnupg`, or a CLI's login file, is not copied at all. Why not scan and mask them instead? Because pattern matching is best-effort: an opaque token or binary key material has no recognisable shape. For files whose whole purpose is a secret, leaving them out is the only safe choice.
+1. **Credential entries are left out.** A registry entry marked high-sensitivity with no dedicated redactor, such as `~/.ssh`, `~/.aws/credentials`, kubeconfig, `~/.gnupg`, or a CLI's login file, is not copied at all. They are not scanned and masked instead, because pattern matching is best-effort: an opaque token or binary key material has no recognisable shape. For files whose whole purpose is a secret, leaving them out is the only safe choice.
 2. **Credential folders stay protected however they are reached.** If you `include ~/.aws`, or a broader entry wraps a credential folder, the files inside it are still left out. Paths are compared as written and as resolved, so symbolic links do not get around it: a stow-managed `~/.kube/config` that points into an included `~/.dotfiles` is still a credential, and so is a link in an included folder that points at `~/.aws/credentials`.
 3. **Files with a private key are left out.** This is decided by content, not by file name: a PEM or PGP private-key block (also base64-encoded), GnuPG's binary key format, or an age identity, anywhere in the file. A private key cannot be partly masked into safety.
 4. **Everything else is scanned and masked.** Matched secret values are replaced with `[REDACTED]`, every occurrence in the file. The rest of the file is kept so you can read it.
@@ -78,7 +78,7 @@ When a file triggers several rules, the strongest action wins: `skip`, then `red
 
 - **Private keys** (`HIGH`, skip): PEM private keys (`-----BEGIN … PRIVATE KEY-----`, which covers OpenSSH and RSA keys), the same base64-encoded once more (kubeconfig's `client-key-data`; a base64 CA certificate is left alone), PGP private key blocks, GnuPG's binary key format, and age identities (`AGE-SECRET-KEY-1…` and the post-quantum `AGE-SECRET-KEY-PQ-1…`, the keys chezmoi and sops decrypt with). A key's preview shows its kind (`-----BEGIN PRIVATE KEY-----`), never its body.
 - **Provider tokens** (`HIGH`, redact): AWS access, secret and session keys; Google API keys and OAuth tokens; Firebase; Azure SAS tokens; Cloudflare; DigitalOcean; Fly.io; GitHub (`ghp_`, `gho_`, `github_pat_`, …); npm tokens and `_authToken`; OpenAI; Anthropic; Stripe; Twilio; SendGrid; Mapbox; Slack; Discord; Supabase; Vercel; Pulumi; Vault; JWTs and bearer tokens; database connection strings (`postgres://`, `mysql://`, `mongodb://`, `redis://`); `.pgpass` lines; URLs with `user:password@` in them.
-- **Generic secrets** (`HIGH`, redact): assignments whose name looks like a secret (`TOKEN`, `API_KEY`, `SECRET`, `PASSWORD`, `client_secret`, `access_token`, `refresh_token`, …), in shell, ini and JSON forms. These rules check the value first, so shell code that merely mentions a word (`token=$tokens[1]`, `if [[ $token == … ]]`) and placeholders (`your_token`, `xxx`) are not flagged.
+- **Generic secrets** (`HIGH`, redact): assignments whose name looks like a secret (`TOKEN`, `API_KEY`, `SECRET`, `PASSWORD`, `client_secret`, `access_token`, `refresh_token`, …), in shell, ini and JSON forms. These rules check the value first, so shell code that only mentions a word (`token=$tokens[1]`, `if [[ $token == … ]]`) and placeholders (`your_token`, `xxx`) are not flagged.
 - **IP addresses** (`MEDIUM`, redact), except loopback, `0.0.0.0` and netmasks, which every machine has. **Email addresses** (`MEDIUM`, include).
 - **Your home folder path** (`LOW`, include).
 
@@ -112,11 +112,11 @@ The scanner uses Go's RE2 regular expressions, which run in time linear in the i
 
 - **No plaintext on disk.** Files stream from their place in your home folder through tar, gzip and age into the output file. There is no temporary unencrypted copy.
 - **No half-written backups.** The file is written as `<name>.partial`, owner-only from the first byte, and renamed only once complete.
-- **A strong enough passphrase.** At least 10 characters. age's passphrase mode uses scrypt, which slows guessing, but it cannot rescue a short word.
+- **A strong enough passphrase.** At least 10 characters. age's passphrase mode uses scrypt, which slows guessing, but that does not make a short passphrase safe.
 - **No recovery.** If you lose the passphrase, nobody can open the file, including you. Store it in your password manager.
 - **Standard format.** `age -d backup-….tar.gz.age | tar -xz` also opens it, which matters if you ever need your backup without dothaven. dothaven builds age in, so neither machine needs the `age` program.
 - **Passphrase input.** The prompt reads from the terminal directly (`/dev/tty`) without echoing. `DOTHAVEN_PASSPHRASE` is supported for scripts, but the prompt is the default because an environment variable is visible to every program the shell starts. dothaven reads it (and `DOTHAVEN_GITHUB_TOKEN`) once at startup and removes it from its environment, so the tools it runs never inherit it. Set but empty, or shorter than 10 characters, it is an error, never "no encryption".
-- **Encrypted is checked, not assumed.** Writing a plain and an encrypted archive are separate functions, and the encrypted one refuses an empty passphrase. Before a GitHub push uploads a `.age` file, it checks the file really starts with an age header.
+- **Encrypted is checked, not assumed.** Writing a plain and an encrypted archive are separate functions, and the encrypted one refuses an empty passphrase. Before a GitHub push uploads a `.age` file, it checks that the file starts with an age header.
 
 When you restore an encrypted backup, it is decrypted into a private temporary folder (`0700`), the files are written to their places, and the folder is deleted, also on a forced exit (a second Ctrl-C). A folder left behind by a crash or `kill -9` is removed by a later run once it is an hour old; only folders dothaven made, with its marker inside, are ever touched. Commands that only need a backup's inventory or settings (`missing`, `reinstall`, `defaults import`) write only that part; the rest, keys included, is decrypted in memory and never written.
 
@@ -145,7 +145,7 @@ If neither is available, dothaven falls back to an owner-only file under `~/.con
 - dothaven only writes to **private** repositories. It checks before every push and stops with an error on a public one. Even an encrypted backup shows which services you use.
 - Encrypted and split modes upload credentials only inside age-encrypted archives.
 - The token is sent only to the GitHub API over HTTPS, and never passed to git or put on a command line. A fine-grained token can be limited to the single backup repository.
-- Commits are made as your account; there is no dothaven server in between.
+- Pushes go from your machine straight to the GitHub API under your own sign-in; there is no dothaven server in between.
 - git history keeps every push. Anything that was ever in a readable (`split` or `plain`) push should be considered readable by anyone with access to the repository.
 
 Details: [GitHub sync](../github#security-model).

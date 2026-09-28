@@ -24,13 +24,13 @@ func IsArchive(path string) bool {
 }
 
 // Extract unpacks a .tar.gz into dst and returns the directory holding the
-// backup — archives made here contain a single top-level directory, so that one
+// backup. Archives made here contain a single top-level directory, so that one
 // is returned rather than the temporary parent.
 //
 // Every entry's path is verified to stay inside dst. A tar entry may name
 // "../../.ssh/authorized_keys", and an extractor that trusts the name writes it
-// there; that is the whole of the zip-slip class of bug, and a tool whose job
-// is restoring into a home directory is precisely where it would land.
+// there. That is the zip-slip class of bug, and a tool that restores into a
+// home directory is where it does the most damage.
 func Extract(src, dst string) (string, error) {
 	f, err := os.Open(src)
 	if err != nil {
@@ -40,7 +40,7 @@ func Extract(src, dst string) (string, error) {
 	return ExtractReader(f, dst)
 }
 
-// ExtractReader is Extract over any gzip stream — a file, or the plaintext
+// ExtractReader is Extract over any gzip stream: a file, or the plaintext
 // coming out of age.
 func ExtractReader(r io.Reader, dst string) (string, error) {
 	return ExtractReaderOnly(r, dst, nil)
@@ -66,7 +66,7 @@ func Only(dirs ...string) func(name string) bool {
 
 // ExtractReaderOnly is ExtractReader writing only the entries keep accepts
 // (nil keeps all). A command that needs the inventory reads the whole stream
-// but puts only the inventory on disk — not every decrypted key with it.
+// but puts only the inventory on disk, not every decrypted key with it.
 func ExtractReaderOnly(r io.Reader, dst string, keep func(name string) bool) (string, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
@@ -122,7 +122,7 @@ func ExtractReaderOnly(r io.Reader, dst string, keep func(name string) bool) (st
 				return "", err
 			}
 			if n > maxArchiveEntry {
-				return "", fmt.Errorf("%s is larger than %d bytes — refusing to extract", hdr.Name, maxArchiveEntry)
+				return "", fmt.Errorf("%s is larger than %d bytes, refusing to extract", hdr.Name, maxArchiveEntry)
 			}
 		default:
 			// Symlinks and device nodes are not written: a link is another way
@@ -164,7 +164,7 @@ func singleChildDir(dir string) string {
 //
 // The escape is detected on the name as written, not after cleaning it.
 // Cleaning "../../etc/passwd" turns it into "etc/passwd", which lands inside
-// dst and is therefore safe — but it also silently writes a file the archive
+// dst and is therefore safe, but it also silently writes a file the archive
 // did not name, in a place that looks legitimate. An entry that tries to leave
 // the directory is malicious or corrupt either way, and both are worth
 // stopping rather than quietly rewriting.

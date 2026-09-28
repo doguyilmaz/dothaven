@@ -25,9 +25,9 @@ func fill(files map[string]string, exec map[string]bool) func(Sink) error {
 
 func pass(p string) func() (string, error) { return func() (string, error) { return p, nil } }
 
-// The whole point of an encrypted backup is that it restores: this is the round
-// trip the old code failed (the decrypted tarball sat beside the extracted
-// tree, so the root was misread and restore found nothing).
+// An encrypted backup has to restore. This is the round trip the old code
+// failed (the decrypted tarball sat beside the extracted tree, so the root was
+// misread and restore found nothing).
 func TestWriteArchiveEncryptedRoundTrip(t *testing.T) {
 	d := t.TempDir()
 	dst := filepath.Join(d, "backup-box-1.tar.gz.age")
@@ -106,8 +106,8 @@ func TestWriteArchivePlainAndAbort(t *testing.T) {
 	}
 }
 
-// The archive is age's own format, so the age CLI can open it — no lock-in to
-// dothaven for getting your own files back.
+// The archive is age's own format, so the age CLI can open it. Getting your own
+// files back does not depend on dothaven.
 func TestEncryptedArchiveOpensWithAgeCLI(t *testing.T) {
 	if _, err := exec.LookPath("age"); err != nil {
 		t.Skip("age not installed")
@@ -271,15 +271,16 @@ func TestGuardedRootsAgainstIncludes(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "extra", ".aws", "config")); err != nil {
 		t.Error("the harmless sibling should still be carried")
 	}
-	// Reported once, under the entry that names it — not again for the include.
+	// Reported once, under the entry that names it, and not again for the
+	// include.
 	if len(res.SkippedSensitive) != 1 || len(res.Withheld) != 0 {
 		t.Errorf("SkippedSensitive = %v, Withheld = %v", res.SkippedSensitive, res.Withheld)
 	}
 }
 
 // A credential file that is a symlink (stow, chezmoi symlink mode) is still a
-// credential when the folder it really lives in is what gets included — and
-// so is a symlink in an included folder that points at one.
+// credential when the folder it really lives in is what gets included. So is
+// a symlink in an included folder that points at one.
 func TestGuardedRootsThroughSymlinks(t *testing.T) {
 	home, dest := t.TempDir(), t.TempDir()
 	mustWrite(t, filepath.Join(home, ".dotfiles", "kube", "config"), "users:\n- user:\n    token: opaque-zzzz\n")
@@ -312,9 +313,9 @@ func TestGuardedRootsThroughSymlinks(t *testing.T) {
 	}
 }
 
-// A push to GitHub leaves age identities behind — the registry's, one inside
-// a folder that wraps it, and one under any other name — even when encrypted;
-// a local encrypted backup carries them.
+// A push to GitHub leaves age identities behind (the registry's, one inside a
+// folder that wraps it, and one under any other name) even when encrypted. A
+// local encrypted backup carries them.
 func TestRemoteRunKeepsAgeKeysLocal(t *testing.T) {
 	home := t.TempDir()
 	key := "AGE-SECRET-KEY-1QYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQY\n"

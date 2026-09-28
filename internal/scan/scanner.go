@@ -17,7 +17,7 @@ import (
 var actionPriority = map[Action]int{Skip: 3, Redact: 2, Include: 1}
 
 // MaxFileSize bounds how much of a file scanning will read into memory. Files
-// larger than this are skipped — secrets live in small config files, and an
+// larger than this are skipped: secrets live in small config files, and an
 // uncapped read is a memory-exhaustion vector on an attacker-supplied tree.
 const MaxFileSize = 1 << 20 // 1 MiB
 
@@ -47,27 +47,45 @@ var skipDirs = map[string]bool{
 // right for a walk over a whole home directory and wrong for a gate.
 func ScanContent(path, content string) Result { return scanContent(path, content, maxLineLen) }
 
-// ScanContentFull is ScanContent without the line-length shortcut. A gate —
-// the check that decides whether a file may be written somewhere in plaintext
-// — cannot skip the one long line a single-line JSON config keeps its token on.
+// ScanContentFull is ScanContent without the line-length shortcut. A gate (the
+// check that decides whether a file may be written somewhere in plaintext)
+// cannot skip the one long line a single-line JSON config keeps its token on.
 func ScanContentFull(path, content string) Result { return scanContent(path, content, 0) }
 
 func scanContent(path, content string, maxLine int) Result {
-	pats := Patterns() // hoisted out of the line loop
 	// Binary content is matched only against key-material rules; see looksBinary.
 	binary := looksBinary(content)
+	// Only the rules whose required text appears somewhere in the file can
+	// match any of its lines.
+	lower := foldLower(content)
+	var pats []*Pattern
+	all := Patterns()
+	for i := range all {
+		p := &all[i]
+		if (!binary || p.Action == Skip) && (noPrefilter || p.possible(content, lower)) {
+			pats = append(pats, p)
+		}
+	}
+	if len(pats) == 0 {
+		return Result{Path: path, Action: Include}
+	}
 	var findings []Finding
 	action := Include
 	var redact []Pattern
 	seenRedact := map[string]bool{}
 	for i, line := range strings.Split(content, "\n") {
 		if maxLine > 0 && len(line) > maxLine {
-			continue // minified/data line — not where secrets live, and costly to scan
+			continue // minified/data line: not where secrets live, and costly to scan
 		}
 		lineStart := len(findings)
 		var spans [][2]int // where each of this line's findings matched
-		for _, p := range pats {
-			if binary && p.Action != Skip {
+		lowerLine := ""
+		for _, pp := range pats {
+			p := *pp
+			if p.fold && lowerLine == "" {
+				lowerLine = foldLower(line)
+			}
+			if !noPrefilter && !p.possible(line, lowerLine) {
 				continue
 			}
 			loc := p.re.FindStringIndex(line)
@@ -107,8 +125,8 @@ func scanContent(path, content string, maxLine int) Result {
 
 // ScanFile scans a regular file's contents. A missing/unreadable path, a
 // non-regular file (symlink, device, FIFO, socket), or one larger than
-// MaxFileSize returns nil — callers may pass any path defensively, and reading a
-// device or FIFO would otherwise block forever.
+// MaxFileSize returns nil. Callers may pass any path defensively, and reading
+// a device or FIFO would otherwise block forever.
 func ScanFile(path string) *Result {
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxFileSize {
@@ -128,8 +146,9 @@ func ScanFile(path string) *Result {
 // ctx.Err() when ctx is cancelled. If progress is non-nil it is incremented
 // (atomically) once per file scanned, letting a caller report progress without
 // blocking the walk. When prune is true, dependency/cache/VCS subtrees
-// (skipDirs) are skipped — right for a user-facing scan, but a security probe
-// that must not miss a secret (chezmoi export) passes false to scan everything.
+// (skipDirs) are skipped. That is right for a user-facing scan, but a security
+// probe that must not miss a secret (chezmoi export) passes false to scan
+// everything.
 func ScanDir(ctx context.Context, dir string, progress *int64, prune bool) ([]Result, error) {
 	paths := make(chan string)
 	var walkErr error
@@ -200,6 +219,20 @@ func ScanDir(ctx context.Context, dir string, progress *int64, prune bool) ([]Re
 	return out, nil
 }
 
+// noPrefilter runs every rule on every line, for the test that proves the
+// prefilter never changes a result.
+var noPrefilter = false
+
+// foldLower lowercases s the way a case-insensitive regexp compares it: Go's
+// (?i) also equates the long s (U+017F) with s, which ToLower leaves alone.
+func foldLower(s string) string {
+	l := strings.ToLower(s)
+	if strings.Contains(l, "\u017f") {
+		l = strings.ReplaceAll(l, "\u017f", "s")
+	}
+	return l
+}
+
 func anyReal(p Pattern, line string) bool { return firstReal(p, line) != "" }
 
 func firstReal(p Pattern, line string) string {
@@ -232,8 +265,8 @@ func Summarize(results []Result) Summary {
 }
 
 // dedupeLine drops a keyword finding (`TOKEN=…`) that overlaps another on
-// the same line — a specific one (the ghp_… it assigns) or an earlier keyword
-// rule: one secret, reported once, by its most telling name.
+// the same line, either a specific one (the ghp_… it assigns) or an earlier
+// keyword rule. One secret is reported once, by its most telling name.
 func dedupeLine(findings []Finding, start int, spans [][2]int) []Finding {
 	line := findings[start:]
 	if len(line) < 2 {

@@ -12,7 +12,7 @@ import (
 func newCompareCmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:   "compare [file1] [file2]",
-		Short: "Snapshot vs snapshot — what changed between two",
+		Short: "Snapshot vs snapshot: what changed between two",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			var files []string

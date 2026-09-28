@@ -23,8 +23,8 @@ type DeviceCode struct {
 }
 
 // Scope is what the token may do: create and write the private backup repo.
-// GitHub OAuth scopes are coarse — `repo` covers every private repository —
-// so the docs point the careful at a fine-grained token limited to the one
+// GitHub OAuth scopes are coarse (`repo` covers every private repository), so
+// the docs point the careful at a fine-grained token limited to the one
 // repository instead (`dothaven github login --with-token`).
 const Scope = "repo"
 
@@ -32,7 +32,7 @@ const Scope = "repo"
 var ErrDenied = errors.New("sign-in was cancelled in the browser")
 
 // ErrExpired is the code timing out before it was entered.
-var ErrExpired = errors.New("the sign-in code expired — run login again")
+var ErrExpired = errors.New("the sign-in code expired; run login again")
 
 // StartDeviceFlow asks GitHub for a sign-in code.
 func (c *Client) StartDeviceFlow(ctx context.Context, clientID string) (DeviceCode, error) {
@@ -58,8 +58,8 @@ type Token struct {
 	RefreshExpires time.Time `json:"refresh_expires,omitzero"`
 }
 
-// Stale reports a token at or within five minutes of its expiry — close
-// enough that a push starting now could outlive it.
+// Stale reports a token at or within five minutes of its expiry, close enough
+// that a push starting now could outlive it.
 func (t Token) Stale(now time.Time) bool {
 	return !t.Expires.IsZero() && !now.Before(t.Expires.Add(-5*time.Minute))
 }
@@ -88,7 +88,7 @@ func (r tokenReply) token(now time.Time) Token {
 
 // ErrSignInExpired is a refresh token GitHub no longer accepts: six months
 // passed, the app was revoked, or the token was already used.
-var ErrSignInExpired = errors.New("your GitHub sign-in has expired — run: dothaven github login")
+var ErrSignInExpired = errors.New("your GitHub sign-in has expired; run: dothaven github login")
 
 // RefreshToken trades a refresh token for a new pair. The old refresh token
 // stops working, so the caller must keep the new one. A token from the

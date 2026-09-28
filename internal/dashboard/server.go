@@ -12,8 +12,8 @@
 //     closes DNS rebinding (a web page elsewhere resolving its own name to
 //     127.0.0.1 to reach this server);
 //   - it only answers GET, never writes anything, and sends a strict CSP with
-//     no external assets — the page works offline and cannot load code from
-//     anywhere.
+//     no external assets, so the page works offline and cannot load code
+//     from anywhere.
 package dashboard
 
 import (

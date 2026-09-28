@@ -40,7 +40,7 @@ type ClassifyingSink interface {
 }
 
 // SplitSink sends sensitive files to Secret (an encrypted archive) and the rest
-// to Plain — readable, diffable config beside an encrypted bundle of whatever
+// to Plain: readable, diffable config beside an encrypted bundle of whatever
 // must not be read. Files added without a classification (the inventory, the
 // manifest) are judged by a scan.
 type SplitSink struct {
@@ -67,8 +67,7 @@ func (s *SplitSink) AddClassified(dest string, data []byte, exec, sensitive bool
 }
 
 // DirSink writes each file owner-only under Root. Executable files keep their
-// bit (0700) — a restored git hook that is not executable is silently ignored
-// by git, which is the worst way to lose one.
+// bit (0700), because git silently ignores a hook that is not executable.
 type DirSink struct{ Root string }
 
 func (d DirSink) Add(dest string, data []byte, exec bool) error {
@@ -113,7 +112,7 @@ var ErrNothingToWrite = errors.New("nothing to write")
 
 // WriteArchive builds a plain .tar.gz at dst by handing fill a Sink to add
 // files to. WriteEncryptedArchive is the encrypted one; they are separate so
-// that no value of a variable can turn "encrypted" into "plain" — an empty
+// that no value of a variable can turn "encrypted" into "plain". An empty
 // passphrase is an error there, never a request for no encryption.
 func WriteArchive(dst, root string, fill func(Sink) error) error {
 	return writeArchive(dst, root, "", false, fill)
@@ -132,7 +131,7 @@ var ErrNoPassphrase = errors.New("an encrypted archive needs a passphrase")
 //
 // Encryption uses the age library, not the age binary. The format is age's
 // own, so `age -d` opens these files, but the machine you restore on does not
-// need age installed — which, on a freshly wiped laptop, it will not be.
+// need age installed (on a freshly wiped laptop, it will not be).
 func WriteEncryptedArchive(dst, root, passphrase string, fill func(Sink) error) error {
 	if passphrase == "" {
 		return ErrNoPassphrase
@@ -323,8 +322,8 @@ func ExtractArchiveOnly(src, dst string, passphrase func() (string, error), keep
 	return ExtractReaderOnly(r, dst, keep)
 }
 
-// Verify reads an archive end to end — decrypting, decompressing and walking
-// every entry — and returns how many files it holds. Nothing is written: this
+// Verify reads an archive end to end (decrypting, decompressing and walking
+// every entry) and returns how many files it holds. Nothing is written: this
 // is how a backup proves it opens before the machine it came from is wiped,
 // without putting its contents on disk a second time.
 func Verify(src string, passphrase func() (string, error)) (int, error) {
@@ -376,8 +375,9 @@ func Verify(src string, passphrase func() (string, error)) (int, error) {
 
 // DigestSink passes files through to an inner sink while fingerprinting what
 // went in: path, content hash and exec bit, nothing time-dependent. Two
-// backups of an unchanged machine have the same Sum even when their encrypted
-// archives share not a byte — which is how a push knows it has nothing to do.
+// backups of an unchanged machine have the same Sum even though their
+// encrypted archives differ in every byte. That is how a push knows it has
+// nothing to do.
 type DigestSink struct {
 	Inner   Sink
 	Exclude map[string]bool // dests left out of the fingerprint (the MANIFEST's timestamp)
@@ -429,8 +429,8 @@ func (d *DigestSink) Sum() string {
 
 // AgeMaskSink masks age identities in everything it passes on. A remote run
 // wraps its sink in one: RunTo already keeps files holding an identity on
-// this machine, and this covers what dothaven writes itself — the inventory,
-// a crontab, preference values — where a key could sit in a line of text.
+// this machine, and this covers what dothaven writes itself (the inventory,
+// a crontab, preference values), where a key could sit in a line of text.
 type AgeMaskSink struct{ Inner Sink }
 
 func (m AgeMaskSink) Add(dest string, data []byte, exec bool) error {

@@ -14,7 +14,7 @@ stdout 'mystery/thing.conf'
 
 
 # Off a terminal: new files are written, a differing one is kept. Nobody was
-# asked, so it is not "declined" — it is still on offer next time.
+# asked, so it is not "declined" and is still on offer next time.
 exec dothaven restore Downloads/backup-box-20240101000000
 stdout 'Restored 1 file'
 stdout '1 file that differs from this machine left as it is'
@@ -26,7 +26,7 @@ exists .local/share/dothaven/state/applied.json
 # Running it again shows the applied file as done, not as work; the one that
 # differs is still offered.
 exec dothaven restore Downloads/backup-box-20240101000000
-stdout '1 already applied'
+stdout '1 already the same here'
 stdout '1 differs'
 ! stdout 'Restored'
 

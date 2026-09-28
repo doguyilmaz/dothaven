@@ -22,18 +22,19 @@ stdout 'Created .*tester/dothaven-backup \(private\)'
 stdout 'Pushed 3 files as machines/oldmac'
 stdout 'dothaven restore github'
 exists .config/dothaven/github.json
-# The account is named by its noreply address — a push never publishes a real
-# email. With no GitHub App in this build, it is author and committer both.
+# The account is named by its noreply address, so a push never publishes a
+# real email. With no GitHub App in this build, it is both author and committer.
 signedby 'tester <1001+tester@users.noreply.github.com>' 'tester <1001+tester@users.noreply.github.com>'
 exec dothaven github status
-stdout 'Commits: unsigned'
+stdout 'Commits: authored by tester'
+stdout 'unsigned'
 
 # Same machine, nothing changed: no second copy in the history.
 exec dothaven github push --only shell,ssh --machine oldmac
 stdout 'Already up to date'
 
 # A passphrase set but empty (a script's $PASS that expanded to nothing) or
-# too short is refused — never taken as "no encryption".
+# too short is refused, never taken as "no encryption".
 env DOTHAVEN_PASSPHRASE=
 ! exec dothaven github push --mode split --only shell,ssh --machine oldmac
 stderr 'shorter than 10 characters'
@@ -89,10 +90,10 @@ stdout '1 age key file kept off GitHub'
 stdout 'secrets/age/chezmoi-key.txt'
 stdout 'Pushed 1 file'
 exec dothaven backup --encrypt --only secrets -o $WORK/local
-stdout 'Encrypted backup saved — 2 files'
+stdout 'Encrypted backup saved: 2 files'
 
-# Neither the passphrase nor the token reached any tool dothaven ran — the
-# inventory step runs brew.
+# Neither the passphrase nor the token reached any tool dothaven ran (the
+# inventory step runs brew).
 exec dothaven backup --encrypt --only inventory -o $WORK/inv
 ! exists $WORK/leak.log
 
@@ -114,7 +115,7 @@ stdout 'Already up to date'
 [exec:ssh-keygen] [exec:git] exec git config --global gpg.ssh.program ssh-keygen
 [exec:ssh-keygen] [exec:git] exec git config --global user.signingkey $WORK/signkey.pub
 [exec:ssh-keygen] [exec:git] exec dothaven github status
-[exec:ssh-keygen] [exec:git] stdout 'Commits: signed with SSH key .*signkey.pub'
+[exec:ssh-keygen] [exec:git] stdout 'signed with SSH key .*signkey.pub'
 [exec:ssh-keygen] [exec:git] exec dothaven github push --mode plain --only shell --machine signed
 [exec:ssh-keygen] [exec:git] stdout 'Pushed 1 file as machines/signed .*Verified'
 [exec:ssh-keygen] [exec:git] signedby 'tester <1001+tester@users.noreply.github.com>' 'tester <1001+tester@users.noreply.github.com>' signed

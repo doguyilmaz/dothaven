@@ -33,6 +33,13 @@ type Options struct {
 	// Remote marks a run whose output leaves this machine (a GitHub push).
 	// LocalOnly entries, and any file holding an age identity, stay behind.
 	Remote bool
+	// SkipVCS leaves .git and similar folders out of the walk, for output
+	// that cannot hold them (a readable push).
+	SkipVCS bool
+	// Reading, when set, is told each entry as its walk starts and each file
+	// just before it is read, so a caller can show where a slow backup is and
+	// which file a stall is on.
+	Reading func(dest string, file bool)
 }
 
 // maxGateText is the largest text file the plaintext gate will scan. Scanning
@@ -49,11 +56,11 @@ type Result struct {
 	PerCategory map[string]int
 	ScanResults []scan.Result
 	// SkippedSensitive lists dests excluded because they are high-sensitivity
-	// with no guaranteed redactor — they belong in an encrypted backup, not a
+	// with no guaranteed redactor. They belong in an encrypted backup, not a
 	// plaintext one.
 	SkippedSensitive []string
 	// ReadErrors lists dests for sources that exist but could not be read
-	// (permission/I-O errors, as opposed to simply absent). A safety-net backup
+	// (permission/I-O errors, as opposed to absent). A safety-net backup
 	// must surface these rather than silently omit a file the user expects.
 	ReadErrors []string
 	// TooLarge lists files over the size cap. They exist, the user may well
@@ -79,7 +86,7 @@ func Run(targets []registry.BackupTarget, destRoot string, opts Options) (Result
 }
 
 // RunTo copies every selected target into sink. Missing sources are skipped
-// silently (a tool may simply not be installed); everything else that is not
+// silently (a tool may not be installed); everything else that is not
 // carried is recorded in the Result.
 func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, error) {
 	res := Result{PerCategory: map[string]int{}}
@@ -106,8 +113,8 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 		}
 		// A plaintext backup must never hold an unredactable secret. A
 		// high-sensitivity entry with no guaranteed redactor (e.g. ~/.gnupg,
-		// cloud credentials) is excluded from a redacting backup — content
-		// scanning is best-effort and misses opaque tokens. An encrypted
+		// cloud credentials) is excluded from a redacting backup, because
+		// content scanning is best-effort and misses opaque tokens. An encrypted
 		// backup (Redact off) carries them.
 		if opts.Redact && t.Sensitivity == registry.High && t.Redact == nil {
 			if _, err := os.Stat(t.Src); err == nil {
@@ -123,7 +130,10 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			reported = appendRoot(reported, t.Src)
 			continue
 		}
-		files, skipped := Walk(t, WalkOptions{MaxSize: opts.MaxFileSize})
+		if opts.Reading != nil {
+			opts.Reading(t.Dest, false)
+		}
+		files, skipped := Walk(t, WalkOptions{MaxSize: opts.MaxFileSize, SkipVCS: opts.SkipVCS})
 		for _, s := range skipped {
 			if s.Reason == "too large" {
 				res.TooLarge = append(res.TooLarge, s)
@@ -148,6 +158,9 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			if opts.Remote && reachesGuarded(t, f.Path, localOnly) {
 				res.KeptLocal = append(res.KeptLocal, f.Dest)
 				continue
+			}
+			if opts.Reading != nil {
+				opts.Reading(f.Dest, true)
 			}
 			raw, err := readRegular(f.Path, f.Size)
 			if err != nil {
@@ -219,7 +232,7 @@ func appendRoot(roots []string, src string) []string {
 }
 
 // reachesGuarded reports whether a file inside a credential root was reached
-// from outside it — through a user include, or an entry wrapping the root —
+// from outside it (through a user include, or an entry wrapping the root)
 // rather than through a more specific registry entry that knows how to redact
 // it (~/.ssh/config is its own entry inside the guarded ~/.ssh). Paths are
 // compared as written and as resolved, so a symlink in either direction does
@@ -276,7 +289,7 @@ func readRegular(p string, size int64) ([]byte, error) {
 }
 
 // gate applies the redaction/skip decision to one file's content. It returns the
-// (possibly scrubbed) content and whether the file should be written at all — a
+// (possibly scrubbed) content and whether the file should be written at all. A
 // skip-action finding (e.g. a private key) is never copied to a plaintext backup.
 func gate(scanPath, body string, redact bool, entryRedact func(string) string, results *[]scan.Result) (string, bool, scan.Result) {
 	sr := scan.ScanContentFull(scanPath, body)
@@ -308,7 +321,7 @@ type ManifestMeta struct {
 
 // Manifest renders a self-describing MANIFEST for a backup: what was captured,
 // what was deliberately left out, and how to restore it. A backup you can't
-// audit for completeness is dangerous — the exclusion list is the
+// audit for completeness is dangerous. The exclusion list is the
 // safety-critical part, so it travels inside the backup rather than scrolling
 // past once in the console.
 func Manifest(meta ManifestMeta, res Result) string {
@@ -325,15 +338,15 @@ func Manifest(meta ManifestMeta, res Result) string {
 	case meta.Split:
 		b.WriteString("# contents:  readable config as plain files; credentials and anything holding\n#            a secret are in secrets.tar.gz.age (age-encrypted)\n#\n")
 	case meta.Encrypted:
-		b.WriteString("# contents:  complete — secrets and keys kept, whole archive age-encrypted\n#\n")
+		b.WriteString("# contents:  complete (secrets and keys kept), whole archive age-encrypted\n#\n")
 	case meta.Redacted:
 		b.WriteString("# contents:  secrets redacted, keys and credential files left out\n#\n")
 	default:
-		b.WriteString("# contents:  raw values kept, NOT encrypted — treat this as secret\n#\n")
+		b.WriteString("# contents:  raw values kept, NOT encrypted; treat this backup as secret\n#\n")
 	}
 	b.WriteString("# Restore on a new machine with:\n#   dothaven restore <this backup>\n#\n")
 
-	fmt.Fprintf(&b, "# Captured — %d file(s):\n", res.TotalFiles)
+	fmt.Fprintf(&b, "# Captured %d file(s):\n", res.TotalFiles)
 	cats := make([]string, 0, len(res.PerCategory))
 	for c := range res.PerCategory {
 		cats = append(cats, c)

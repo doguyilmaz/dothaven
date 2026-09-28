@@ -12,43 +12,44 @@ dothaven         # with no arguments, on a terminal
 dothaven tui     # the same menu, by name
 ```
 
-The menu is grouped by what you want to do. Each entry has a one-line hint, and the entries that change something say so. After an action finishes you press Enter to come back to the menu; Esc or Quit leaves.
+The menu fills the terminal and shows one short list at a time, so it fits any window and nothing scrolls. The home screen has five groups; each opens a list of three to six entries. The line at the bottom says what the selected entry does, and entries that change something say so.
 
 ```text
-Moving to a new Mac
-  1. Check nothing would be lost            unpushed work, .env files, backup age — read-only
-  2. Pack everything into one encrypted file configs, keys, tokens, app list, settings
-  3. Restore a backup onto this Mac         pick a backup, preview, then write
-  4. Reinstall my apps & packages           from a backup's list — Homebrew, npm, …
-  5. What's still missing here?             a backup's app list vs this Mac — read-only
+ dothaven                                        MacBook-Pro · GitHub: signed in
 
-Your private GitHub repo
-  Save this Mac to GitHub                   private repo, encrypted by default
-  Restore from GitHub                       pick a machine, preview, then write
-  GitHub sign-in & status                   who, which repo, which machines
+ Home › GitHub backup
 
-Everyday
-  Quick backup to this Mac                  a folder here; secrets redacted
-  What changed since my last backup?        read-only
-  Choose what else to back up               files & folders dothaven doesn't know
-  Scan my config for secrets                tokens and keys in plain files — read-only
-  Are my config files valid?                parses each one — read-only
-  See everything installed                  apps, packages, runtimes, fonts
-  Open the dashboard in your browser        coverage, backups, secrets, risks — local, read-only
-  Put macOS settings back from a backup     CHANGES system settings — asks first
+ ▸ Save this Mac to GitHub
+   Restore from GitHub
+   Sign-in and status
+   Sign out
 
-Sync through a chezmoi repo (optional)
-  Check chezmoi + age setup                 read-only
-  Export configs to chezmoi                 preview first; secrets encrypted
-  Apply my chezmoi repo here                WRITES to ~ and runs your install script
-
-  Not sure? Answer a few questions          get the exact steps for your case
-  Quit
+ ────────────────────────────────────────────────────────────
+ Private repository, encrypted by default. Signs you in if needed.
+ ↑↓ move · enter open · esc back · q quit
 ```
 
-On Linux the menu says "machine" instead of "Mac", and the macOS settings entry is not shown.
+| Key | Does |
+| --- | --- |
+| ↑ ↓ (or k j) | Move |
+| Enter (or → l) | Open a group, or run an entry |
+| 1 to 9 | Open or run the entry with that number |
+| Esc (or ← h) | Back to the group above; on the home screen, leave |
+| q | Leave |
 
-Most entries run the command of the same name (`ready`, `restore`, `reinstall`, `missing`, `github push`, `backup`, `status`, `include --review`, `scan`, `check`, `collect`, `ui`, `defaults import`, `init`, `chezmoi-export`, `migrate`, `guide`), so the menu and the command line behave the same. Entries that need a backup first let you pick one from those dothaven can find.
+An action runs in the normal terminal, so its output and questions read as they would from the command line. Press Enter afterwards and the menu comes back where you left it. Ctrl-C during an action stops that action and brings the menu back; a second Ctrl-C quits dothaven at once.
+
+| Group | Entries |
+| --- | --- |
+| Move to a new Mac | Check nothing would be lost, Pack everything into one encrypted file, Restore a backup, Reinstall my apps and packages, What's still missing here?, Put macOS settings back |
+| GitHub backup | Save this Mac to GitHub, Restore from GitHub, Sign-in and status, Sign out |
+| Everyday | Quick backup, What changed since my last backup?, Choose what else to back up, Open the dashboard |
+| Check this Mac | Scan my config for secrets, Are my config files valid?, See everything installed, Check dothaven itself |
+| chezmoi sync (optional) | Check chezmoi and age setup, Export configs to chezmoi, Apply my chezmoi repo here |
+
+Below the groups are "Not sure? Answer a few questions" and Quit. On Linux the menu says "machine" instead of "Mac", and the macOS settings entry is not shown.
+
+Most entries run the command of the same name (`ready`, `restore`, `reinstall`, `missing`, `github push`, `github logout`, `backup`, `status`, `include --review`, `scan`, `check`, `collect`, `doctor`, `ui`, `defaults import`, `init`, `chezmoi-export`, `migrate`, `guide`), so the menu and the command line behave the same. Entries that need a backup first let you pick one from those dothaven can find.
 
 Off a terminal, `dothaven tui` exits with an error rather than waiting forever, and plain `dothaven` prints the help.
 
@@ -58,7 +59,7 @@ This entry is the whole old-machine job in one pass:
 
 1. **Anything that exists only here?** Runs the `ready` check. If some work exists only on this machine, it asks whether to continue anyway.
 2. **Anything else to take?** Offers the config-looking paths nothing covers yet.
-3. **Where should the file go?** Mounted drives come first ("straight onto the drive — best"), then Desktop, dothaven's own folder, or a folder you type. Then it asks for a passphrase, twice.
+3. **Where should the file go?** Mounted drives come first (the best place), then Desktop, dothaven's own folder, or a folder you type. Then it asks for a passphrase, twice.
 4. **Packing.** Writes one encrypted backup with everything, then reads it back end to end with your passphrase, without writing anything, to prove it opens:
 
 ```text
@@ -77,11 +78,11 @@ You do not need the menu for the questions: the commands ask them themselves whe
 | `restore` | Which backup (when you give none); then everything new or updated, some categories, or some files; then, for each file that differs, overwrite or keep, with a diff. Afterwards: put back macOS settings? reinstall apps now? |
 | `reinstall` | Which backup (when you give none); then everything missing, some groups, or some packages. |
 | `defaults import` | Which settings domains to apply (all selected), and whether to rebuild the Dock. |
-| `github push` | Whether to create the repository, how to store the backup (first time), the passphrase, and whether to remember it. |
+| `github push` | Whether to create the repository (Yes is preselected), how to store the backup (first time), the passphrase, and whether to remember it. |
 | `github status` | Whether to sign in, if you are not. |
 | `restore github` | Which machine, if the repository holds several. |
-| `chezmoi-export` | Which categories and install groups to export; with `--apply`, whether your age key is backed up. |
-| `init` | Whether to install chezmoi and run `chezmoi init` for you. |
+| `chezmoi-export` | Which categories and install groups to export; whether to carry out the plan; before writing encrypted files, whether your age key is backed up. |
+| `init` | Whether to install chezmoi, add your age key to `chezmoi.toml`, and run `chezmoi init` for you. |
 | `guide` | What you want to do and what kind of work you do, then offers to run step 1. |
 | `include --review` | Which uncovered paths to add. |
 
@@ -91,10 +92,10 @@ Encrypted backups ask for the passphrase on the terminal itself (`/dev/tty`), so
 
 ```text
 What to back up
-Everything is selected. space toggles · a toggles all · enter continues
-> [x] ai         Claude, Codex, Cursor, Gemini… skills, agents, MCP, plugins  🔑 credentials — left out unless --encrypt
+Everything is selected. 🔑 marks credentials, which only an encrypted backup carries.
+▸ [x] ai         Claude, Codex, Cursor, Gemini… skills, agents, MCP, plugins  🔑 credentials
   [x] apps       Karabiner, Hammerspoon, window managers…
-  [x] build      Maven and Gradle settings  🔑 credentials — left out unless --encrypt
+  [x] build      Maven and Gradle settings  🔑 credentials
   [x] bun        bun config
   …
 ```
@@ -102,7 +103,7 @@ Everything is selected. space toggles · a toggles all · enter continues
 ### A file that differs
 
 ```text
-Conflict — ~/.zshrc
+Conflict: ~/.zshrc
 the live file differs from the backup
 > Overwrite with backup
   Skip (keep live file)
@@ -124,7 +125,7 @@ Refusing to continue without a terminal to confirm on.
 Re-run with --yes if you meant it, or --dry-run to see what would change.
 ```
 
-A pipe cannot answer a question, and silence is not consent. The exception is writing *new* files: `restore` off a terminal writes files that do not exist yet, and keeps any that differ.
+A pipe cannot answer a question, so dothaven never takes the lack of an answer as a yes. The exception is writing *new* files: `restore` off a terminal writes files that do not exist yet, and keeps any that differ.
 
 - **Passphrases** come from `DOTHAVEN_PASSPHRASE` when it is set.
 

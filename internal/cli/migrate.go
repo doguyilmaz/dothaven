@@ -11,8 +11,8 @@ import (
 
 // newMigrateCmd is the clean-machine happy path: one command that checks the
 // prerequisites, applies the chezmoi source (which also runs the install
-// script), and points at the verification step — so a user on an empty laptop
-// doesn't have to remember the multi-command sequence.
+// script), and points at the verification step, so a user on an empty laptop
+// doesn't have to remember the sequence.
 func newMigrateCmd(env *sys.OS) *cobra.Command {
 	var dryRun, assumeYes bool
 	c := &cobra.Command{
@@ -35,7 +35,7 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 				return ExitError{Code: 1}
 			}
 			if !state.AgeKeyConfigured {
-				fmt.Fprintln(os.Stderr, warn("⚠ age encryption isn't configured — encrypted files won't decrypt on this machine."))
+				fmt.Fprintln(os.Stderr, warn("⚠ age encryption isn't configured, so encrypted files won't decrypt on this machine."))
 				fmt.Fprintln(os.Stderr, "  Place your age key (see `dothaven init`), or continue to apply non-secret files only.")
 			}
 
@@ -50,7 +50,7 @@ func newMigrateCmd(env *sys.OS) *cobra.Command {
 					return ExitError{Code: 1}
 				}
 				if out == "" {
-					fmt.Println("  (nothing — this machine already matches your source)")
+					fmt.Println("  (nothing to apply: this machine already matches your source)")
 				} else {
 					fmt.Println(out)
 				}

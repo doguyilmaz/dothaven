@@ -210,7 +210,7 @@ func (d SnapshotDiff) Format(o FormatOptions) string {
 	if o.Color {
 		green, red, yellow, dim, reset = "\x1b[32m", "\x1b[31m", "\x1b[33m", "\x1b[2m", "\x1b[0m"
 	}
-	// Left-only is "+" by default (what left has that right lacks — the
+	// Left-only is "+" by default (what left has that right lacks, the
 	// parity reading); on a timeline it is what went away.
 	lp, rp := "+", "-"
 	if o.Timeline {

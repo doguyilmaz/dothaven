@@ -219,7 +219,7 @@ func TestExecuteSkipsSymlinkTargets(t *testing.T) {
 
 func TestExecuteSkipsNonRegularTargets(t *testing.T) {
 	// A live target that is a directory (or FIFO/device) must be refused, not
-	// written over — writing to it would error or, for a FIFO, block forever.
+	// written over. Writing to it would error or, for a FIFO, block forever.
 	home := t.TempDir()
 	backup := t.TempDir()
 	write(t, filepath.Join(backup, "cfg/x"), "from backup\n")

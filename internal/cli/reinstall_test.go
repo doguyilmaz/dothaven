@@ -104,7 +104,7 @@ func TestReinstallLeavesOutUnsafeNames(t *testing.T) {
 }
 
 // Without Homebrew there is no Brewfile to carry VS Code extensions; the
-// inventory's list brings them back instead — but not twice when there is one.
+// inventory's list brings them back instead, but not twice when there is one.
 func TestReinstallVSCodeExtensionsWithoutBrew(t *testing.T) {
 	ext := snapshot.Section{Items: []snapshot.Item{{Raw: "ms-python.python", Columns: []string{"ms-python.python"}}}}
 	groups := planReinstall(snapshot.Snapshot{"editor.vscode.extensions": ext}, snapshot.Snapshot{})

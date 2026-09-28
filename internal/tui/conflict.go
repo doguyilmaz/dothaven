@@ -28,7 +28,7 @@ const maxDiffLines = 40
 
 // RenderDiff shows a line-by-line diff between the live file (old) and the
 // backup (new): removed lines in red, added in green. Naive (line-indexed, not
-// LCS) — enough to eyeball a conflict before overwriting.
+// LCS), but enough to eyeball a conflict before overwriting.
 func RenderDiff(oldText, newText string) string {
 	oldLines := strings.Split(oldText, "\n")
 	newLines := strings.Split(newText, "\n")
@@ -72,7 +72,7 @@ func ResolveConflict(path, backupContent, liveContent string) (ConflictChoice, e
 	for {
 		var choice string
 		sel := huh.NewSelect[string]().
-			Title("Conflict — "+path).
+			Title("Conflict: "+path).
 			Description("the live file differs from the backup").
 			Options(
 				huh.NewOption("Overwrite with backup", "o"),
@@ -82,9 +82,9 @@ func ResolveConflict(path, backupContent, liveContent string) (ConflictChoice, e
 				huh.NewOption("Skip all remaining", "sa"),
 			).
 			Value(&choice)
-		if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+		if err := run(sel); err != nil {
 			// Ctrl-C at a prompt aborts the whole restore (skip every remaining
-			// conflict), not just this one file — otherwise the user has to
+			// conflict), not just this one file. Otherwise the user has to
 			// interrupt once per conflict.
 			if errors.Is(err, huh.ErrUserAborted) {
 				return ChoiceSkipAll, nil

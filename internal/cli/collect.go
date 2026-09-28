@@ -107,7 +107,7 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 			snap := gatherSnapshot(cmd.Context(), env, redact)
 			if cerr := cmd.Context().Err(); cerr != nil {
 				fmt.Fprintln(os.Stderr, "collect cancelled.")
-				return ExitError{Code: 130} // cancelled mid-collect — don't write a truncated snapshot as success
+				return ExitError{Code: 130} // cancelled mid-collect: don't write a truncated snapshot as success
 			}
 
 			var scanResults []scan.Result
@@ -140,7 +140,7 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 			if err := sys.WriteFileSecure(path, string(data)); err != nil {
 				return err
 			}
-			fmt.Printf("%s %s\n", bold("Snapshot saved to:"), path)
+			fmt.Printf("%s %s\n", bold("Snapshot saved to:"), shortHome(env, path))
 			fmt.Printf("  %s\n", dim(fmt.Sprintf("%d sections. Browse with `dothaven list <section>`, e.g. `dothaven list brew`.", len(snap))))
 
 			if redact {

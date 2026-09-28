@@ -25,12 +25,10 @@ func topFinding(r Result) Finding {
 	return top
 }
 
-// FormatReport renders the inline console summary printed after collect/backup.
-// Empty when there are no findings.
 // ReportOptions controls how the report is rendered. Colour is a parameter
 // rather than something this package detects, so the decision stays with the
-// layer that knows where the output is going — the same shape snapshot.Format
-// already uses.
+// layer that knows where the output is going. snapshot.Format has the same
+// shape.
 type ReportOptions struct {
 	Color bool
 	// Scan words the report for `dothaven scan`, which changes nothing: it
@@ -38,16 +36,15 @@ type ReportOptions struct {
 	Scan bool
 }
 
-// FormatReport renders the sensitivity report. Severity is the one thing worth
-// colouring here: it is why the report exists, and a HIGH in a list of thirty
-// LOWs is what the reader is scanning for.
+// FormatReport renders the inline sensitivity report printed after
+// collect/backup, or "" when there are no findings. Only severity is
+// coloured: a HIGH in a list of thirty LOWs is what the reader is looking for.
 func FormatReport(s Summary, o ReportOptions) string {
 	if len(s.Results) == 0 {
 		return ""
 	}
 	// Sorted worst-first. Unsorted, a HIGH sat between two LOWs and the reader
-	// had to scan every row to find the ones that matter; the whole point of a
-	// severity is that it orders your attention.
+	// had to scan every row to find the ones that matter.
 	rows := append([]Result(nil), s.Results...)
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := severityRank[topFinding(rows[i]).Pattern.Severity], severityRank[topFinding(rows[j]).Pattern.Severity]
@@ -88,7 +85,7 @@ func FormatReport(s Summary, o ReportOptions) string {
 			}
 		}
 		sev := top.Pattern.Severity
-		lines = append(lines, fmt.Sprintf("  %s%-6s%s %-30s %s%s — %s%s",
+		lines = append(lines, fmt.Sprintf("  %s%-6s%s %-30s %s%s (%s)%s",
 			severityColor(sev), sev, reset, r.Path, dim, top.Pattern.Label, label, reset))
 	}
 	if o.Scan {
@@ -143,7 +140,7 @@ func FormatSecurityReport(results []Result) string {
 		sev     Severity
 		heading string
 	}{
-		{High, "## 🔴 HIGH — secrets (masked or skipped before sync)"},
+		{High, "## 🔴 HIGH: secrets (masked or skipped before sync)"},
 		{Medium, "## 🟡 MEDIUM"},
 		{Low, "## ⚪ LOW"},
 	}
@@ -161,7 +158,7 @@ func FormatSecurityReport(results []Result) string {
 		lines = append(lines, g.heading)
 		for _, r := range group {
 			top := topFinding(r)
-			lines = append(lines, fmt.Sprintf("- `%s` — %s · %s · L%d", r.Path, top.Pattern.Label, actionLabel[r.Action], top.Line))
+			lines = append(lines, fmt.Sprintf("- `%s`: %s · %s · L%d", r.Path, top.Pattern.Label, actionLabel[r.Action], top.Line))
 		}
 		lines = append(lines, "")
 	}

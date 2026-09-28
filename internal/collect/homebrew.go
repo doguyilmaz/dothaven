@@ -10,7 +10,7 @@ import (
 
 // brewfileNoise matches progress/noise lines that `brew bundle dump` may emit on
 // a cold cache. Everything else is kept, so first-class directives
-// (go/npm/cargo/uv/whalebrew/vscode/mas/…) survive — an allowlist silently
+// (go/npm/cargo/uv/whalebrew/vscode/mas/…) survive. An allowlist silently
 // dropped go/npm and produced an incomplete "restorable" Brewfile.
 var brewfileNoise = regexp.MustCompile(`^\s*(✔|✓|✗|⚠|ℹ|==>|Warning:|Error:)|JSON API`)
 

@@ -52,12 +52,12 @@ func warn(s string) string   { return paint(styWarn, s) }
 func danger(s string) string { return paint(styDanger, s) }
 
 // kbd renders something the reader can type. Commands buried in prose are hard
-// to pick out precisely when they matter most — at the end of output, when the
-// question is "so what do I run now".
+// to pick out, especially at the end of output, when the question is "so what
+// do I run now".
 //
 // Named kbd, not cmd: `cmd` is the cobra command in every RunE in this package,
-// and `ok` is the most common variable name in Go. A helper worth using
-// everywhere must not shadow the names everywhere already uses.
+// and `ok` is the most common variable name in Go. A helper used everywhere
+// must not shadow either.
 func kbd(s string) string { return paint(styCmd, s) }
 
 // header separates one command's output from the next.
@@ -72,7 +72,7 @@ func header(title string) string {
 }
 
 // ellipsize shortens a path from the middle so a column stays aligned. The two
-// ends of a path carry the meaning — which project, which file — and a plain
+// ends of a path carry the meaning (which project, which file), and a plain
 // truncation drops the half that identifies it.
 func ellipsize(s string, width int) string {
 	r := []rune(s)
@@ -116,3 +116,37 @@ func padTo(s string, width int) string {
 
 // printHeader writes a section separator for an action run from the menu.
 func printHeader(title string) { fmt.Println(header(title)) }
+
+// wrapLines breaks s at spaces into lines of at most w characters, so text
+// longer than the window does not wrap in the middle of a word.
+func wrapLines(s string, w int) []string {
+	var lines []string
+	cur := ""
+	for _, word := range strings.Fields(s) {
+		if cur != "" && len([]rune(cur))+1+len([]rune(word)) > w {
+			lines = append(lines, cur)
+			cur = word
+			continue
+		}
+		if cur != "" {
+			cur += " "
+		}
+		cur += word
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return lines
+}
+
+// paragraph is s wrapped to the terminal (at most 100 columns, which is
+// easier to read), each line after the first starting with indent, and each
+// line styled by style.
+func paragraph(s, indent string, style func(string) string) string {
+	w := max(min(termWidth(), 100)-len(indent)-1, 30)
+	lines := wrapLines(s, w)
+	for i := range lines {
+		lines[i] = style(lines[i])
+	}
+	return strings.Join(lines, "\n"+indent)
+}

@@ -9,7 +9,7 @@ import (
 )
 
 // MetaCollector records basic machine identity: hostname, OS+arch, and the
-// collection date. No subprocesses — everything comes from the runtime.
+// collection date. No subprocesses: everything comes from the runtime.
 func MetaCollector(c Ctx) snapshot.Snapshot {
 	host, err := os.Hostname()
 	if err != nil {

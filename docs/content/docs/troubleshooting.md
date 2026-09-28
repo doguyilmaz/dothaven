@@ -13,7 +13,7 @@ dothaven doctor
 `doctor` checks that dothaven can do its job on this machine and says what to fix when it cannot. It changes nothing, finishes in about a second, and exits with code 1 only if something is broken (warnings alone exit 0).
 
 ```text
-dothaven doctor — can dothaven do its job here?
+dothaven doctor: can dothaven do its job here?
 
 dothaven
   ✓ version        1.4.0 (installed with Homebrew)
@@ -23,10 +23,10 @@ This machine
   ✓ platform       darwin arm64
   ✓ home folder    /Users/you
   · shell          /bin/zsh
-  ✓ terminal       a terminal — menus and prompts available
+  ✓ terminal       a terminal (menus and prompts available)
 
 Folders
-  ⚠ data           /Users/you/.local/share/dothaven is readable by other users (0755) — it holds backups
+  ⚠ data           /Users/you/.local/share/dothaven is readable by other users (0755), and it holds backups
       fix: chmod 700 /Users/you/.local/share/dothaven
   ✓ settings       /Users/you/.config/dothaven
   ✓ temporary      /var/folders/…/T/
@@ -42,7 +42,7 @@ What gets backed up
       dothaven include --list
 
 Backups
-  ✓ newest         encrypted, 2 days old — /Volumes/MyDrive/backup-mymac-20260925101200.tar.gz.age
+  ✓ newest         encrypted, 2 days old: /Volumes/MyDrive/backup-mymac-20260925101200.tar.gz.age
 
 Tools
   ✓ git            git version 2.46.0
@@ -50,9 +50,9 @@ Tools
   ✓ defaults       /usr/bin/defaults
   ✓ zsh            zsh 5.9 (arm64-apple-darwin24.0)
   ✓ ssh            OpenSSH_9.8p1, LibreSSL 3.3.6
-  · gh             not found — needed for GitHub sign-in without a browser
-  · chezmoi        not found — needed for the optional chezmoi sync
-  ✓ age            built in — encrypted backups need no extra install
+  · gh             not found (needed for GitHub sign-in without a browser)
+  · chezmoi        not found (needed for the optional chezmoi sync)
+  ✓ age            built in, so encrypted backups need no extra install
 
 GitHub
   ✓ sign-in        you (via the macOS Keychain)
@@ -98,7 +98,7 @@ There is no recovery. The encryption is designed so that nobody can open the fil
 
 A new encrypted backup (or GitHub push) needs a passphrase of at least 10 characters, from the prompt or from the variable. A variable that is set but empty, such as a script's `$PASS` that expanded to nothing, is refused too: it is never taken to mean "don't encrypt". Choose a longer one. (Opening an existing backup accepts whatever passphrase it was made with.)
 
-### "no terminal to ask for a passphrase on — set DOTHAVEN_PASSPHRASE"
+### "no terminal to ask for a passphrase on. Set DOTHAVEN_PASSPHRASE"
 
 You are running without a terminal (a script, CI, `ssh host cmd`). Set `DOTHAVEN_PASSPHRASE` for that command.
 
@@ -109,12 +109,12 @@ A command that changes things you already have was run without a terminal to ask
 ### "unknown category …"
 
 ```text
-error: unknown category "shel" — choose from: ai, apps, build, …
+error: unknown category "shel"; choose from: ai, apps, build, …
 ```
 
 The message lists every valid name. See [Categories](../backup-restore#categories).
 
-### "nothing to back up — no tracked files found for this selection"
+### "nothing to back up: no tracked files found for this selection"
 
 Your `--only`/`--skip` left nothing. Check the categories you named with `dothaven doctor` ("What gets backed up") or `dothaven include --list`.
 
@@ -149,7 +149,7 @@ The backup was made with `--skip inventory`, or by an older dothaven. `reinstall
 
 Install it (it installs the Xcode command-line tools first, which takes a few minutes), then run `dothaven reinstall <backup>` again. To install dothaven itself without Homebrew, use the [installer script](../installation).
 
-### GitHub: "… is PUBLIC — dothaven only writes to private repositories"
+### GitHub: "… is PUBLIC. dothaven only writes to private repositories"
 
 Make the repository private in its GitHub settings, or push somewhere else with `--repo owner/name`. dothaven will not write to a public repository in any mode.
 
@@ -163,7 +163,7 @@ dothaven signs a push only when your git signs commits; `dothaven github status`
 
 ### GitHub: "… this sign-in cannot see it" or "the dothaven app can't reach any repository yet"
 
-Only for a build that signs in through a GitHub App: such an app reaches just the repositories it is installed on. Make the private repository (`dothaven-backup`) if it does not exist yet, then add it to the app from **Settings → Applications → Installed GitHub Apps → Configure**. The standard build signs in with an OAuth app and never needs this.
+Only for a build that signs in through a GitHub App: such an app reaches only the repositories it is installed on. Make the private repository (`dothaven-backup`) if it does not exist yet, then add it to the app from **Settings → Applications → Installed GitHub Apps → Configure**. The standard build signs in with an OAuth app and never needs this.
 
 ### GitHub: "your GitHub sign-in has expired"
 
@@ -203,11 +203,11 @@ It found work that exists only on this machine: see [Moving to a new machine](..
 
 ### `scan` exits with code 2
 
-It found a HIGH secret. That is the point: it can block a commit. Use `--no-fail` for the report without the exit code.
+It found a HIGH secret. The exit code is what lets it block a commit. Use `--no-fail` for the report without the exit code.
 
 ### The dashboard says "Open the link dothaven printed" or "This link has been used already"
 
-The link `dothaven ui` prints carries a key that works once: the browser that opens it gets a session, and reopening the link there keeps working. Anywhere else, the link no longer opens anything. That is the point, since the link sits in your terminal's scrollback and the browser's history. To use another browser, run `dothaven ui` again for a new link. "wrong host" means the address was not `127.0.0.1` or `localhost`.
+The link `dothaven ui` prints carries a key that works once: the browser that opens it gets a session, and reopening the link there keeps working. Anywhere else, the link no longer opens anything. This is on purpose: the link stays in your terminal's scrollback and the browser's history. To use another browser, run `dothaven ui` again for a new link. "wrong host" means the address was not `127.0.0.1` or `localhost`.
 
 ### "the tui command needs an interactive terminal"
 

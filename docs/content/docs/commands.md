@@ -25,7 +25,7 @@ With no command, on a terminal, `dothaven` opens the [menu](../interactive). Off
 
 ### tui
 
-Interactive menu — pick what to do.
+Interactive menu: pick what to do.
 
 ```text
 dothaven tui
@@ -77,7 +77,7 @@ Nothing is fetched, so it is fast and works offline, which also means it judges 
 **Exit code:** 2 if anything is at risk, or if there is no backup newer than 7 days. So it can gate a wipe script: `dothaven ready && …`.
 
 ```text
-1 repository with no remote — these exist ONLY on this machine:
+1 repository with no remote. These exist ONLY on this machine:
   ✗ ~/code/prototype                              12 commits, 1 file uncommitted
 
 1 repository with work not pushed anywhere:
@@ -85,7 +85,7 @@ Nothing is fetched, so it is fast and works offline, which also means it judges 
 
   ✓ Newest backup is 2 hours old (encrypted, /Volumes/MyDrive/backup-mymac-….tar.gz.age).
 
-❌ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
+✗ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
 ```
 
 ---
@@ -94,7 +94,7 @@ Nothing is fetched, so it is fast and works offline, which also means it judges 
 
 ### backup
 
-Save your config — a folder here, or one encrypted file to carry.
+Save your config: a folder here, or one encrypted file to carry.
 
 ```text
 dothaven backup [flags]
@@ -287,7 +287,7 @@ dothaven restore github --only ai,shell
 
 ### reinstall
 
-Install the apps & packages a backup recorded — only what's missing.
+Install the apps & packages a backup recorded (only what's missing).
 
 ```text
 dothaven reinstall [backup] [flags]
@@ -308,7 +308,7 @@ The argument can be a backup (any kind, or `github`) or a `collect` snapshot. Wi
 
 ### status
 
-Latest backup vs this machine — one-screen summary.
+Latest backup vs this machine: a one-screen summary.
 
 ```text
 dothaven status
@@ -318,7 +318,7 @@ Compares the newest backup folder in `~/.local/share/dothaven` with this machine
 
 ### diff
 
-Backup vs this machine — file by file.
+Backup vs this machine, file by file.
 
 ```text
 dothaven diff [backup-path] [flags]
@@ -346,7 +346,7 @@ This used to be `dothaven doctor <backup>`. That spelling still works and says w
 
 ### check
 
-Are my config files still valid? — parses each one.
+Are my config files still valid? Parses each one.
 
 ```text
 dothaven check [flags]
@@ -374,7 +374,7 @@ Checks that dothaven can do its job on this machine, and says what to fix when i
 
 ### compare
 
-Snapshot vs snapshot — what changed between two.
+Snapshot vs snapshot: what changed between two.
 
 ```text
 dothaven compare [file1] [file2]
@@ -425,7 +425,7 @@ With no path, scans every config file dothaven tracks: the ones a backup would c
 | --- | --- |
 | `--no-fail` | Always exit 0, even with HIGH findings |
 
-**Exit code:** 2 when anything HIGH turns up, so this can gate a commit hook or a CI job. A scanner that always exits 0 can only ever be read by a human.
+**Exit code:** 2 when anything HIGH turns up, so this can gate a commit hook or a CI job. Without it, a finding would only be noticed by someone reading the output.
 
 ```text
 ~/.aws/credentials
@@ -462,17 +462,18 @@ Pushes this machine's backup to a private repository on your GitHub account (cre
 
 #### github login
 
-Sign in to GitHub (browser, gh CLI, or a token on stdin).
+Sign in to GitHub (browser, a token on stdin, or your gh login).
 
 ```text
 dothaven github login [flags]
 ```
 
-Opens github.com in your browser with a one-time code when your build includes its sign-in app; approve it and the terminal carries on by itself. The token is kept in your system keychain. If you are signed in to the GitHub CLI (`gh`), dothaven uses that login and stores nothing of its own. Most locked down: a fine-grained token limited to the one repository (Contents: read & write, Administration: read & write to create it).
+Opens github.com in your browser with a one-time code. Approve it there and the terminal carries on by itself. The token is kept in your system keychain. Most locked down: a fine-grained token limited to one repository (Contents: read and write; Administration: read and write to create it).
 
 | Flag | Meaning |
 | --- | --- |
 | `--with-token` | Read a token from stdin instead of opening the browser |
+| `--gh` | Use the GitHub CLI's login instead, and store no token of dothaven's own |
 
 ```bash
 dothaven github login --with-token < token.txt
@@ -538,15 +539,15 @@ Check the chezmoi + age prerequisites for export.
 dothaven init
 ```
 
-Checks three things and prints each as done (`✓`) or with the command that fixes it (`→`): chezmoi is installed, age encryption is configured in `~/.config/chezmoi/chezmoi.toml`, and your chezmoi source is an initialized git repository. On a terminal it offers to run the safe steps for you (installing chezmoi with Homebrew, `chezmoi init <url>`). It never creates your age key: that is yours to make and back up. No flags.
+Checks three things and prints each as done (`✓`) or with the command that fixes it (`→`): chezmoi is installed, age encryption is configured in `~/.config/chezmoi/chezmoi.toml`, and your chezmoi source is an initialized git repository. On a terminal it offers to run the safe steps for you (installing chezmoi with Homebrew, adding an existing age key to `chezmoi.toml`, `chezmoi init <url>`), then checks again. It never creates your age key: that is yours to make and back up. No flags.
 
 ```text
-dothaven init — chezmoi + age bootstrap
+dothaven init: chezmoi + age setup
 
   ✓ chezmoi installed
   → age encryption key configured
       age-keygen -o ~/.config/chezmoi/key.txt
-      ⚠ Back this key up offline (password manager). Lose it and encrypted files are unrecoverable.
+      Back this key up offline (password manager). Lose it and encrypted files are unrecoverable.
   → chezmoi source (private dotfiles repo) initialized
       chezmoi init git@github.com:you/dotfiles.git
 ```
@@ -559,11 +560,11 @@ Plan (or apply) adding configs to chezmoi, encrypting secrets.
 dothaven chezmoi-export [flags]
 ```
 
-Builds a plan of `chezmoi add` calls, one file at a time: plain for ordinary config, `--encrypt` for credentials and any file with a secret in it, `--template` for config that names your home folder. It also builds a `run_onchange` install script that reinstalls your packages when chezmoi applies. **Dry run by default**; `--apply` executes it (needs chezmoi, and age configured when anything is encrypted). On a terminal with no `--only`/`--skip`, it asks which categories and install groups (`brew`, `packages`) to export. Details: [Encryption & chezmoi](../encryption#chezmoi-export).
+Builds a plan of `chezmoi add` calls, one file at a time: plain for ordinary config, `--encrypt` for credentials and any file with a secret in it, `--template` for config that names your home folder. It also builds a `run_onchange` install script that reinstalls your packages when chezmoi applies. It shows the plan first. On a terminal it then asks whether to carry it out; off a terminal it changes nothing unless you pass `--apply` (needs chezmoi, and age configured when anything is encrypted). On a terminal with no `--only`/`--skip`, it asks which categories and install groups (`brew`, `packages`) to export. Details: [Encryption & chezmoi](../encryption#chezmoi-export).
 
 | Flag | Meaning |
 | --- | --- |
-| `--apply` | Execute the plan (default: dry-run) |
+| `--apply` | Carry out the plan without asking (off a terminal the default is a dry run) |
 | `--only strings` | Only these categories/groups (comma-separated) |
 | `--pin` | Pin global packages to their captured version |
 | `--skip strings` | Skip these categories/groups (comma-separated) |
@@ -622,7 +623,7 @@ dothaven completion bash|zsh|fish|powershell
 At most once a day, dothaven checks whether a newer release exists and prints one line on **stderr** when there is one:
 
 ```text
-⇡ dothaven 0.5.0 is available (you have 0.4.0) — run `dothaven upgrade`
+⇡ dothaven 0.5.0 is available (you have 0.4.0). Run `dothaven upgrade`
 ```
 
 Nothing is added to stdout. The check is skipped when stderr is not a terminal, when `CI` is set, for development builds, during `upgrade` itself, and when `DOTHAVEN_NO_UPDATE_CHECK` is set to anything.

@@ -3,7 +3,7 @@ title: Architecture
 weight: 16
 ---
 
-This page is the contributor's map: how the packages divide the work, the seams that keep side effects testable, and how the pieces fit. dothaven is one static Go binary built on [Cobra](https://github.com/spf13/cobra), module `github.com/doguyilmaz/dothaven`, built from `./cmd/dothaven`.
+This page is for contributors: how the packages divide the work, the seams that keep side effects testable, and how the pieces fit. dothaven is one static Go binary built on [Cobra](https://github.com/spf13/cobra), module `github.com/doguyilmaz/dothaven`, built from `./cmd/dothaven`.
 
 ## Principles
 
@@ -114,11 +114,11 @@ The client talks HTTPS to the API directly, so neither machine needs git and the
 
 Sign-in is the device flow of an OAuth app (scope `repo`): no installation step, and the first push can create the repository. The client also takes a GitHub App's device flow, whose user tokens last 8 hours: `resolveToken` renews them with the refresh token (no client secret is needed for device-flow tokens) and saves the new pair, since a refresh token works only once; read-only callers pass `renew=false` and report instead.
 
-Commits name the GitHub App's `<slug>[bot]` as author and the account's noreply address as committer. When the user's git signs commits (`commit.gpgsign`), `cli.gitSigning` signs the exact object the API will build — `github.CommitPayload`, with the dates fixed and sent along — through `ssh-keygen -Y sign -n git` or `gpg -bsau`, and passes it as the commit's `signature`. GitHub checks it against the committer's signing keys, and its verdict comes back in the response's `verification`. The format is tested against `git verify-commit` itself. A bot-signed commit is not possible here: it needs an installation token, and so the app's private key, which a program on users' machines cannot hold.
+Commits name the GitHub App's `<slug>[bot]` as author and the account's noreply address as committer. When the user's git signs commits (`commit.gpgsign`), `cli.gitSigning` signs the exact object the API will build (`github.CommitPayload`, with the dates fixed and sent along) through `ssh-keygen -Y sign -n git` or `gpg -bsau`, and passes the result as the commit's `signature`. GitHub checks it against the committer's signing keys, and its verdict comes back in the response's `verification`. The format is tested against `git verify-commit` itself. A bot-signed commit is not possible here: it needs an installation token, and so the app's private key, which a program on users' machines cannot hold.
 
 ### Setting up sign-in and the bot (maintainers)
 
-Releases read two repository **variables** (Settings → Secrets and variables → Actions → Variables; both are public by design, so not secrets), baked in with `-ldflags` by `release.yml`. They come from two apps, as in lockstep:
+Releases read two repository **variables** (Settings → Secrets and variables → Actions → Variables; both are public by design, so not secrets), baked in with `-ldflags` by `release.yml`. They come from two apps:
 
 1. **The OAuth app, for sign-in** → `DOTHAVEN_GITHUB_CLIENT_ID`. **Settings → Developer settings → OAuth Apps → New OAuth App**: name `dothaven`, homepage and authorization callback URL both the docs site (the callback is required but unused), then tick **Enable Device Flow**. Copy its **Client ID**. Never generate a client secret: the device flow needs none, and none may ship in the CLI.
 2. **The GitHub App, for the bot** → `DOTHAVEN_GITHUB_APP`. **Settings → Developer settings → GitHub Apps → New GitHub App**: name `dothaven` (its URL name is the variable's value; the bot is `dothaven[bot]`), homepage the docs site, webhook off, **no permissions at all**, installable only on this account. It is never installed and never signs anyone in: GitHub creates the bot account with the app, and commits name it by its noreply address. Upload `docs/static/images/bot-1024.png` as its logo. No private key or client secret.

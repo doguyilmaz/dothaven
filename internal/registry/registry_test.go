@@ -24,7 +24,7 @@ func TestEntriesInvariants(t *testing.T) {
 	dests := map[string]string{}
 	for _, e := range Entries {
 		if prev, dup := dests[e.BackupDest]; dup {
-			t.Errorf("%s and %s share BackupDest %q — restore could not tell them apart", prev, e.ID, e.BackupDest)
+			t.Errorf("%s and %s share BackupDest %q: restore could not tell them apart", prev, e.ID, e.BackupDest)
 		}
 		dests[e.BackupDest] = e.ID
 		if strings.HasPrefix(e.BackupDest, "inventory") || strings.HasPrefix(e.BackupDest, "macos-defaults") || strings.HasPrefix(e.BackupDest, ExtraCategory+"/") {
@@ -62,7 +62,7 @@ func TestEntriesInvariants(t *testing.T) {
 			continue
 		}
 		if e.Sensitivity != High {
-			t.Errorf("%q must be High sensitivity (got %q) — credential files must be encrypted", id, e.Sensitivity)
+			t.Errorf("%q must be High sensitivity (got %q): credential files must be encrypted", id, e.Sensitivity)
 		}
 	}
 }
@@ -109,7 +109,7 @@ func TestCollect(t *testing.T) {
 	if len(items) != 2 || items[0].Raw != "a.md" || items[1].Raw != "b.md" {
 		t.Errorf("claude skills items: %v", items)
 	}
-	// Missing entries are simply absent
+	// Missing entries are absent
 	if _, ok := snap["cloud.aws.credentials"]; ok {
 		t.Error("entry not on disk should be absent")
 	}
@@ -181,7 +181,7 @@ func TestNestedDestsAgreeOnSource(t *testing.T) {
 }
 
 // A snapshot is plain JSON: a credential file with no redactor is recorded as
-// present, and its contents never copied — whatever the scanner would make
+// present and its contents are never copied, whatever the scanner would make
 // of them.
 func TestCollectNeverCopiesCredentialFiles(t *testing.T) {
 	home := "/h"

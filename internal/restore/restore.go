@@ -24,7 +24,7 @@ const (
 	StatusNew      Status = "new"      // in backup, absent on machine
 	StatusConflict Status = "conflict" // present on machine but differs
 	StatusSame     Status = "same"     // identical
-	StatusRedacted Status = "redacted" // backup holds a [REDACTED] marker — unrestorable
+	StatusRedacted Status = "redacted" // backup holds a [REDACTED] marker, so it cannot be restored
 	// Ledger-backed statuses (see Ledger.refine).
 	StatusUpdate  Status = "update"  // live file is what restore wrote earlier; the backup is newer
 	StatusChanged Status = "changed" // restore wrote it earlier, and it has been edited since
@@ -76,9 +76,9 @@ func (p Plan) backupContent(e Entry) ([]byte, error) {
 	return raw, err
 }
 
-// metaPath reports whether a backup file is the backup's own bookkeeping —
-// its manifest, inventory and settings — which restore does not map to a
-// config location (the next steps handle those).
+// metaPath reports whether a backup file is the backup's own bookkeeping (its
+// manifest, inventory and settings), which restore does not map to a config
+// location. The next steps handle those.
 func metaPath(rel string) bool {
 	return rel == "MANIFEST.txt" || rel == "dothaven.json" || rel == "README.md" || rel == "secrets.tar.gz.age" ||
 		strings.HasPrefix(rel, "inventory/") || strings.HasPrefix(rel, "macos-defaults/")
@@ -165,8 +165,8 @@ func readLiveTarget(path string) (content string, exists bool) {
 	return string(b), true
 }
 
-// contained reports whether target is base itself or lies within it (after
-// cleaning) — the guard against a backup entry writing outside its tree.
+// contained reports whether target is base itself or lies within it after
+// cleaning. It is the guard against a backup entry writing outside its tree.
 func contained(base, target string) bool {
 	base, target = filepath.Clean(base), filepath.Clean(target)
 	return target == base || strings.HasPrefix(target, base+string(filepath.Separator))
@@ -201,8 +201,9 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 // HomeRewriter returns what rewrites the old machine's home folder to this
 // one's in a text file: a backup made as /Users/dogu restored where home is
 // /Users/dogu.yilmaz, or on Linux as /home/dogu. An absolute path into a
-// home that does not exist here is never what anyone wants — a PATH entry, an
-// editor setting, a hook command, `includeIf "gitdir:/Users/dogu/work/"`.
+// home that does not exist here is never what anyone wants, whether it is a
+// PATH entry, an editor setting, a hook command or
+// `includeIf "gitdir:/Users/dogu/work/"`.
 // Only a whole path component matches (/Users/dogu, not /Users/doguyilmaz),
 // and binary files are left alone. nil when there is nothing to rewrite.
 func HomeRewriter(oldHome, newHome string) func([]byte) []byte {
@@ -224,7 +225,7 @@ func HomeRewriter(oldHome, newHome string) func([]byte) []byte {
 
 // BuildPlanRewriting is BuildPlanWith with each backup file passed through
 // rewrite (HomeRewriter) before it is compared and written, so hashes, the
-// ledger and diffs all see the content that would actually land.
+// ledger and diffs all see the content that would land.
 func BuildPlanRewriting(backupDir, home string, targets []registry.BackupTarget, lg *Ledger, rewrite func([]byte) []byte) (Plan, error) {
 	m := buildMap(targets)
 	dirDests := dirDestsByLength(m)
@@ -238,7 +239,7 @@ func BuildPlanRewriting(backupDir, home string, targets []registry.BackupTarget,
 			return nil
 		}
 		if !d.Type().IsRegular() {
-			return nil // skip a symlink/FIFO/device in the backup tree — reading it can hang
+			return nil // skip a symlink/FIFO/device in the backup tree: reading it can hang
 		}
 		rel, _ := filepath.Rel(backupDir, path)
 		rel = filepath.ToSlash(rel)
@@ -382,7 +383,7 @@ type Outcome struct {
 	// ask (off a terminal). It is still offered next time.
 	Kept bool
 	// NoCopy is a file that differs and was not replaced because the current
-	// version could not be read — and so could not be kept aside first.
+	// version could not be read, and so could not be kept aside first.
 	NoCopy bool
 }
 
@@ -390,7 +391,7 @@ type Outcome struct {
 type ExecuteResult struct {
 	Restored       int
 	Skipped        int
-	SkippedSymlink int    // live target was a symlink — refused, surface for manual resolution
+	SkippedSymlink int    // live target was a symlink: refused, left for the user to resolve
 	SnapshotDir    string // set if a pre-restore snapshot was written
 	PerCategory    map[string]int
 	Outcomes       []Outcome
@@ -458,8 +459,8 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 				continue
 			}
 		}
-		// Anything already on disk is snapshotted before it is replaced — an
-		// update of restore's own earlier write included. A file that cannot
+		// Anything already on disk is snapshotted before it is replaced,
+		// including an update of restore's own earlier write. A file that cannot
 		// be read cannot be kept aside, so it is not replaced either.
 		if e.LiveSHA != "" && opts.SnapshotDir != "" {
 			raw, err := os.ReadFile(e.TargetPath)

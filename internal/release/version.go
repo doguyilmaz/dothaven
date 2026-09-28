@@ -15,7 +15,7 @@ import (
 // Comparison is numeric per segment, which a string compare is not: 0.10.0 is
 // above 0.9.0, and this tool is close enough to that boundary for it to matter.
 // A leading v is ignored, because release tags carry one and the version
-// embedded at build time does not — comparing those two raw is the mistake this
+// embedded at build time does not. Comparing those two raw is the mistake this
 // exists to prevent.
 //
 // Unparsable input is treated as zero rather than an error: a version that
@@ -33,7 +33,7 @@ func Compare(a, b string) int {
 	// Numerically equal, so the pre-release decides. 1.2.0-rc.1 comes before
 	// 1.2.0: a release outranks anything leading up to it. Two pre-releases are
 	// ordered as text, which is right for rc.1 vs rc.2 and wrong for rc.9 vs
-	// rc.10 — an ordering dothaven's own tags never produce.
+	// rc.10, an ordering dothaven's own tags never produce.
 	switch {
 	case aPre == "" && bPre == "":
 		return 0
@@ -55,9 +55,9 @@ func Comparable(v string) bool {
 
 // Newer reports whether latest is a real upgrade over current.
 //
-// Both sides must actually parse. That is what keeps a `go build` binary
-// (version "dev") quiet: it has nothing to compare, and nagging someone working
-// on dothaven itself is pure noise. Checking that the version parses rather
+// Both sides must parse. That is what keeps a `go build` binary (version
+// "dev") quiet: it has nothing to compare, and nagging someone working on
+// dothaven itself is noise. Checking that the version parses rather
 // than matching the literal "dev" means no sentinel string has to be kept in
 // step with cmd/dothaven.
 func Newer(current, latest string) bool {

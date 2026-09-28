@@ -25,7 +25,7 @@ type Ctx struct {
 	Done *int64
 }
 
-// A Collector gathers some sections. It must not abort the run on failure — it
+// A Collector gathers some sections. It must not abort the run on failure: it
 // returns whatever it could (an empty map is fine), and panics are recovered.
 type Collector func(c Ctx) snapshot.Snapshot
 
@@ -51,8 +51,8 @@ func RunCollectors(c Ctx, collectors []Collector) snapshot.Snapshot {
 		go func(i int, col Collector) {
 			defer wg.Done()
 			// Failure isolation: a panicking collector yields an empty section
-			// instead of aborting the run — but log it to stderr so a genuine
-			// parser bug is observable rather than silently swallowed.
+			// instead of aborting the run, but it is logged to stderr so a real
+			// parser bug is visible rather than silently swallowed.
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Fprintf(os.Stderr, "dothaven: collector %d panicked: %v\n%s\n", i, r, debug.Stack())

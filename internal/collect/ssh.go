@@ -9,8 +9,9 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
 
-// sshRedactionMarker aliases scan.Marker — one redaction marker across the
-// codebase so a future change to the token can't leave ssh output out of sync.
+// sshRedactionMarker aliases scan.Marker. One redaction marker across the
+// codebase means a future change to the token can't leave ssh output out of
+// sync.
 const sshRedactionMarker = scan.Marker
 
 var (

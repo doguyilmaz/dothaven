@@ -13,7 +13,7 @@ import (
 // MobileCollector records the mobile toolchain: simulator runtimes, Android SDK
 // packages and AVD definitions.
 //
-// None of it is copied — a simulator runtime is gigabytes and an AVD is a disk
+// None of it is copied. A simulator runtime is gigabytes and an AVD is a disk
 // image, both rebuildable from a name. What gets lost in a migration is the
 // *list*: which iOS versions you tested against, which API levels you kept
 // around, which device definitions you had set up. Rebuilding that from memory

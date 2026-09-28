@@ -1,9 +1,9 @@
 package macprefs
 
 // coreDomains are the domains that hold what people mean by "my Mac settings":
-// the things you notice are wrong within a minute of logging into a new machine
-// — scrolling direction, key repeat, Dock size, hot corners, Finder options,
-// keyboard shortcuts.
+// the things you notice are wrong within a minute of logging into a new machine,
+// such as scrolling direction, key repeat, Dock size, hot corners, Finder
+// options and keyboard shortcuts.
 //
 // The wide capture reads every domain on the machine, several hundred of them,
 // and most of what it finds is an application's own internal state. Replaying
@@ -40,7 +40,7 @@ var coreDomains = map[string]bool{
 func IsCore(domain string) bool { return coreDomains[domain] }
 
 // IsCoreEntry reports whether one setting is applied by default: everything in
-// a core domain, and App Shortcuts wherever they live — a menu shortcut is
+// a core domain, and App Shortcuts wherever they live. A menu shortcut is
 // always somebody's choice, never an app's bookkeeping.
 func IsCoreEntry(domain, key string) bool {
 	return coreDomains[domain] || key == "NSUserKeyEquivalents"

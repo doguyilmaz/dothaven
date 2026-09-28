@@ -7,8 +7,8 @@ import (
 	"github.com/doguyilmaz/dothaven/internal/tui"
 )
 
-// scripted answers the questions in order, and fails loudly if the guide asks
-// more than the script covers — an unanswered question means a path nobody
+// scripted answers the questions in order. It fails the test if the guide asks
+// more than the script covers, since an unanswered question is a path nobody
 // checked.
 func scripted(t *testing.T, answers ...string) asker {
 	t.Helper()
@@ -34,7 +34,7 @@ func planText(p *plan) string {
 
 func noteText(p *plan) string { return strings.Join(p.notes, "\n") }
 
-// fullText is everything the user actually reads: commands, reasons and notes.
+// fullText is everything the user reads: commands, reasons and notes.
 func fullText(p *plan) string {
 	var b strings.Builder
 	for _, s := range p.steps {
@@ -185,12 +185,12 @@ func TestGuideOnTheNewMachinePicksBySource(t *testing.T) {
 	// Nothing on disk yet: find it on a drive, or restore from GitHub.
 	withNothing, _ := runGuide(machineFacts{}, scripted(t, "clone", "all", "new"))
 	if got := planText(withNothing); !strings.Contains(got, "restore github") || strings.Contains(got, "restore --dry-run") {
-		t.Errorf("nothing found — offer discovery and GitHub, not a path:\n%s", got)
+		t.Errorf("with nothing found, offer discovery and GitHub, not a path:\n%s", got)
 	}
 }
 
-// The wipe path holds the only irreversible mistake, so `ready` comes first
-// every time: a backup taken after the disk is erased is not a backup.
+// On the wipe path `ready` always comes first: work that exists only on this
+// disk cannot be recovered once it is erased.
 func TestGuideChecksForUnsavedWorkBeforeAnythingElse(t *testing.T) {
 	for _, answers := range [][]string{{"wipe", "same"}, {"wipe", "remote", "file"}, {"wipe", "remote", "chezmoi"}} {
 		after := strings.Join(answers, "/")
@@ -205,8 +205,8 @@ func TestGuideChecksForUnsavedWorkBeforeAnythingElse(t *testing.T) {
 	}
 }
 
-// Reinstalling the same machine is the case where the backup is on the disk
-// being erased — worth saying out loud.
+// When the same machine is reinstalled, the backup may be on the disk being
+// erased, so the guide has to warn about it.
 func TestGuideWipeSameMachineWarnsTheBackupIsOnThatDisk(t *testing.T) {
 	p, _ := runGuide(machineFacts{}, scripted(t, "wipe", "same"))
 	var warned bool
@@ -266,8 +266,7 @@ func TestGuideRepoWarnsBeforeCommittingSecretsUnencrypted(t *testing.T) {
 	}
 }
 
-// Every plan has to explain itself; advice you cannot check is advice you
-// cannot trust.
+// Every plan gives a reason and at least one step.
 func TestEveryPlanExplainsItself(t *testing.T) {
 	paths := [][]string{
 		{"backup", "backend", "local"},

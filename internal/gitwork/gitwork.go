@@ -3,7 +3,7 @@
 // Everything else dothaven handles is recoverable: a config you forget can be
 // written again, a package you miss can be reinstalled. Uncommitted changes,
 // unpushed commits and stashes cannot. They are the only thing a wipe destroys
-// permanently, and they are what a migration checklist is really for.
+// permanently, and they are what a migration checklist is for.
 package gitwork
 
 import (
@@ -29,7 +29,7 @@ type Repo struct {
 	HasRemote bool // false means the whole repository exists only here
 	// Ignored lists files git deliberately does not track that hold what a
 	// clone cannot give back: .env files, keys, local terraform state. They
-	// are ignored precisely because they are secret or machine-local, which is
+	// are ignored because they are secret or machine-local, which is
 	// also why a wipe followed by `git clone` loses them.
 	Ignored []string
 	Err     string
@@ -117,8 +117,8 @@ var skipPaths = []string{".local/share/nvim", ".vim/plugged", ".tmux/plugins", "
 // and a migration check that takes minutes is one nobody runs.
 //
 // A directory is recognised by its .git entry before the depth limit is
-// applied — checking afterwards missed every repository sitting exactly at
-// the limit — and a .git file (a worktree or submodule) counts as well.
+// applied (checking afterwards missed every repository sitting exactly at the
+// limit), and a .git file (a worktree or submodule) counts as well.
 func Find(ctx context.Context, roots []string, maxDepth int) []string {
 	seen := map[string]bool{}
 	var found []string
@@ -161,7 +161,7 @@ func Find(ctx context.Context, roots []string, maxDepth int) []string {
 }
 
 // Inspect reports the unsaved work in each repo, concurrently. Only local git
-// state is read — nothing is fetched, so this is fast and works offline. That
+// state is read. Nothing is fetched, so this is fast and works offline. That
 // means "unpushed" is measured against the last known remote state.
 func Inspect(ctx context.Context, run Runner, paths []string, progress *int64) []Repo {
 	out := make([]Repo, len(paths))

@@ -51,7 +51,7 @@ A [GitHub push](../github) in the default `encrypted` mode uploads exactly this 
 dothaven init
 ```
 
-`init` checks that chezmoi is installed, that `~/.config/chezmoi/chezmoi.toml` declares `encryption = "age"`, and that your chezmoi source is an initialized git repository. For each missing step it prints the command, and on a terminal offers to run the safe ones (installing chezmoi with Homebrew, `chezmoi init <url>`).
+`init` checks that chezmoi is installed, that `~/.config/chezmoi/chezmoi.toml` declares `encryption = "age"`, and that your chezmoi source is an initialized git repository. For each missing step it prints the command, and on a terminal offers to run the safe ones (installing chezmoi with Homebrew, adding your age key to `chezmoi.toml`, `chezmoi init <url>`), then checks again.
 
 It never creates your age key. That key is the only way to decrypt your secrets, so generating it and backing it up is yours to do:
 
@@ -59,7 +59,7 @@ It never creates your age key. That key is the only way to decrypt your secrets,
 age-keygen -o ~/.config/chezmoi/key.txt    # or: chezmoi age-keygen
 ```
 
-Then add the age settings (`encryption = "age"`, the identity file and your recipient) to `chezmoi.toml`, as described in [chezmoi's age guide](https://www.chezmoi.io/user-guide/encryption/age/).
+Then run `dothaven init` again. It finds the key and offers to add the age settings to `chezmoi.toml`: `encryption = "age"` as the first line, and an `[age]` table with the key file and its public recipient. It does not touch a file that already sets `encryption` or `[age]`, and keeps the old file as `chezmoi.toml.before-dothaven`. To do it by hand instead, see [chezmoi's age guide](https://www.chezmoi.io/user-guide/encryption/age/).
 
 {{< callout type="error" >}}
 **If you lose the age key, every encrypted file in your chezmoi repo is unrecoverable.** Keep a copy offline, in your password manager, and never commit it.
@@ -77,10 +77,10 @@ dothaven treats the key as the most sensitive file you have:
 dothaven chezmoi-export
 ```
 
-This is a dry run. On a terminal with no `--only`/`--skip` it first asks which categories to export, plus two install groups: `brew` (Homebrew formulae and casks) and `packages` (global npm, pnpm, bun, pipx, cargo and other packages).
+It shows the plan first, and changes nothing until you agree: on a terminal it then asks whether to carry it out, and off one it stays a dry run unless you pass `--apply`. On a terminal with no `--only`/`--skip` it first asks which categories to export, plus two install groups: `brew` (Homebrew formulae and casks) and `packages` (global npm, pnpm, bun, pipx, cargo and other packages).
 
 ```text
-chezmoi-export plan — 13 files, 5 encrypted:
+chezmoi-export plan (13 files, 5 encrypted):
 
      add            ~/.claude/settings.json  (plain)
   🔒 add --encrypt  ~/.claude.json  (secret detected)
@@ -93,10 +93,11 @@ chezmoi-export plan — 13 files, 5 encrypted:
   🔒 add --encrypt  ~/.ssh/id_ed25519  (ssh private key)
   + run_onchange install script (brew)
 
-🔒 Encrypted paths are recoverable only with your age key (~/.config/chezmoi/key.txt).
-   Back it up offline before you rely on this — a lost key means those files are gone for good.
+⚠ Encrypted files open only with your age key (~/.config/chezmoi/key.txt).
+  Back it up offline before you rely on this. Without it, those files cannot be recovered.
 
-Dry-run. Re-run with --apply to execute.
+Carry out this plan now? It adds these files to your chezmoi source.
+  Yes     No
 ```
 
 ### chezmoi-export
@@ -111,7 +112,7 @@ What decides each line:
 
 Folders are judged **file by file**: one token in one file of your Neovim config encrypts that file, not the whole folder. The plan line then says, for example, `folder, 40 files, 1 encrypted: secret detected`. A credential folder (`~/.ssh`, `~/.gnupg`) is encrypted as a whole.
 
-**Templated (`📝 add --template`)** for a single config file in the `shell`, `git`, `terminal`, `editor`, `dev` or `vm` categories that actually contains your home folder path. After adding it, dothaven rewrites every `/Users/you/` (or `/home/you/`) in the chezmoi copy to `{{ .chezmoi.homeDir }}/`, so the file works on a machine with a different username. Only that exact prefix is replaced, so a path such as `/Users/youtube` is left alone. Anything in the file that looks like template syntax (`{{` and `}}`, as in WezTerm key tables or Go format strings in a git alias) is escaped first, so `chezmoi apply` on the new machine does not fail on it. Files that do not mention your home folder are added as plain copies, since a template that did not need to be one is just one more thing that can fail to parse.
+**Templated (`📝 add --template`)** for a single config file in the `shell`, `git`, `terminal`, `editor`, `dev` or `vm` categories that contains your home folder path. After adding it, dothaven rewrites every `/Users/you/` (or `/home/you/`) in the chezmoi copy to `{{ .chezmoi.homeDir }}/`, so the file works on a machine with a different username. Only that exact prefix is replaced, so a path such as `/Users/youtube` is left alone. Anything in the file that looks like template syntax (`{{` and `}}`, as in WezTerm key tables or Go format strings in a git alias) is escaped first, so `chezmoi apply` on the new machine does not fail on it. Files that do not mention your home folder are added as plain copies, since an unneeded template is one more thing that can fail to parse.
 
 **Plain (`add`)** for everything else.
 

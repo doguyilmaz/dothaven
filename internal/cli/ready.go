@@ -12,13 +12,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newReadyCmd answers the only question a migration really turns on: is there
-// anything on this machine that a wipe would destroy for good?
+// newReadyCmd checks whether anything on this machine would be lost for good
+// in a wipe.
 //
-// Config is recoverable — a dotfile you forget can be written again, a package
+// Config is recoverable: a forgotten dotfile can be written again, a package
 // reinstalled. Uncommitted changes, unpushed commits and stashes cannot be.
-// They were also the one thing this tool never looked at, which made "I backed
-// everything up" a claim it could not actually support.
 //
 // Exits 2 when something is at risk, so this can gate a wipe script.
 func newReadyCmd(env *sys.OS) *cobra.Command {
@@ -31,8 +29,8 @@ func newReadyCmd(env *sys.OS) *cobra.Command {
 			"commits that are on no remote, stashes, and gitignored files a fresh clone\n" +
 			"won't bring back (.env files, keys, terraform state). Then checks how old your\n" +
 			"newest backup is.\n\n" +
-			"Nothing is fetched, so it is fast and works offline — which also means it\n" +
-			"judges against the remote state git last saw. Exits 2 if anything is at risk.",
+			"Nothing is fetched, so it is fast and works offline, but it compares against\n" +
+			"the remote state git last saw. Exits 2 if anything is at risk.",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -104,7 +102,7 @@ func checkReady(ctx context.Context, env *sys.OS, roots []string, depth int) rea
 	}
 
 	if len(orphans) > 0 {
-		fmt.Printf("\n%s\n", bold(fmt.Sprintf("%s with no remote — these exist ONLY on this machine:", plural(len(orphans), "repository"))))
+		fmt.Printf("\n%s\n", bold(fmt.Sprintf("%s with no remote (these exist ONLY on this machine):", plural(len(orphans), "repository"))))
 		for _, r := range orphans {
 			detail := plural(r.Unsaved, "commit")
 			if r.Dirty > 0 {
@@ -152,18 +150,17 @@ func checkReady(ctx context.Context, env *sys.OS, roots []string, depth int) rea
 	fmt.Println()
 	fmt.Println(dim(fmt.Sprintf("%s checked under %s.", plural(len(found), "repository"), strings.Join(mapStrings(roots, short), ", "))))
 
-	// A backup older than the machine's own config is a backup that would
-	// restore a machine you no longer have.
+	// A stale backup would restore an older version of this machine.
 	backupNote, stale := backupFreshness(env)
 	out.backupStale = stale
 	fmt.Println(backupNote)
 
 	if out.atRisk == 0 && !stale {
-		fmt.Println("\n" + good("✅ Safe to wipe — everything here exists somewhere else."))
+		fmt.Println("\n" + good("✓ Safe to wipe. Everything here exists somewhere else."))
 		return out
 	}
 	if out.atRisk > 0 {
-		fmt.Printf("\n%s\n", danger(fmt.Sprintf("❌ Not safe to wipe yet: %s %s work that exists nowhere else.", plural(out.atRisk, "repository"), pick(out.atRisk, "holds", "hold"))))
+		fmt.Printf("\n%s\n", danger(fmt.Sprintf("✗ Not safe to wipe yet: %s %s work that exists nowhere else.", plural(out.atRisk, "repository"), pick(out.atRisk, "holds", "hold"))))
 		if len(orphans) > 0 {
 			fmt.Printf("   %s no remote: add one and push, or copy the folder off this machine.\n", danger("✗"))
 		}
@@ -186,8 +183,7 @@ func mapStrings(in []string, f func(string) string) []string {
 }
 
 // pathCol is the width the repository column is held to. Long paths are
-// shortened from the middle rather than allowed to shove the detail column out
-// of line, which is what made a list of twenty repositories unreadable.
+// shortened from the middle so the detail column stays aligned.
 const pathCol = 44
 
 // backupFreshness reports how current the newest backup is, and whether that is
@@ -198,12 +194,12 @@ func backupFreshness(env *sys.OS) (string, bool) {
 		newest = &found[0]
 	}
 	if newest == nil {
-		return fmt.Sprintf("  %s No backup yet — run %s.", warn("⚠"), kbd("dothaven backup --encrypt")), true
+		return fmt.Sprintf("  %s No backup yet. Run %s.", warn("⚠"), kbd("dothaven backup --encrypt")), true
 	}
 	age := time.Since(newest.Mod)
 	where := fmt.Sprintf("%s, %s", newest.Kind, shortHome(env, newest.Path))
 	if age > 7*24*time.Hour {
-		return fmt.Sprintf("  %s Newest backup is %d days old (%s) — make a fresh one: %s.", warn("⚠"), int(age.Hours()/24), where, kbd("dothaven backup --encrypt")), true
+		return fmt.Sprintf("  %s Newest backup is %d days old (%s). Make a fresh one: %s.", warn("⚠"), int(age.Hours()/24), where, kbd("dothaven backup --encrypt")), true
 	}
 	return fmt.Sprintf("  %s Newest backup is %s old %s.", good("✓"), humanAge(age), dim("("+where+")")), false
 }
