@@ -733,11 +733,16 @@ func treeFiles(root string) ([]github.File, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				skipped++
+		// A .git folder, or the .git file a submodule or worktree has in its
+		// place: GitHub refuses any path component named .git.
+		if strings.EqualFold(d.Name(), ".git") {
+			skipped++
+			if d.IsDir() {
 				return fs.SkipDir
 			}
+			return nil
+		}
+		if d.IsDir() {
 			return nil
 		}
 		fi, err := d.Info()
@@ -749,7 +754,7 @@ func treeFiles(root string) ([]github.File, error) {
 		return nil
 	})
 	if skipped > 0 {
-		fmt.Printf("  %s %s left out of the readable copy (git cannot store a .git inside a repository; --mode encrypted keeps them)\n", dim("•"), plural(skipped, ".git folder"))
+		fmt.Printf("  %s %s left out of the readable copy (git cannot store a .git inside a repository; --mode encrypted keeps them)\n", dim("•"), plural(skipped, "entry")+" named .git")
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, err

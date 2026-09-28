@@ -58,6 +58,9 @@ func (c *Client) Commit(ctx context.Context, repo, branch, prefix string, files 
 			return "", fmt.Errorf("%s is %d MB; GitHub takes at most 100 MB per file", f.Path, f.Size>>20)
 		}
 	}
+	if err := c.seedIfEmpty(ctx, repo, branch, root); err != nil {
+		return "", err
+	}
 	sub, err := c.buildTree(ctx, repo, files)
 	if err != nil {
 		return "", err
@@ -132,6 +135,30 @@ func (c *Client) commitOnce(ctx context.Context, repo, branch, prefix, sub strin
 	}
 	b, _ = jsonBody(map[string]any{"sha": commit.SHA, "force": false})
 	return commit.SHA, c.do(ctx, http.MethodPatch, "/repos/"+repo+"/git/refs/heads/"+branch, b, "", nil)
+}
+
+// seedIfEmpty gives a repository with no commits at all its first one. The
+// Git Data API answers 409 to every blob and tree in such a repository (one
+// made by hand, without a README); the Contents API is the documented way to
+// start it, and everything after goes through the Git Data API as usual.
+func (c *Client) seedIfEmpty(ctx context.Context, repo, branch string, root map[string]string) error {
+	err := c.do(ctx, http.MethodGet, "/repos/"+repo+"/git/ref/heads/"+branch, nil, "", nil)
+	if !isEmptyRepo(err) {
+		return nil // has commits (or the error will surface on the real request)
+	}
+	readme, ok := root["README.md"]
+	if !ok {
+		readme = "# dothaven backup\n"
+	}
+	b, err := jsonBody(map[string]string{
+		"message": "Start the dothaven backup repository",
+		"content": base64.StdEncoding.EncodeToString([]byte(readme)),
+		"branch":  branch,
+	})
+	if err != nil {
+		return err
+	}
+	return c.do(ctx, http.MethodPut, "/repos/"+repo+"/contents/README.md", b, "", nil)
 }
 
 func isEmptyRepo(err error) bool {
@@ -269,7 +296,10 @@ func (c *Client) uploadBlob(ctx context.Context, repo, src string, size int64) (
 			pw.CloseWithError(err)
 		}()
 		n := int64(len(pre)) + int64(base64.StdEncoding.EncodedLen(int(size))) + int64(len(post))
-		return io.MultiReader(strings.NewReader(pre), pr, strings.NewReader(post)), n, nil
+		// The transport closes the body when the request ends, however it
+		// ends. Closing the pipe there is what lets the encoder goroutine,
+		// and the file it holds open, finish when a request fails midway.
+		return pipeBody{io.MultiReader(strings.NewReader(pre), pr, strings.NewReader(post)), pr}, n, nil
 	}
 	var out struct {
 		SHA string `json:"sha"`
@@ -277,6 +307,14 @@ func (c *Client) uploadBlob(ctx context.Context, repo, src string, size int64) (
 	err := c.do(ctx, http.MethodPost, "/repos/"+repo+"/git/blobs", b, "", &out)
 	return out.SHA, err
 }
+
+// pipeBody is a request body whose Close closes the pipe feeding it.
+type pipeBody struct {
+	io.Reader
+	pr *io.PipeReader
+}
+
+func (b pipeBody) Close() error { return b.pr.Close() }
 
 // Tarball streams the repository at ref as a .tar.gz into w.
 func (c *Client) Tarball(ctx context.Context, repo, ref string, w io.Writer) error {

@@ -152,3 +152,27 @@ func TestNotFoundAndBadToken(t *testing.T) {
 		t.Errorf("bad token err = %v", err)
 	}
 }
+
+// A repository made by hand without a README has no commits, and GitHub's
+// Git Data API refuses blobs and trees in it; the first push seeds it through
+// the Contents API and then commits as usual.
+func TestCommitIntoEmptyRepository(t *testing.T) {
+	s := githubtest.New("tok", "dev")
+	defer s.Close()
+	c := client(t, s)
+	ctx := context.Background()
+	s.AddEmptyRepo("dev/by-hand", true)
+
+	dir := t.TempDir()
+	files := []File{write(t, dir, "shell/.zshrc", "alias ll='ls -la'\n", 0o644)}
+	sha, err := c.Commit(ctx, "dev/by-hand", "main", "machines/box", files, map[string]string{"README.md": "hi\n"}, "backup")
+	if err != nil || sha == "" {
+		t.Fatalf("commit into an empty repository: %q %v", sha, err)
+	}
+	if b, ok := s.File("dev/by-hand", "main", "machines/box/shell/.zshrc"); !ok || string(b) != "alias ll='ls -la'\n" {
+		t.Errorf("file not committed: %q", b)
+	}
+	if b, ok := s.File("dev/by-hand", "main", "README.md"); !ok || string(b) != "hi\n" {
+		t.Errorf("README = %q", b)
+	}
+}

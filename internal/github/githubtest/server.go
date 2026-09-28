@@ -71,6 +71,14 @@ func (s *Server) AddRepo(full string, private bool) {
 	s.repos[full] = s.newRepo(private)
 }
 
+// AddEmptyRepo creates a repository with no commits, as GitHub does when one
+// is made without a README.
+func (s *Server) AddEmptyRepo(full string, private bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.repos[full] = &repo{private: private, refs: map[string]string{}}
+}
+
 // File returns a file's content at the tip of a branch, for assertions.
 func (s *Server) File(full, branch, p string) ([]byte, bool) {
 	s.mu.Lock()
@@ -218,9 +226,41 @@ func (s *Server) repoJSON(full string) map[string]any {
 
 func (s *Server) repoRoute(w http.ResponseWriter, r *http.Request, full string, rp *repo, rest []string) {
 	join := strings.Join(rest, "/")
+	// Like GitHub: the Git Data API refuses a repository with no commits;
+	// only the Contents API can create the first one.
+	if len(rp.refs) == 0 && strings.HasPrefix(join, "git/") {
+		writeJSON(w, 409, map[string]string{"message": "Git Repository is empty."})
+		return
+	}
 	switch {
 	case len(rest) == 0:
 		writeJSON(w, 200, s.repoJSON(full))
+	case strings.HasPrefix(join, "contents/") && r.Method == http.MethodPut:
+		var req struct{ Message, Content, Branch string }
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		b, err := base64.StdEncoding.DecodeString(req.Content)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"message": "bad base64"})
+			return
+		}
+		if req.Branch == "" {
+			req.Branch = "main"
+		}
+		base := s.putTree(map[string]entry{})
+		var parents []string
+		if tip, ok := rp.refs[req.Branch]; ok {
+			base, parents = s.commits[tip].tree, []string{tip}
+		}
+		t := s.setPath(base, strings.TrimPrefix(join, "contents/"), &entry{"100644", "blob", s.putBlob(b)})
+		c := s.putCommit(commit{t, parents, req.Message})
+		rp.refs[req.Branch] = c
+		writeJSON(w, 201, map[string]any{"commit": map[string]string{"sha": c}})
+	case join == "git/refs" && r.Method == http.MethodPost:
+		var req struct{ Ref, SHA string }
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		rp.refs[strings.TrimPrefix(req.Ref, "refs/heads/")] = req.SHA
+		s.Pushes++
+		writeJSON(w, 201, map[string]any{})
 	case strings.HasPrefix(join, "git/ref/heads/") && r.Method == http.MethodGet:
 		sha, ok := rp.refs[strings.TrimPrefix(join, "git/ref/heads/")]
 		if !ok {
