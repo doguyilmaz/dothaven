@@ -1,0 +1,31 @@
+# doctor checks dothaven itself, read-only, and exits 0 when nothing is broken.
+exec dothaven doctor
+stdout 'can dothaven do its job here'
+stdout 'platform'
+stdout 'tracked +1 file'
+stdout 'free space'
+stdout 'built in'
+! stdout '✗'
+
+# A data folder others can read is flagged, with the fix.
+mkdir .local/share/dothaven
+chmod 755 .local/share/dothaven
+exec dothaven doctor
+stdout 'readable by other users'
+stdout 'chmod 700'
+
+# `missing` compares a backup's inventory with this machine. The old spelling
+# (`doctor <backup>`) still works and says where it moved.
+exec dothaven doctor --help
+stdout 'dothaven missing <backup>'
+! exec dothaven doctor old-backup
+stdout 'is now `missing <backup>`'
+
+-- .zshrc --
+alias ll='ls -la'
+-- old-backup/MANIFEST.txt --
+# dothaven backup
+-- old-backup/inventory/snapshot.json --
+{
+  "packages.npm.global": { "items": [ { "raw": "dothaven-test-pkg-that-is-not-installed@1.0.0", "columns": ["dothaven-test-pkg-that-is-not-installed", "1.0.0"] } ] }
+}

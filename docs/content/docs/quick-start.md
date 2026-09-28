@@ -3,274 +3,132 @@ title: Quick start
 weight: 3
 ---
 
-This walkthrough takes you from a fresh install to your first snapshot, a secrets
-audit, and a diff between two machines. Every command here ships in the `dothaven`
-binary — a single static Go executable with no runtime dependency.
+This takes about five minutes. You will make a backup, see what it covers, look for secrets in your config, and open the dashboard. Nothing here changes your files.
 
-## Install
+If you are about to move to a new machine, you can skip ahead to [Moving to a new machine](../migration). This page is the gentle tour.
 
-dothaven is one self-contained binary. There is nothing to bootstrap and no
-interpreter to keep around.
-
-{{< tabs >}}
-  {{< tab name="Homebrew" >}}
-```bash
-brew install doguyilmaz/tap/dothaven
-```
-  {{< /tab >}}
-  {{< tab name="Go" >}}
-```bash
-go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest
-```
-  {{< /tab >}}
-  {{< tab name="Source" >}}
-```bash
-git clone https://github.com/doguyilmaz/dothaven
-cd dothaven
-go build ./cmd/dothaven
-```
-  {{< /tab >}}
-{{< /tabs >}}
-
-{{< callout type="info" >}}
-dothaven handles discovery, audit, and export. Long-term storage,
-age-encryption, and applying configs on a new machine are delegated to
-[chezmoi](https://www.chezmoi.io/). The two are designed to work together.
-{{< /callout >}}
-
-## 1. Collect a snapshot
-
-`dothaven collect` inventories the current machine — installed apps, Homebrew
-formulae and casks, global packages, language runtimes, editor extensions,
-fonts, SSH metadata, and tracked dotfiles — into a single timestamped JSON file.
+## 1. Install and check
 
 ```bash
-dothaven collect
+curl -fsSL https://raw.githubusercontent.com/doguyilmaz/dothaven/main/scripts/install.sh | sh
+dothaven doctor
 ```
+
+Other ways to install are on the [Installation](../installation) page. `doctor` ends with one line telling you whether everything dothaven needs is in place:
 
 ```text
-Report saved to: /Users/you/projects/dotfiles/reports/your-host-20260604093000.json
+✓ Everything dothaven needs is in place.
+```
+
+## 2. Or just open the menu
+
+```bash
+dothaven
+```
+
+With no arguments on a terminal, dothaven opens a menu grouped by what you want to do: moving to a new machine, your private GitHub repo, everyday tasks, and the optional chezmoi sync. Every entry says whether it only looks or also writes. See [Interactive mode](../interactive).
+
+The rest of this page uses commands, so you can see what each step does.
+
+## 3. Make a quick backup
+
+```bash
+dothaven backup
+```
+
+On a terminal it first asks which categories to include (everything is selected), then offers any config-looking paths it does not know about yet. Pass `--only` or `--skip` to skip the questions.
+
+The result is a folder in `~/.local/share/dothaven`:
+
+```text
+✓ Backup saved — 9 files, 400 B
+  /Users/you/.local/share/dothaven/backup-mymac-20260927232931
+  ai (4), git (2), npm (1), shell (1), ssh (1)
+  + installed apps & packages list
+
+⚠ 2 paths with credentials left out of this plaintext backup:
+    cloud/aws/credentials
+    ssh
+  For a complete copy, keys included: dothaven backup --encrypt
 
 ⚠ Sensitivity report:
-  HIGH   /Users/you/.npmrc                npm auth token — redacted
-  HIGH   /Users/you/.ssh/id_ed25519       private key — skipped
+  HIGH   ai/claude/claude.json          GitHub token — redacted
+  HIGH   npm/.npmrc                     npm auth token — redacted
+  MEDIUM ssh/config                     IP address — redacted
 
-  1 items redacted, 1 skipped. Use --no-redact to include all.
+  3 items redacted. Use --no-redact to include all.
+  Redacted files are kept for reference but not restored over your real ones.
 ```
 
-### Where the file lands
+This plain backup is a safe local copy: secret values are masked, and SSH keys and cloud logins are left out and listed. It is good for "what changed since last week?" For moving to a new machine you want the encrypted one: `dothaven backup --encrypt`. The [Backup & restore](../backup-restore) page explains the difference.
 
-The output directory is resolved in this order:
-
-1. An explicit `-o` / `--output` directory always wins.
-2. Otherwise, if the working directory is a git repository, the file is written
-   to `<cwd>/reports`.
-3. Otherwise it falls back to `~/.local/share/dothaven`.
-
-The filename is `<hostname>-<UTC timestamp>.json`, where the timestamp is 14
-digits in `YYYYMMDDHHMMSS` form.
-
-### The sensitivity report
-
-By default `collect` redacts secrets before they ever touch disk. As it builds
-the snapshot it scans each section and prints the inline **Sensitivity report**
-shown above. Each line is `SEVERITY  PATH  label — disposition`, where the
-disposition is one of:
-
-- **redacted** — the value is masked but the section is kept (tokens, API keys,
-  passwords, connection strings).
-- **skipped** — the whole section is dropped (private keys are never written
-  out, even masked).
-- **included** — kept as-is (low-risk matches such as a home-directory path).
-
-A trailing summary tallies how many items were redacted or skipped.
-
-To capture raw values instead, pass `--no-redact`. To keep long file contents
-short (truncated to 10 lines), add `--slim`.
+## 4. See what changed since
 
 ```bash
-dothaven collect --no-redact          # keep raw values, skip redaction
-dothaven collect --slim               # truncate long file bodies
-dothaven collect -o ~/snapshots       # choose the output directory
-```
-
-{{< callout type="warning" >}}
-`--no-redact` writes secrets to the snapshot in clear text. Only use it on files
-you keep private, and never commit such a snapshot to a shared repository.
-{{< /callout >}}
-
-## 2. Scan for sensitive data
-
-`collect` audits what goes into a snapshot. The standalone scanners let you point
-the same secret detection at any file or directory.
-
-### Console scan
-
-`dothaven scan` walks a path and prints findings to the terminal. With no
-argument it scans the current directory; directory walks skip `node_modules` and
-`.git` and ignore files larger than 1 MiB.
-
-```bash
-dothaven scan ~
+dothaven status   # one-screen summary
+dothaven diff     # file by file
 ```
 
 ```text
-/Users/you/.npmrc
-  L1 [HIGH] npm auth token: //registry.npmjs.org/:_authToken=npm_xxxxxxx...
+Last backup: 2h ago (backup-mymac-20260927232931)
+  9 files tracked: 1 modified, 5 unchanged
+  3 redacted
 
-/Users/you/.aws/credentials
-  L3 [HIGH] AWS secret key: aws_secret_access_key = wJalrXUtnF...
-
-⚠ Sensitivity report:
-  HIGH   /Users/you/.npmrc                npm auth token — redacted
-  HIGH   /Users/you/.aws/credentials      AWS secret key — redacted
-
-  2 items redacted. Use --no-redact to include all.
+Modified since backup:
+  ~ shell/.zshrc
 ```
 
-Each finding line is `L<line> [SEVERITY] <label>: <match>`, sorted with the
-highest severity first. Severities are `HIGH`, `MEDIUM`, and `LOW`. If nothing
-matches, `scan` prints `No sensitive data found.`
+## 5. Find config nothing covers yet
 
-### Markdown report
-
-`dothaven security` runs the same scan but writes a grouped Markdown report
-instead of printing detail to the console. It defaults to `SECURITY.md` in the
-current directory; override with `-o` / `--output`.
+dothaven knows a few hundred config locations. Everything else that looks like config is listed here:
 
 ```bash
-dothaven security ~
+dothaven include --list
 ```
 
 ```text
-Security report written to: SECURITY.md
-  142 scanned, 3 with findings.
+Not covered by anything (3) — not in your backups:
+  ? ~/.mytoolrc
+  ? ~/.config/raycast
+  ? ~/bin
 ```
 
-The report groups files by their top severity (HIGH / MEDIUM / LOW) and notes
-the disposition for each:
-
-```markdown
-# Security Report
-
-142 file(s) scanned · 3 with findings · 2 to redact · 1 to skip.
-
-## 🔴 HIGH — secrets (masked or skipped before sync)
-- `/Users/you/.aws/credentials` — AWS secret key · redact · L3
-- `/Users/you/.npmrc` — npm auth token · redact · L1
-- `/Users/you/.ssh/id_ed25519` — private key · skip (private key) · L1
-```
-
-## 3. Inspect a section
-
-`dothaven list <section>` prints one section from the most recent snapshot in
-`./reports`. The section name is fuzzy-matched, so a short query expands to any
-section whose name (or any dot-delimited part of it) contains it.
+Add what you want carried in every backup:
 
 ```bash
-dothaven list brew
+dothaven include ~/.config/raycast ~/bin
 ```
+
+## 6. Look for secrets in your config
+
+```bash
+dothaven scan
+```
+
+With no path, `scan` checks every file a backup would carry. It shows where each secret is and what kind it is, never the value itself:
 
 ```text
-[apps.brew.casks]
-  ghostty
-  raycast
-  visual-studio-code
+~/.aws/credentials
+  L2 [HIGH] AWS access key: AKIA••••LE
 
-[apps.brew.formulae]
-  fzf
-  jq
-  ripgrep
+~/.ssh/id_ed25519
+  L1 [HIGH] private key: -----BEGIN OPENSSH PRIVATE KEY-----
 ```
 
-Section names follow a dotted convention — for example `meta`, `apps.macos`,
-`apps.brew.formulae`, `apps.brew.casks`, `packages.npm.global`, `runtimes.go`,
-`runtimes.rust`, `fonts.user`, and `ai.ollama.models`. Because the match is
-fuzzy, `list runtimes` prints every `runtimes.*` section and `list ollama` finds
-`ai.ollama.models`.
+It exits with code 2 when it finds anything HIGH, so you can use it in a commit hook. Pass a path to scan any file or folder: `dothaven scan ~/projects/api`.
 
-If no snapshot exists yet, `list` reminds you to run `dothaven collect` first.
-
-## 4. Compare two snapshots
-
-`dothaven compare` diffs two JSON snapshots and prints only what changed. Give it
-two files explicitly, or omit the arguments to compare the two newest reports in
-`./reports`.
+## 7. Open the dashboard
 
 ```bash
-dothaven compare reports/old-host-20260101120000.json reports/new-host-20260604093000.json
+dothaven ui
 ```
 
-```text
-+ [apps.brew.casks]  (only in old-host-20260101120000)
-  + orbstack  (only in old-host-20260101120000)
-
-[meta]
-  ~ date = 2026-01-01 → 2026-06-04
-
-[packages.npm.global]
-  + typescript  (only in old-host-20260101120000)
-  - eslint  (only in old-host-20260604093000)
-```
-
-The labels are the file basenames (without `.json`). The prefixes read:
-
-- `+` — present only in the first (left) file.
-- `-` — present only in the second (right) file.
-- `~` — a key-value pair whose value changed (`old → new`).
-
-A section header wrapped in `+ [...]` or `- [...]` means the whole section is
-new or gone. When the two snapshots are identical, `compare` prints
-`No differences found.` Color is used automatically when stdout is a terminal.
-
-```bash
-dothaven compare      # diff the two newest reports in ./reports
-```
-
-## 5. Migrate with chezmoi
-
-Once a snapshot looks right, hand the actual files off to chezmoi for storage,
-age-encryption, and applying on another machine. `dothaven chezmoi-export` builds
-the plan: plain `chezmoi add` for ordinary configs, `chezmoi add --encrypt` for
-anything containing a high-severity secret, and `chezmoi add --template` for
-host-varying configs (shell rc, gitconfig, editor settings) — whose absolute home
-paths are rewritten to `{{ .chezmoi.homeDir }}` so they port across machines.
-
-It is a dry run by default — nothing is changed until you pass `--apply`.
-
-```bash
-dothaven chezmoi-export
-```
-
-```text
-chezmoi-export plan — 4 path(s), 1 encrypted:
-
-     add            /Users/you/.gemini/GEMINI.md  (plain)
-  📝 add --template  /Users/you/.gitconfig  (templated (host paths))
-  📝 add --template  /Users/you/.zshrc  (templated (host paths))
-  🔒 add --encrypt  /Users/you/.ssh/id_ed25519  (ssh private key)
-```
-
-On the fresh machine, `dothaven migrate` runs the other half: it checks the
-prerequisites and applies your chezmoi source (pulling configs and running the
-install script). See [Commands](../commands#migrate).
-
-Useful flags:
-
-- `--apply` — execute the plan (requires `chezmoi` and `age` to be installed).
-- `--pin` — pin global packages to the version captured in the snapshot.
-- `--only` / `--skip` — comma-separated categories to include or exclude
-  (for example `--only ssh,brew`).
-
-{{< callout type="warning" >}}
-age is the encryption backend. If you lose your age key, the encrypted files in
-your chezmoi repository are unrecoverable. Back the key up somewhere safe before
-you rely on `--apply`.
-{{< /callout >}}
+This opens a page in your browser, served from your own machine only: coverage by category, what nothing covers, the backups it can find, secrets in plain files, repositories with unpushed work, installed software, and your GitHub backup. It never writes anything. Press Enter in the terminal to stop it. See [Dashboard](../dashboard).
 
 ## Where to go next
 
 {{< cards >}}
-  {{< card link="../commands" title="Commands" subtitle="Full reference for every subcommand and flag" >}}
-  {{< card link="../installation" title="Installation" subtitle="All install methods and requirements" >}}
+  {{< card link="../migration" title="Moving to a new machine" subtitle="Ready, pack, restore, reinstall, check." >}}
+  {{< card link="../github" title="GitHub sync" subtitle="Keep every machine in a private repo." >}}
+  {{< card link="../commands" title="Commands" subtitle="Every command and flag." >}}
 {{< /cards >}}

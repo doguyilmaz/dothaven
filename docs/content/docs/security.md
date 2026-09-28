@@ -1,181 +1,172 @@
 ---
-title: Security & redaction
-weight: 9
+title: Security
+weight: 11
 ---
 
-dothaven audits dotfiles for secrets before they ever leave your machine. Every file and snapshot section is run through a built-in scanner that classifies what it finds, then either masks the value, drops the file entirely, or keeps it with a warning. This page describes how the scanner decides, what it detects, and how that protection wires into backups and exports.
+A backup of your dev setup is, among other things, a collection of your keys and tokens. This page explains exactly where secrets can end up, what dothaven does to keep them safe in each place, and why.
 
-The scanner is pure Go — it ships inside the single static `dothaven` binary with no external service, network call, or runtime dependency. Nothing is uploaded for analysis.
+The short version:
 
-## Severity and action
+- **Plain backups never hold a credential** (unless you pass `--no-redact`). Secret values are masked, credential files and private keys are left out, and everything left out is listed.
+- **The encrypted backup holds everything**, and is never written unencrypted, not even for a moment.
+- **Nothing is replaced on restore without asking**, and what is replaced is kept.
+- **Tokens live in your keychain.** GitHub repos must be private. The dashboard is local and read-only.
 
-Every detection rule carries two independent dimensions: a **severity** (how alarming the match is) and an **action** (what the scanner does about it).
+All scanning and encryption happen inside the dothaven binary. Nothing is sent anywhere for analysis.
 
-Severity is informational — it ranks findings in reports so the worst offenders sort first:
+## Where a secret can end up
 
-| Severity | Meaning |
-| --- | --- |
-| `HIGH` | Credentials and private keys — tokens, API keys, connection strings, certificates. |
-| `MEDIUM` | Identifiers that leak context — IP addresses, email addresses. |
-| `LOW` | Local environment leakage — your home directory path. |
+| Output | Secret values in files | Credential files (`~/.ssh`, `~/.aws/credentials`, …) | Files with a private key |
+| --- | --- | --- | --- |
+| `backup`, `backup --archive` | Masked as `[REDACTED]` | Left out, listed | Left out, listed |
+| `backup --no-redact` | Raw | Included | Included, with a loud warning |
+| `backup --encrypt` | Raw, inside the encryption | Included, encrypted | Included, encrypted |
+| `github push` (encrypted, default) | Same as `--encrypt` | | |
+| `github push --mode split` | Any file with a secret goes into the encrypted bundle | Encrypted bundle | Encrypted bundle |
+| `github push --mode plain` | Same as a plain backup | | |
+| `collect` snapshot | Masked | Their text is included, with secret values masked | Dropped |
+| `scan` output | A masked preview, never the value | | |
+| `dothaven ui` | File names and kinds only | | |
+| `chezmoi-export` | Files with a HIGH secret are added encrypted | Added encrypted | Added encrypted |
 
-Action is what actually happens to the data:
+Everything dothaven writes for itself (backups, snapshots, the security report, exported settings, the restore ledger) is owner-only (`0600` files, `0700` folders). A `collect` snapshot records credential files as present, never their contents.
 
-| Action | Behavior |
-| --- | --- |
-| `skip` | Drop the whole file or section. Nothing from it is written. |
-| `redact` | Replace the matched value with a marker, keep the rest. |
-| `include` | Keep the value as-is, only surface it in the report. |
+## Plain backups: the redaction gate
 
-### Action priority
+Every file that goes into a plain backup passes a gate first:
 
-A single file can trigger many rules at once. The scanner resolves them to **one** action per file using a strict priority:
+1. **Credential entries are left out.** A registry entry marked high-sensitivity with no dedicated redactor, such as `~/.ssh`, `~/.aws/credentials`, kubeconfig, `~/.gnupg`, or a CLI's login file, is not copied at all. Why not scan and mask them instead? Because pattern matching is best-effort: an opaque token or binary key material has no recognisable shape. For files whose whole purpose is a secret, leaving them out is the only safe choice.
+2. **Credential folders stay protected however they are reached.** If you `include ~/.aws`, or a broader entry wraps a credential folder, the files inside it are still left out. Paths are compared as written and as resolved, so symbolic links do not get around it: a stow-managed `~/.kube/config` that points into an included `~/.dotfiles` is still a credential, and so is a link in an included folder that points at `~/.aws/credentials`.
+3. **Files with a private key are left out.** This is decided by content, not by file name: a PEM or PGP private-key block (also base64-encoded), GnuPG's binary key format, or an age identity, anywhere in the file. A private key cannot be partly masked into safety.
+4. **Everything else is scanned and masked.** Matched secret values are replaced with `[REDACTED]`, every occurrence in the file. The rest of the file is kept so you can read it.
+5. **Text files over 8 MiB are left out**, because they are too large to check. The encrypted backup carries them.
+
+Everything left out is printed at the end of the backup and written to its `MANIFEST.txt`, so the backup can be checked for completeness later:
 
 ```text
-skip  >  redact  >  include
+⚠ 2 paths with credentials left out of this plaintext backup:
+    cloud/aws/credentials
+    ssh
+  For a complete copy, keys included: dothaven backup --encrypt
 ```
 
-So a file containing both an email address (`include`) and an AWS access key (`redact`) is redacted. A file containing a private key (`skip`) and a dozen redactable tokens is skipped outright — the entire file is dropped, because once a `skip`-action secret is present, masking the rest no longer makes the file safe to write. A file with no findings defaults to `include`.
+On the way back, restore never writes a file that contains `[REDACTED]`, even with `--force`, because that would replace a working token with the placeholder. It lists those files instead, so you know which ones to fill in by hand.
 
-## What the scanner detects
+`--no-redact` turns the gate off. It exists, but `--encrypt` gives the same completeness without the risk.
 
-The rule set is grouped by category. The summary below describes coverage rather than listing every regex.
+## The scanner
 
-**Private keys & certificates** (`HIGH`, `skip`) — PEM private-key blocks (`-----BEGIN ... PRIVATE KEY-----`) and PGP private-key blocks. These are the only rules with the `skip` action: a private key cannot be partially masked into safety, so its file is dropped.
+### Severity and action
 
-**Cloud & provider tokens** (`HIGH`, `redact`) — AWS access/secret/session keys, Google API keys and OAuth tokens, Firebase and Cloudflare tokens, GitHub PATs (`ghp_`, `gho_`, `github_pat_`, …), npm tokens, OpenAI and Anthropic keys, Stripe, Twilio, SendGrid, Mapbox, Slack, Discord, Supabase, Vercel, JWTs, bearer tokens, npm `_authToken`, database connection strings (`postgres://`, `mysql://`, `mongodb://`, `redis://`), and URLs with inline `user:pass@` credentials.
+Every rule has a **severity** (how serious a match is) and an **action** (what happens to it):
 
-**Generic secrets** (`HIGH`, `redact`) — key/value assignments whose name looks like a secret: `TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `CREDENTIALS`, `api_key`, `client_secret`, `access_token`, `refresh_token`, and similar, matched against `=` or `:` assignment forms. This catches `.env`-style secrets that don't match a known provider format.
+| Severity | What it catches |
+| --- | --- |
+| `HIGH` | Credentials and private keys |
+| `MEDIUM` | Details that leak context: IP addresses, email addresses |
+| `LOW` | Your home folder path (it contains your username) |
 
-**IP & email** (`MEDIUM`) — IPv4 addresses are redacted; email addresses are `include` (kept, reported only) so ordinary config that mentions an email isn't mangled.
+| Action | What happens |
+| --- | --- |
+| `skip` | The whole file (or snapshot section) is dropped |
+| `redact` | The matched value is replaced with `[REDACTED]`; the rest is kept |
+| `include` | Kept as it is; only reported |
 
-**Home directory path** (`LOW`, `include`) — paths under `/Users/<you>/` or `/home/<you>/`, detected for the current OS user and reported so you know your username appears in a file. This rule is only registered when the current user can be resolved.
+When a file triggers several rules, the strongest action wins: `skip`, then `redact`, then `include`.
+
+### What it detects
+
+- **Private keys** (`HIGH`, skip): PEM private keys (`-----BEGIN … PRIVATE KEY-----`, which covers OpenSSH and RSA keys), the same base64-encoded once more (kubeconfig's `client-key-data`; a base64 CA certificate is left alone), PGP private key blocks, GnuPG's binary key format, and age identities (`AGE-SECRET-KEY-1…` and the post-quantum `AGE-SECRET-KEY-PQ-1…`, the keys chezmoi and sops decrypt with). A key's preview shows its kind (`-----BEGIN PRIVATE KEY-----`), never its body.
+- **Provider tokens** (`HIGH`, redact): AWS access, secret and session keys; Google API keys and OAuth tokens; Firebase; Azure SAS tokens; Cloudflare; DigitalOcean; Fly.io; GitHub (`ghp_`, `gho_`, `github_pat_`, …); npm tokens and `_authToken`; OpenAI; Anthropic; Stripe; Twilio; SendGrid; Mapbox; Slack; Discord; Supabase; Vercel; Pulumi; Vault; JWTs and bearer tokens; database connection strings (`postgres://`, `mysql://`, `mongodb://`, `redis://`); `.pgpass` lines; URLs with `user:password@` in them.
+- **Generic secrets** (`HIGH`, redact): assignments whose name looks like a secret (`TOKEN`, `API_KEY`, `SECRET`, `PASSWORD`, `client_secret`, `access_token`, `refresh_token`, …), in shell, ini and JSON forms. These rules check the value first, so shell code that merely mentions a word (`token=$tokens[1]`, `if [[ $token == … ]]`) and placeholders (`your_token`, `xxx`) are not flagged.
+- **IP addresses** (`MEDIUM`, redact), except loopback, `0.0.0.0` and netmasks, which every machine has. **Email addresses** (`MEDIUM`, include).
+- **Your home folder path** (`LOW`, include).
+
+A few formats are redacted in a way that keeps them valid: `HostName` and `IdentityFile` in `~/.ssh/config`, and `_authToken`, `_auth` and `_password` in `.npmrc`.
+
+Redaction works line by line, the way the scan finds matches: a rule never reaches from one line into the next. (A key with an empty value, such as `token =` above `secret = x`, cannot hide the next line's value.) One secret is one finding, reported under its most specific rule.
+
+macOS preference values are scanned together with their key, so an opaque token stored under a name like `syncApiToken` is caught too. Such a value is masked and marked review-only, never written back.
 
 {{< callout type="info" >}}
-Email and home-path findings use the `include` action — they are surfaced in the report but never altered. They exist to inform, not to block.
+**age keys never go to GitHub.** Your chezmoi or sops age key opens every encrypted file in your dotfiles repo. An encrypted file backup carries it, a plaintext backup never does, and no `github push` takes it, not even an encrypted one. See [Encryption](../encryption#the-chezmoi-path).
 {{< /callout >}}
 
-## The `[REDACTED]` marker
+### Safe on hostile input
 
-Redacted values are replaced with the literal string `[REDACTED]`. When a file's resolved action is `redact`, each matching pattern runs a global replace over the content, so every occurrence of every triggered secret on every line is masked — not just the first.
+The scanner uses Go's RE2 regular expressions, which run in time linear in the input: no rule can be made to backtrack forever on a crafted file. When scanning a folder, it skips `.git`, `node_modules`, `vendor`, caches, virtual environments, cloud-storage mounts and files over 1 MiB.
 
-A few targeted redactors preserve structure instead of blanking the line, so the file stays valid after masking:
+### Scan output never shows the value
 
-- **SSH config** — `HostName` and `IdentityFile` values become `[REDACTED]`, keeping the keyword so the config still parses. Matching is case-insensitive, so lowercase `hostname` / `identityfile` are caught too.
-- **npm `.npmrc`** — `_authToken=`, plus the legacy `_auth=` and `_password=` forms, keep their key and mask only the value.
-- **IP addresses** — replaced in place (octets are bounded to 0–255 so version strings like `1.2.3.400` aren't mistaken for IPs).
-
-The same marker is what `restore` looks for to recognize a file as already-redacted, so a masked backup is never mistaken for clean data on the way back in.
-
-## The skip gate
-
-This is the core safety guarantee:
-
-{{< callout type="warning" >}}
-A file whose content scans to the `skip` action — a private key — is **never** written into a plaintext backup or snapshot. It is dropped at the gate, before any bytes touch disk.
-{{< /callout >}}
-
-During backup, every file passes through a gate that scans its content first. If redaction is on and the action is `skip`, the gate returns "do not write" and the file is excluded from the backup directory entirely. Redactable files are masked and written; clean files are copied as-is.
-
-The gate is content-based, not filename-based. A private key named `id_ed25519`, `id_rsa`, or `vault.key` is caught by its PEM/PGP header, not by a known filename. The same applies to snapshot sections: `RedactSection` scrubs section content, key/value pairs (both values **and** keys, since a token can be a JSON key), and list items, dropping the entire section if its content scans to `skip`. No section type can bypass the gate.
-
-## RE2 safety
-
-The scanner uses Go's standard `regexp` package, which is backed by the RE2 engine. Every pattern is written without lookaround or backreferences, so matching is guaranteed **linear time** in the size of the input. There is no catastrophic backtracking: a hostile or pathological file cannot wedge the scanner into exponential blowup. Patterns are compiled once on first use and reused for the rest of the run.
-
-Files larger than 1 MiB are skipped during directory scans, and `node_modules` and `.git` subtrees are pruned, so scanning a real home directory stays fast.
-
-## The sensitivity report
-
-Two report formats are produced from the same findings.
-
-**Inline summary** — printed automatically after `collect` and `backup` when there are findings. One line per file with its top severity, path, top label, and what happened to it, followed by a tally:
-
-```text
-⚠ Sensitivity report:
-  HIGH   ~/.aws/credentials             AWS access key — redacted
-  HIGH   ~/.ssh/id_ed25519              private key — skipped
-  MEDIUM ~/.ssh/config                  IP address — redacted
-
-  2 items redacted, 1 skipped. Use --no-redact to include all.
-```
-
-**Standalone scan** — the `scan` command prints a detailed, per-finding breakdown to the console:
-
-```bash
-dothaven scan ~/.config
-```
+`dothaven scan` prints where each secret is and what kind it is, with a masked preview: the setting's name, a token's prefix and its last two characters. Scan output ends up in terminal scrollback, CI logs and screen shares.
 
 ```text
 ~/.aws/credentials
-  L4 [HIGH] AWS access key: aws_access_key_id = AKIAIOSFODNN7EXAMPLE
-  L5 [HIGH] AWS secret key: aws_secret_access_key = wJalrXUtnFEMI/K7MDE...
-
-⚠ Sensitivity report:
-  HIGH   ~/.aws/credentials             AWS access key — redacted
-
-  1 items redacted. Use --no-redact to include all.
+  L2 [HIGH] AWS access key: AKIA••••LE
+  L3 [HIGH] AWS secret key: aws_secret_access_key =••••..
 ```
 
-Run with no path to scan the current directory. Pass a file to scan just that file, or a directory to scan it recursively.
+## Encrypted backups
 
-**Markdown report** — the `security` command writes a grouped Markdown report (`SECURITY.md` by default) for review or commit:
+`dothaven backup --encrypt` (and a GitHub push in the default mode) produces a standard [age](https://age-encryption.org) file protected by your passphrase.
 
-```bash
-dothaven security ~/.config
-dothaven security ~/.config -o reports/audit.md
-```
+- **No plaintext on disk.** Files stream from their place in your home folder through tar, gzip and age into the output file. There is no temporary unencrypted copy.
+- **No half-written backups.** The file is written as `<name>.partial`, owner-only from the first byte, and renamed only once complete.
+- **A strong enough passphrase.** At least 10 characters. age's passphrase mode uses scrypt, which slows guessing, but it cannot rescue a short word.
+- **No recovery.** If you lose the passphrase, nobody can open the file, including you. Store it in your password manager.
+- **Standard format.** `age -d backup-….tar.gz.age | tar -xz` also opens it, which matters if you ever need your backup without dothaven. dothaven builds age in, so neither machine needs the `age` program.
+- **Passphrase input.** The prompt reads from the terminal directly (`/dev/tty`) without echoing. `DOTHAVEN_PASSPHRASE` is supported for scripts, but the prompt is the default because an environment variable is visible to every program the shell starts. dothaven reads it (and `DOTHAVEN_GITHUB_TOKEN`) once at startup and removes it from its environment, so the tools it runs never inherit it. Set but empty, or shorter than 10 characters, it is an error, never "no encryption".
+- **Encrypted is checked, not assumed.** Writing a plain and an encrypted archive are separate functions, and the encrypted one refuses an empty passphrase. Before a GitHub push uploads a `.age` file, it checks the file really starts with an age header.
 
-The report groups files by top severity (HIGH / MEDIUM / LOW), each line showing the path, top label, the action (`redact`, `skip (private key)`, or `keep`), and the line number. A clean scan writes a short "No sensitive data found" report instead.
+When you restore an encrypted backup, it is decrypted into a private temporary folder (`0700`), the files are written to their places, and the folder is deleted, also on a forced exit (a second Ctrl-C). A folder left behind by a crash or `kill -9` is removed by a later run once it is an hour old; only folders dothaven made, with its marker inside, are ever touched. Commands that only need a backup's inventory or settings (`missing`, `reinstall`, `defaults import`) write only that part; the rest, keys included, is decrypted in memory and never written.
 
-| Command | Output | Default destination |
-| --- | --- | --- |
-| `scan [path]` | Detailed console breakdown + summary | stdout |
-| `security [path]` | Grouped Markdown report | `SECURITY.md` (override with `-o`) |
+## Restoring safely
 
-## How redaction interacts with backups
+- **Ask before replacing.** A file that already exists and differs is asked about on a terminal, with a diff, and kept off a terminal unless you pass `--force`.
+- **Keep what is replaced.** Every file restore replaces is first copied, owner-only, to `~/.local/share/dothaven/pre-restore-<timestamp>/`.
+- **Right permissions.** Credentials and sensitive config are written `0600`; executable files stay executable; a file that is stricter on this machine keeps its permissions.
+- **Nothing replaced blind.** A file whose current version cannot be read (so no copy of it can be kept) is not replaced.
+- **No writing through links.** If the file on this machine is a symbolic link, it is skipped and reported, instead of changing whatever the link points to.
+- **No escaping.** An archive entry with an absolute path or `..` is refused; symbolic links and device files in an archive are never extracted; a single entry over 256 MiB is refused.
+- **The ledger holds hashes.** `state/applied.json`, which remembers what was applied and what you declined, stores SHA-256 hashes and paths, never file contents.
 
-Redaction is **on by default** for `collect` and `backup`. Every file and section runs through the scanner: private keys are dropped at the skip gate, redactable secrets are masked to `[REDACTED]`, and benign findings are reported. The inline sensitivity report is printed at the end of the run.
+## Reinstalling safely
 
-To disable redaction and copy raw values, pass `--no-redact` to either command:
+`dothaven reinstall` turns a backup's app list into an install script. A readable GitHub copy can be edited by anyone with write access to the repository, so nothing from it reaches a shell unchecked: package names must look like package names and are single-quoted, and each Brewfile line must match the grammar `brew bundle dump` writes. That means known option keys only (no `postinstall:`, which brew runs as a command), no Ruby interpolation, and `https` URLs only for a tap's remote. Anything else is left out, and the plan says how many entries were. What it installs is shown before it runs.
 
-```bash
-dothaven backup --no-redact
-```
+## Where tokens and passphrases are kept
 
-With `--no-redact`, the skip gate is bypassed too — raw private keys and unmasked secrets are written. Use it only when the destination is itself encrypted or otherwise trusted.
+The GitHub token and the optional remembered backup passphrase go to your system's credential store: the macOS Keychain, or the Secret Service (GNOME Keyring, KWallet) on Linux. Values are handed to the keychain tool on stdin, never on a command line where other processes could read them.
 
-## How redaction interacts with export
+If neither is available, dothaven falls back to an owner-only file under `~/.config/dothaven/credentials/`, and `dothaven doctor` warns about it. `DOTHAVEN_SECRET_STORE=file` chooses the file on purpose, for a headless machine.
 
-The `chezmoi-export` command takes the opposite approach for `HIGH`-severity secrets: instead of masking them, it flags those files to be stored **encrypted** by chezmoi using age. Export uses the same scanner to detect a `HIGH` finding (only `HIGH` — a benign IP or email never forces encryption), and a content-detected private key is routed to encrypted storage rather than dropped. In the hybrid model, dothaven does discovery and audit; chezmoi does storage, age-encryption, and apply.
+## GitHub
 
-{{< callout type="warning" >}}
-age is the encryption backend for exported secrets. Losing the age key means the encrypted files are unrecoverable. Back up the key separately and securely.
-{{< /callout >}}
+- dothaven only writes to **private** repositories. It checks before every push and stops with an error on a public one. Even an encrypted backup shows which services you use.
+- Encrypted and split modes upload credentials only inside age-encrypted archives.
+- The token is sent only to the GitHub API over HTTPS, and never passed to git or put on a command line. A fine-grained token can be limited to the single backup repository.
+- Commits are made as your account; there is no dothaven server in between.
+- git history keeps every push. Anything that was ever in a readable (`split` or `plain`) push should be considered readable by anyone with access to the repository.
 
-## Key-material policy
+Details: [GitHub sync](../github#security-model).
 
-Private keys are the one thing you cannot reinstall with a package manager, so it's worth knowing exactly what dothaven moves, what it never touches, and what you have to carry yourself. The rule is: **dothaven migrates key material only through the encrypted `chezmoi-export` path, never into a plaintext backup — and only for the categories you select.**
+## The dashboard
+
+`dothaven ui` listens on `127.0.0.1` only, needs a random per-run key (swapped on first visit for an `HttpOnly`, `SameSite=Strict` cookie), checks the `Host` header against DNS rebinding, answers only `GET` and `HEAD`, sends a strict Content Security Policy, and loads no outside assets. The secrets panel shows file names and kinds, never values. Details: [Dashboard](../dashboard#security-model).
+
+## Key material at a glance
 
 | Key material | What dothaven does |
 | --- | --- |
-| **SSH private keys** (`~/.ssh/id_*`) | Detected by content (a key header, not a filename) and added age-encrypted on `chezmoi-export` — **only when the `ssh` category is selected**. Never written to a plaintext backup or snapshot. |
-| **GnuPG** (`~/.gnupg`) | Carried age-encrypted on export when real secret keys exist (`private-keys-v1.d/*.key`); runtime cruft (sockets, locks, `random_seed`) is ignored. Never plaintext. |
-| **Other credentials** (cloud creds, `kubeconfig`, `.npmrc`, `.netrc`, …) | `HIGH`-sensitivity, so age-encrypted on export and excluded from a plaintext backup unless a targeted redactor can mask them. |
-| **The age key** (`~/.config/chezmoi/key.txt`) | **Never touched.** This is the one secret dothaven will not move for you. |
-| **Not handled** — `known_hosts`, `authorized_keys`, `.git-credentials`, the `.pub` half of a key pair, the macOS Keychain | Out of scope today. Regenerate or carry them manually. |
-
-{{< callout type="warning" >}}
-**Two ways to lose data permanently — both avoidable:**
-
-1. **Forgetting to select `ssh`.** If you don't tick the `ssh` category, your private keys are silently left behind. Select it before you wipe the source machine.
-2. **Losing the age key.** It is never in your repo, so if you encrypt your whole secret estate against it and then lose the only copy, every exported secret is unrecoverable — strictly worse than migrating nothing. Back the key up offline *before* you run `chezmoi-export --apply`.
-{{< /callout >}}
-
-## Related
+| SSH keys, `known_hosts`, `authorized_keys` (`~/.ssh`) | Encrypted backup only. `~/.ssh/config` also goes in plain backups, with `HostName` and `IdentityFile` masked. |
+| GnuPG (`~/.gnupg`) | Encrypted backup only (sockets, locks and the random seed are skipped). |
+| Cloud and CLI logins (AWS, GCP, Azure, kubeconfig, `gh`, Codex, …) | Encrypted backup only. |
+| `.npmrc` | Both kinds; tokens masked in plain backups. |
+| macOS Keychain items (signing certificates, saved passwords, app logins stored there) | Never read or copied. |
+| The chezmoi age key | Not in the registry. Keep it separately (see the warning above). |
 
 {{< cards >}}
-  {{< card link="../backup-restore" title="Backup & restore" subtitle="Where the skip gate and --no-redact apply" >}}
-  {{< card link="../encryption" title="Encryption & export" subtitle="age-encrypted storage via chezmoi" >}}
-  {{< card link="../commands" title="Commands" subtitle="scan, security, backup, collect" >}}
+  {{< card link="../backup-restore" title="Backup & restore" >}}
+  {{< card link="../encryption" title="Encryption & chezmoi" >}}
+  {{< card link="../github" title="GitHub sync" >}}
 {{< /cards >}}

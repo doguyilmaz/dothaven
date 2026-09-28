@@ -2,6 +2,8 @@
 # plists, and every domain key-by-key into prefs.json. `defaults import` replays
 # both, writing only the core system domains unless --all is passed. Driven
 # through a fake `defaults`.
+mkdir $WORK/Applications/Editor.app
+env DOCK_APP=$WORK/Applications/Editor.app
 exec dothaven defaults export -o $WORK/out
 stdout 'iTerm2'
 stdout '1 app domain as plists'
@@ -17,8 +19,18 @@ grep '"key": "com.apple.swipescrolldirection"' $WORK/out/macos-defaults/prefs.js
 grep '"type": "bool"' $WORK/out/macos-defaults/prefs.json
 grep '"action": "apply"' $WORK/out/macos-defaults/prefs.json
 
-# By default only core system domains are written; iTerm2's key is application
-# state and is held back.
+# The Dock's pinned apps are captured too.
+grep '"dock"' $WORK/out/macos-defaults/prefs.json
+grep 'Editor.app' $WORK/out/macos-defaults/prefs.json
+
+# On the same Mac the setting is already in place: shown as done, not offered.
+exec dothaven defaults import --dry-run $WORK/out
+stdout '1 setting already set'
+stdout 'Nothing to change'
+
+# On a Mac where it differs, it is offered. By default only core system
+# domains are written; iTerm2's key is application state and is held back.
+env FAKE_SCROLL=true
 exec dothaven defaults import --dry-run $WORK/out
 stdout 'System preferences'
 stdout 'Will set 1 preference'
@@ -29,7 +41,8 @@ stdout 'Will replace preferences'
 
 # --all reaches past the core domains.
 exec dothaven defaults import --dry-run --all $WORK/out
-stdout 'Will set 2 preferences'
+stdout '1 setting already set'
+stdout 'Will set 1 preference'
 ! stdout 'held back'
 
 # --yes is required off a terminal; without it the import refuses.
@@ -38,5 +51,54 @@ stderr 'Refusing to continue'
 
 exec dothaven defaults import --yes $WORK/out
 stdout 'Set 1 preference'
+stdout 'Your Dock already has the same 1 app'
 stdout 'com.googlecode.iterm2'
 stdout 'Imported 1 domain'
+
+# A new Mac with a different Dock gets the old one rebuilt — from the apps it
+# actually has.
+env DOCK_APP=/System/Applications/Mail.app
+exec dothaven defaults import --yes $WORK/out
+stdout 'Dock rebuilt with 1 app'
+exec dothaven defaults import --dry-run $WORK/out
+stdout 'Dry run — the Dock was not changed'
+
+# Nested settings — here the language order — are carried whole, as the XML
+# fragment `defaults write` stores with its types intact.
+env DOCK_APP=$WORK/Applications/Editor.app
+env FAKE_LANG=tr-TR
+exec dothaven defaults export -o $WORK/lang
+grep '"type": "plist"' $WORK/lang/macos-defaults/prefs.json
+grep '<array><string>tr-TR</string></array>' $WORK/lang/macos-defaults/prefs.json
+
+# Same Mac: already in place.
+exec dothaven defaults import --dry-run $WORK/lang
+stdout 'Nothing to change'
+
+# A Mac set to English gets Turkish back, named in the plan.
+env FAKE_LANG=en-US
+env DEFAULTS_LOG=$WORK/defaults.log
+exec dothaven defaults import --yes $WORK/lang
+stdout 'including language order'
+stdout 'Set 1 preference'
+grep 'write NSGlobalDomain AppleLanguages <array><string>tr-TR</string></array>' $WORK/defaults.log
+
+# If `defaults` stored it as text instead, the old list goes back and the
+# write is reported as failed.
+env FAKE_READTYPE=string
+exec dothaven defaults import --yes $WORK/lang
+stdout '1 preference could not be written'
+grep 'write NSGlobalDomain AppleLanguages <array><string>en-US</string></array>' $WORK/defaults.log
+
+# The live list is set but could not be captured (here: not in the export):
+# writing it could not be undone, so it is left as it is and said so.
+env FAKE_READTYPE=
+env FAKE_LANG=
+exec dothaven defaults import --yes $WORK/lang
+stdout '1 list setting left as it is'
+! stdout 'Set 1 preference'
+
+# Not set at all: nothing to lose, so it is written.
+env FAKE_NOKEY=$WORK/nokey.state
+exec dothaven defaults import --yes $WORK/lang
+stdout 'Set 1 preference'

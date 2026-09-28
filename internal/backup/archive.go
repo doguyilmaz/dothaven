@@ -3,11 +3,11 @@ package backup
 import (
 	"archive/tar"
 	"compress/gzip"
-	"context"
+	"errors"
 	"fmt"
+	"github.com/doguyilmaz/dothaven/internal/sys"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -16,49 +16,11 @@ import (
 // petabyte and fill the disk decompressing it; config files are kilobytes.
 const maxArchiveEntry = 256 << 20 // 256 MiB
 
-// IsArchive reports whether path looks like a backup archive rather than a
-// backup directory.
+// IsArchive reports whether path is a backup archive (plain or encrypted)
+// rather than a backup directory. Judged by content, see Detect.
 func IsArchive(path string) bool {
-	return strings.HasSuffix(path, ".tar.gz") || strings.HasSuffix(path, ".tar.gz.age")
-}
-
-// IsEncrypted reports whether the archive needs decrypting first.
-func IsEncrypted(path string) bool { return strings.HasSuffix(path, ".age") }
-
-// Encrypt wraps an archive with age, which prompts for a passphrase on the
-// terminal.
-//
-// The crypto is delegated on purpose. A backup that travels on a USB stick
-// deserves encryption at rest, and the way to get that wrong is to invent a
-// password scheme; age already ships with this project's chezmoi story, is
-// audited, and gets the passphrase handling right. Nothing here touches a key.
-func Encrypt(ctx context.Context, src, dst string) error {
-	if _, err := exec.LookPath("age"); err != nil {
-		return fmt.Errorf("age is not installed — `brew install age` (it is what encrypts this)")
-	}
-	cmd := exec.CommandContext(ctx, "age", "--passphrase", "--output", dst, src)
-	// age prompts on the terminal; it must reach the user.
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr, os.Stderr
-	if err := cmd.Run(); err != nil {
-		os.Remove(dst)
-		return fmt.Errorf("age failed to encrypt: %w", err)
-	}
-	return nil
-}
-
-// Decrypt unwraps an age-encrypted archive into dst, prompting for the
-// passphrase.
-func Decrypt(ctx context.Context, src, dst string) error {
-	if _, err := exec.LookPath("age"); err != nil {
-		return fmt.Errorf("age is not installed — `brew install age` to decrypt this")
-	}
-	cmd := exec.CommandContext(ctx, "age", "--decrypt", "--output", dst, src)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr, os.Stderr
-	if err := cmd.Run(); err != nil {
-		os.Remove(dst)
-		return fmt.Errorf("age failed to decrypt (wrong passphrase?): %w", err)
-	}
-	return nil
+	f := Detect(path)
+	return f == FormatTarGz || f == FormatAge
 }
 
 // Extract unpacks a .tar.gz into dst and returns the directory holding the
@@ -75,8 +37,38 @@ func Extract(src, dst string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
+	return ExtractReader(f, dst)
+}
 
-	gz, err := gzip.NewReader(f)
+// ExtractReader is Extract over any gzip stream — a file, or the plaintext
+// coming out of age.
+func ExtractReader(r io.Reader, dst string) (string, error) {
+	return ExtractReaderOnly(r, dst, nil)
+}
+
+// Only returns a filter for ExtractReaderOnly that keeps the named top-level
+// folders of a backup (inventory, macos-defaults), with or without the
+// backup's own root folder in front.
+func Only(dirs ...string) func(name string) bool {
+	return func(name string) bool {
+		name = strings.TrimPrefix(filepath.ToSlash(name), "./")
+		_, rest, _ := strings.Cut(name, "/")
+		for _, d := range dirs {
+			for _, n := range []string{name, rest} {
+				if n == d || strings.HasPrefix(n, d+"/") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+}
+
+// ExtractReaderOnly is ExtractReader writing only the entries keep accepts
+// (nil keeps all). A command that needs the inventory reads the whole stream
+// but puts only the inventory on disk — not every decrypted key with it.
+func ExtractReaderOnly(r io.Reader, dst string, keep func(name string) bool) (string, error) {
+	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return "", fmt.Errorf("not a gzip archive: %w", err)
 	}
@@ -100,9 +92,15 @@ func Extract(src, dst string) (string, error) {
 			continue
 		}
 
+		if sys.Aborting() {
+			return "", errors.New("interrupted")
+		}
 		target, err := safeJoin(dst, hdr.Name)
 		if err != nil {
 			return "", err
+		}
+		if keep != nil && hdr.Typeflag != tar.TypeDir && !keep(hdr.Name) {
+			continue
 		}
 
 		switch hdr.Typeflag {

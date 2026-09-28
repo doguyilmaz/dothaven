@@ -186,3 +186,52 @@ func TestCountLines(t *testing.T) {
 		}
 	}
 }
+
+func TestIgnoredSecretsAreAtRisk(t *testing.T) {
+	r := inspectOne(context.Background(), fakeGit(map[string]string{
+		"status":   "",
+		"remote":   "origin",
+		"rev-list": "0",
+		"stash":    "",
+		"ls-files": "node_modules/\n.env\n.env.example\nconfig/master.key\ninfra/terraform.tfstate\ndist/app.js\n",
+	}), "/x")
+	want := []string{".env", "config/master.key", "infra/terraform.tfstate"}
+	if strings.Join(r.Ignored, ",") != strings.Join(want, ",") {
+		t.Errorf("Ignored = %v, want %v", r.Ignored, want)
+	}
+	if !r.AtRisk() {
+		t.Error("a clone does not bring back an ignored .env; the repo is at risk")
+	}
+}
+
+func TestIsLocalOnlyName(t *testing.T) {
+	for name, want := range map[string]bool{
+		".env": true, ".env.local": true, ".env.example": false, ".env.sample": false,
+		"server.pem": true, "release.keystore": true, "prod.tfvars": true,
+		"gcp-credentials.json": true, "package.json": false, "app.log": false,
+		"GoogleService-Info.plist": true, ".envrc": true,
+	} {
+		if got := IsLocalOnlyName(name); got != want {
+			t.Errorf("IsLocalOnlyName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// A repository sitting exactly at the depth limit used to be missed: the
+// depth check pruned its directory before its .git was ever seen.
+func TestFindAtDepthLimitAndWorktrees(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "a", "b", "repo", ".git"), 0o755)
+	os.MkdirAll(filepath.Join(root, "wt"), 0o755)
+	os.WriteFile(filepath.Join(root, "wt", ".git"), []byte("gitdir: /elsewhere"), 0o644)
+	os.MkdirAll(filepath.Join(root, "node_modules", "dep", ".git"), 0o755)
+	os.MkdirAll(filepath.Join(root, "go", "pkg", "mod", "x", ".git"), 0o755)
+	os.MkdirAll(filepath.Join(root, "build", ".git"), 0o755) // a repo named like a build dir
+
+	got := Find(context.Background(), []string{root}, 3)
+	sort.Strings(got)
+	want := []string{filepath.Join(root, "a", "b", "repo"), filepath.Join(root, "build"), filepath.Join(root, "wt")}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("Find = %v, want %v", got, want)
+	}
+}

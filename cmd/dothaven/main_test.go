@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/doguyilmaz/dothaven/internal/github/githubtest"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
@@ -17,10 +18,30 @@ import (
 func TestMain(m *testing.M) {
 	testscript.Main(m, map[string]func(){
 		"dothaven": main,
-		"chezmoi":  fakeChezmoi,
-		"defaults": fakeDefaults,
-		"brew":     fakeBrew,
+		"chezmoi":  noLeak(fakeChezmoi),
+		"defaults": noLeak(fakeDefaults),
+		"brew":     noLeak(fakeBrew),
+		// A test must never restart the real Dock of the Mac it runs on.
+		"killall": func() { os.Exit(0) },
 	})
+}
+
+// noLeak wraps a fake tool: dothaven must not hand its passphrase or token to
+// the processes it starts. A fake that sees one records it in $LEAK_LOG,
+// which a script asserts does not exist.
+func noLeak(f func()) func() {
+	return func() {
+		for _, name := range []string{"DOTHAVEN_PASSPHRASE", "DOTHAVEN_GITHUB_TOKEN"} {
+			if _, ok := os.LookupEnv(name); ok {
+				if log := os.Getenv("LEAK_LOG"); log != "" {
+					fh, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+					fmt.Fprintf(fh, "%s saw %s\n", filepath.Base(os.Args[0]), name)
+					fh.Close()
+				}
+			}
+		}
+		f()
+	}
 }
 
 // fakeBrew stands in for Homebrew so the services export/import round-trip is
@@ -50,8 +71,39 @@ func fakeDefaults() {
 	switch args[0] {
 	case "domains":
 		fmt.Println("com.googlecode.iterm2, com.apple.Terminal")
-	case "write":
+	case "read":
+		if len(args) >= 3 && args[1] == "com.apple.dock" && args[2] == "persistent-apps" {
+			fmt.Println(`( { "tile-data" = { "file-data" = { "_CFURLString" = "file://` + os.Getenv("DOCK_APP") + `/"; }; }; } )`)
+		}
+	case "write", "delete":
+		if state := os.Getenv("FAKE_NOKEY"); state != "" && args[0] == "write" && len(args) >= 3 {
+			f, _ := os.OpenFile(state, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			fmt.Fprintf(f, "%s %s\n", args[1], args[2])
+			f.Close()
+		}
+		// DEFAULTS_LOG records what would have changed on a real Mac.
+		if log := os.Getenv("DEFAULTS_LOG"); log != "" {
+			f, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			fmt.Fprintln(f, strings.Join(args, " "))
+			f.Close()
+		}
 		fmt.Println("wrote")
+	case "read-type":
+		// FAKE_NOKEY names a state file: a key is set on this Mac only once
+		// a write has recorded it there.
+		if state := os.Getenv("FAKE_NOKEY"); state != "" && len(args) >= 3 {
+			b, _ := os.ReadFile(state)
+			if !strings.Contains(string(b), args[1]+" "+args[2]+"\n") {
+				fmt.Fprintln(os.Stderr, "The domain/default pair does not exist")
+				os.Exit(1)
+			}
+		}
+		// FAKE_READTYPE simulates `defaults` storing a value as a string.
+		if t := os.Getenv("FAKE_READTYPE"); t != "" {
+			fmt.Println("Type is " + t)
+		} else {
+			fmt.Println("Type is array")
+		}
 	case "export":
 		switch args[1] {
 		case "com.googlecode.iterm2":
@@ -59,7 +111,19 @@ func fakeDefaults() {
 		// A core domain, so the per-key pass has something it would apply by
 		// default — iTerm2's is held back as application state.
 		case "NSGlobalDomain":
-			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.swipescrolldirection</key><false/></dict></plist>`)
+			// FAKE_SCROLL flips the live value, so an import can be tested
+			// both against a Mac that already has the setting and one that
+			// does not.
+			v := "<false/>"
+			if os.Getenv("FAKE_SCROLL") == "true" {
+				v = "<true/>"
+			}
+			// FAKE_LANG adds the language order, a nested value.
+			lang := ""
+			if l := os.Getenv("FAKE_LANG"); l != "" {
+				lang = "<key>AppleLanguages</key>\n\t<array>\n\t\t<string>" + l + "</string>\n\t</array>"
+			}
+			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.swipescrolldirection</key>` + v + lang + `</dict></plist>`)
 		default:
 			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>`)
 		}
@@ -93,24 +157,38 @@ func fakeChezmoi() {
 			fmt.Println(chezmoiSrcRoot())
 		}
 	case "add":
-		target := args[len(args)-1]
-		if sub := os.Getenv("CHEZMOI_FAIL_ON"); sub != "" && strings.Contains(target, sub) {
-			fmt.Fprintln(os.Stderr, "fake chezmoi: add failed")
-			os.Exit(1)
-		}
+		// Like the real one, `add` takes any number of targets after its flags.
 		isTemplate := false
+		var targets []string
 		for _, a := range args[1:] {
-			if a == "--template" {
+			switch {
+			case a == "--template":
 				isTemplate = true
+			case strings.HasPrefix(a, "-"):
+			default:
+				targets = append(targets, a)
 			}
 		}
-		// Emulate `add --template`: copy the target into the source state as a
-		// .tmpl so the export's source-path lookup + rewrite can find it.
-		if isTemplate {
-			if raw, err := os.ReadFile(target); err == nil {
-				dst := chezmoiTmplPath(target)
-				_ = os.MkdirAll(filepath.Dir(dst), 0o755)
-				_ = os.WriteFile(dst, raw, 0o644)
+		for _, target := range targets {
+			if sub := os.Getenv("CHEZMOI_FAIL_ON"); sub != "" && strings.Contains(target, sub) {
+				fmt.Fprintln(os.Stderr, "fake chezmoi: add failed")
+				os.Exit(1)
+			}
+		}
+		for _, target := range targets {
+			// Emulate `add --template`: copy the target into the source state
+			// as a .tmpl so the export's source-path lookup + rewrite can find it.
+			if isTemplate {
+				if raw, err := os.ReadFile(target); err == nil {
+					dst := chezmoiTmplPath(target)
+					_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+					_ = os.WriteFile(dst, raw, 0o644)
+				}
+			}
+			if log := os.Getenv("CHEZMOI_LOG"); log != "" {
+				f, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+				fmt.Fprintf(f, "%s %s\n", strings.Join(args[:len(args)-len(targets)], " "), target)
+				f.Close()
 			}
 		}
 	}
@@ -143,9 +221,58 @@ func TestScripts(t *testing.T) {
 		Dir: "testdata/script",
 		Setup: func(e *testscript.Env) error {
 			e.Setenv("HOME", e.WorkDir)
+			// A fake GitHub per script, and the credential store on disk:
+			// no test may reach github.com or the real keychain.
+			gh := githubtest.New("test-token", "tester")
+			gh.AddRepo("tester/public-one", false)
+			gh.AppSlug = "dothaven"
+			e.Values["github"] = gh
+			e.Defer(gh.Close)
+			e.Setenv("DOTHAVEN_GITHUB_API", gh.URL)
+			e.Setenv("DOTHAVEN_GITHUB_WEB", gh.URL)
+			e.Setenv("DOTHAVEN_SECRET_STORE", "file")
+			e.Setenv("DOTHAVEN_NO_UPDATE_CHECK", "1")
+			// A real gh login on the test machine must not leak in.
+			e.Setenv("GH_CONFIG_DIR", e.WorkDir+"/.gh-none")
+			e.Setenv("GH_TOKEN", "")
+			e.Setenv("GITHUB_TOKEN", "")
+			// Only the script's own git config: the machine's could sign.
+			e.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			e.Setenv("GIT_CONFIG_GLOBAL", e.WorkDir+"/.gitconfig")
 			return nil
 		},
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			// signedby asserts the newest commit on the fake GitHub names this
+			// author and committer ("-" for one left to GitHub), and with a
+			// third argument "signed", that it came signed.
+			"signedby": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 && (len(args) != 3 || args[2] != "signed") {
+					ts.Fatalf("usage: signedby <author> <committer> [signed]")
+				}
+				sigs := ts.Value("github").(*githubtest.Server).Signatures()
+				if len(sigs) == 0 {
+					ts.Fatalf("no commits yet")
+				}
+				last := sigs[len(sigs)-1]
+				want := func(s string) string {
+					if s == "-" {
+						return ""
+					}
+					return s
+				}
+				ok := last.Author == want(args[0]) && last.Committer == want(args[1]) && last.Signed == (len(args) == 3)
+				if ok == neg {
+					ts.Fatalf("newest commit: author %q, committer %q, signed %v", last.Author, last.Committer, last.Signed)
+				}
+			},
+			// ghunverified makes the fake GitHub refuse to verify signatures,
+			// giving this reason.
+			"ghunverified": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: ghunverified <reason>")
+				}
+				ts.Value("github").(*githubtest.Server).Unverified = args[0]
+			},
 			// filemode asserts a file's permission bits. `stat` spells this
 			// differently on macOS and Linux, and the assertion has to hold on
 			// both — a permission test that only runs in CI is not a

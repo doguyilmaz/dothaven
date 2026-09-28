@@ -55,7 +55,7 @@ func newGuideCmd(env *sys.OS) *cobra.Command {
 				chezmoiInstalled: state.ChezmoiInstalled,
 				sourceReady:      state.SourceInitialized,
 				ageReady:         state.AgeKeyConfigured,
-				latestBackup:     latestBackup(env.DataDir()),
+				latestBackup:     newestBackup(env),
 			}
 
 			p, err := runGuide(facts, tui.Ask)
@@ -191,23 +191,63 @@ func guideBackup(ask asker) (*plan, error) {
 	where, err := ask("Where should the copy live?", "", []tui.Choice{
 		{Label: "On this computer", Value: "local", Hint: "quick, no setup"},
 		{Label: "Somewhere I can carry it", Value: "portable", Hint: "external disk, or another machine"},
+		{Label: "My private GitHub repo", Value: "github", Hint: "off this machine, restorable anywhere"},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	p := &plan{reason: "A backup copies your config files as they are. It does not reinstall anything — that is what a chezmoi setup does on the other side."}
-	p.add("dothaven backup", "Timestamped copy. Secrets are redacted and private keys are never written into it.")
-	p.add("dothaven defaults export", "The Mac itself: scrolling direction, key repeat, hot corners, Finder options. None of it is in a file a backup would find.")
-	if profile == "backend" || profile == "all" {
-		p.add("dothaven services export", "Homebrew service configs are not part of a normal backup.")
+	p := &plan{reason: "A backup copies your config, the list of what you have installed, and your macOS settings. Restoring it puts the files back; `reinstall` brings the apps back."}
+	switch where {
+	case "portable":
+		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "One encrypted file with everything — SSH keys, cloud logins and tokens included — plus your installed apps and macOS settings.")
+		p.note("You choose a passphrase; nothing can open the file without it. Keep it in a password manager.")
+	case "github":
+		p.add("dothaven github push", "Creates a private repo on your account and pushes this machine to it, encrypted by default.")
+	default:
+		p.add("dothaven backup", "A folder here with your config, app list and macOS settings. Secrets are redacted and private keys are left out of this plaintext copy.")
 	}
-	p.add("dothaven status", "Confirms what it captured, so \"I have a backup\" is something you checked.")
-	if where == "portable" {
-		p.note("Copy the backup folder off this machine. A backup that lives only on the machine it backs up is not a backup.")
+	if profile == "backend" || profile == "all" {
+		p.add("dothaven services export", "Homebrew service configs (nginx, mysql, redis) are not part of a normal backup.")
+	}
+	p.add("dothaven include --list", "What looks like config but no backup covers yet — add anything you care about.")
+	if where == "local" {
+		p.add("dothaven status", "Confirms what it captured, so \"I have a backup\" is something you checked.")
 	}
 	p.notes = append(p.notes, profileNotes(profile)...)
 	return p, nil
+}
+
+// askCarry is how the setup gets from here to the other machine. It is the
+// question that decides the commands; everything else follows from it.
+func askCarry(ask asker) (string, error) {
+	return ask("How do you want to carry it across?", "", []tui.Choice{
+		{Label: "One encrypted file", Value: "file", Hint: "USB drive, AirDrop, cloud storage — simplest; keys included"},
+		{Label: "My private GitHub repo", Value: "github", Hint: "restore anywhere with a login and your passphrase"},
+		{Label: "A chezmoi repo, kept in sync", Value: "chezmoi", Hint: "for keeping several machines in step"},
+	})
+}
+
+// carrySteps are the old-machine steps for each way of carrying the setup.
+func carrySteps(p *plan, f machineFacts, carry string) {
+	switch carry {
+	case "github":
+		p.reason = "The backup goes to a private repository on your GitHub account, encrypted, so the new machine needs only a login and your passphrase."
+		p.add("dothaven github push", "Signs in if needed, creates the private repo, and pushes this machine — keys and logins included, encrypted.")
+	case "chezmoi":
+		p.reason = "chezmoi keeps machines in step from a git repo, with secrets age-encrypted. It is more setup than a file, and the age key matters more than the files."
+		if !f.chezmoiInstalled || !f.ageReady {
+			p.add("dothaven init", "Sets up chezmoi and age. Do it here, on the machine you still have.")
+			p.warn("Finish this before you give up the old machine.", "The setup needs files that exist only here.")
+			return
+		}
+		p.add("dothaven chezmoi-export", "Preview: which files travel plain, which get encrypted.")
+		p.add("dothaven chezmoi-export --apply", "Then push the repo — that is what the new machine pulls.")
+	default:
+		p.reason = "One encrypted file carries everything — config, keys, logins, your app list and macOS settings — and opens with your passphrase on the other side. Nothing else to set up."
+		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "Writes the file straight onto the drive. It is never on disk unencrypted, not even briefly.")
+		p.warn("Check the file is off this machine before you wipe it.", "A backup that lives on the disk being erased is not a backup.")
+	}
 }
 
 func guideClone(f machineFacts, ask asker) (*plan, error) {
@@ -225,45 +265,33 @@ func guideClone(f machineFacts, ask asker) (*plan, error) {
 
 	p := &plan{}
 	if which == "old" {
-		secrets, serr := ask("Do credentials need to come across?", "SSH keys, cloud logins, API tokens.", []tui.Choice{
-			{Label: "Yes", Value: "yes", Hint: "they must be encrypted first"},
-			{Label: "No, config only", Value: "no", Hint: "I'll log in again on the new machine"},
-		})
-		if serr != nil {
-			return nil, serr
+		carry, err := askCarry(ask)
+		if err != nil {
+			return nil, err
 		}
-		if secrets == "yes" {
-			p.reason = "Credentials are travelling, so they have to be encrypted. That is chezmoi with an age key — and the key matters more than the files."
-			if !f.chezmoiInstalled || !f.ageReady {
-				p.add("dothaven init", "Sets up chezmoi and age. Do it here, on the machine you still have.")
-				p.warn("Finish this before you give up the old machine.", "The setup needs files that exist only here.")
-			} else {
-				p.add("dothaven chezmoi-export", "Preview: which files travel plain, which get encrypted.")
-				p.add("dothaven chezmoi-export --apply", "Then push the repo — that is what the new machine pulls.")
-			}
-		} else {
-			p.reason = "Without credentials there is nothing to encrypt, so a plain backup you carry across is simpler than setting up chezmoi."
-			p.add("dothaven backup", "Timestamped copy of your config.")
-			p.note("Copy that folder to the new machine, then run `dothaven restore <folder>` there.")
-		}
+		p.add("dothaven ready", "First: uncommitted work, unpushed commits, stashes and .env files that exist only here.")
+		carrySteps(p, f, carry)
 		p.notes = append(p.notes, profileNotes(profile)...)
 		return p, nil
 	}
 
-	p.reason = "On the new machine the source decides the command: a chezmoi repo carries everything including encrypted files, a backup folder carries files only."
+	p.reason = "On the new machine the source decides the command. A backup file or folder, or your GitHub repo, restores files and then reinstalls your apps; a chezmoi repo applies itself."
 	switch {
 	case f.chezmoiInstalled && f.sourceReady:
 		p.add("dothaven migrate --dry-run", "Shows exactly what lands in your home folder. Writes nothing.")
 		p.add("dothaven migrate", "Applies it, and runs your install script.")
-		p.add("dothaven defaults import <export-dir>", "chezmoi carries files; this carries the Mac's own settings.")
+		p.add("dothaven defaults import <backup>", "chezmoi carries files; this carries the Mac's own settings.")
 	case f.latestBackup != "":
 		p.add("dothaven restore --dry-run "+f.latestBackup, "Lists every file it would write, and every conflict.")
-		p.add("dothaven restore "+f.latestBackup, "Asks about each conflict, and keeps a pre-restore snapshot.")
+		p.add("dothaven restore "+f.latestBackup, "Lets you pick what to apply, asks about each conflict, and keeps a pre-restore snapshot.")
 		p.add("dothaven defaults import "+f.latestBackup, "Puts the Mac's own settings back — the ones no dotfile holds.")
+		p.add("dothaven reinstall "+f.latestBackup, "Installs the apps and packages you had that this machine lacks.")
 	default:
-		p.add("dothaven init", "Says whether chezmoi and age are ready on this machine.")
-		p.warn("Nothing to restore from yet.", "Bring a chezmoi repo or a backup folder across from the old machine first.")
+		p.add("dothaven restore", "Finds backups on your drives, Downloads and Desktop, and lets you pick — or type a path.")
+		p.add("dothaven restore github", "Or, if you pushed to GitHub: sign in and restore from your private repo.")
+		p.warn("Nothing found on this machine yet.", "Plug in the drive with the backup file, or use the GitHub option.")
 	}
+	p.add("dothaven missing <backup>", "Afterwards: what the old machine had installed that this one still doesn't.")
 	p.notes = append(p.notes, profileNotes(profile)...)
 	return p, nil
 }
@@ -272,7 +300,7 @@ func guideClone(f machineFacts, ask asker) (*plan, error) {
 // rebuilt; a stash that existed on one disk cannot. So the order is fixed.
 func guideWipe(f machineFacts, ask asker) (*plan, error) {
 	p := &plan{reason: "Config is replaceable and code is not, so unsaved work comes first. Everything else can be redone from a backup."}
-	p.add("dothaven ready", "Every repository, checked for changes, commits and stashes that exist on no remote.")
+	p.add("dothaven ready", "Every repository, checked for changes, commits, stashes and ignored .env files that exist on no remote.")
 
 	after, err := ask("Once that's clean, what happens to the setup?", "", []tui.Choice{
 		{Label: "It moves to another computer", Value: "remote", Hint: "set that one up from this"},
@@ -282,16 +310,17 @@ func guideWipe(f machineFacts, ask asker) (*plan, error) {
 		return nil, err
 	}
 	if after == "same" {
-		p.add("dothaven backup", "Timestamped copy to restore from afterwards.")
-		p.warn("Copy the backup off this machine before erasing it.", "It lives on the disk you are about to wipe.")
+		p.add("dothaven backup --encrypt -o /Volumes/<your-drive>", "Everything, keys included, in one encrypted file — to restore from afterwards.")
+		p.warn("Copy the backup off this machine before erasing it.", "It lives on the disk you are about to wipe unless you wrote it to a drive.")
 		return p, nil
 	}
-	if !f.chezmoiInstalled || !f.ageReady {
-		p.add("dothaven init", "chezmoi and age are how a setup reaches another machine.")
-		p.warn("Set that up before wiping.", "It needs this machine, which is the one being erased.")
-		return p, nil
+	carry, err := askCarry(ask)
+	if err != nil {
+		return nil, err
 	}
-	p.add("dothaven chezmoi-export --apply", "Then push the repo. The new machine pulls it.")
+	reason := p.reason
+	carrySteps(p, f, carry)
+	p.reason = reason + " " + p.reason
 	return p, nil
 }
 
@@ -312,8 +341,8 @@ func guideCompare() (*plan, error) {
 	p := &plan{reason: "Comparing machines means comparing inventories, so both sides need a snapshot. A backup is files, and files do not tell you what is installed."}
 	p.add("dothaven collect", "Run this on BOTH machines. Each writes a timestamped JSON snapshot.")
 	p.add("dothaven compare a.json b.json", "What one has that the other does not.")
-	p.add("dothaven doctor <other-machine.json>", "Or, on this machine: what that snapshot has and this does not.")
-	p.note("`compare` is snapshot vs snapshot. `doctor` is snapshot vs the machine you run it on.")
+	p.add("dothaven missing <other-machine.json>", "Or, on this machine: what that snapshot has and this does not.")
+	p.note("`compare` is snapshot vs snapshot. `missing` is snapshot vs the machine you run it on.")
 	return p, nil
 }
 

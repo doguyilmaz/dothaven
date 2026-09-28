@@ -32,6 +32,18 @@ type Pattern struct {
 	// secret. Their matches are checked by valueLooksReal before reporting.
 	// Structural rules (a PEM header, an AWS key's shape) need no such check.
 	keyword bool
+	// check, when set, vets a match before it is reported — for rules whose
+	// shape also fits things that are not secret (127.0.0.1 is an IP address
+	// and tells nobody anything).
+	check func(match string) bool
+}
+
+// real reports whether a match survives the rule's own vetting.
+func (p Pattern) real(match string) bool {
+	if p.keyword && !valueLooksReal(match) {
+		return false
+	}
+	return p.check == nil || p.check(match)
 }
 
 type Finding struct {
@@ -42,8 +54,13 @@ type Finding struct {
 
 type Result struct {
 	Path     string
-	Findings []Finding
-	Action   Action // highest-priority action among findings (skip > redact > include)
+	Findings []Finding // what is reported: one per secret, by its most specific rule
+	Action   Action    // highest-priority action among all matches (skip > redact > include)
+	// redact are the redact rules that matched anywhere, before findings were
+	// deduplicated for the report. Redaction uses these, never the report:
+	// a rule dropped from the report as a duplicate on one line can still be
+	// the only one that matches a secret elsewhere.
+	redact []Pattern
 }
 
 type Summary struct {

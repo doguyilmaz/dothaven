@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -137,4 +138,23 @@ func contains(s, sub string) bool {
 		}
 		return false
 	}())
+}
+
+// On a timeline (older left, newer right) what the newer snapshot added reads
+// as +, and a change reads old → new.
+func TestFormatTimeline(t *testing.T) {
+	older := Snapshot{"apps.brew": {Items: []Item{{Raw: "git"}}}, "shell.zshrc": {Pairs: map[string]string{"theme": "old"}}}
+	newer := Snapshot{"apps.brew": {Items: []Item{{Raw: "git"}, {Raw: "ripgrep"}}}, "shell.zshrc": {Pairs: map[string]string{"theme": "new"}}}
+	out := Compare(older, newer).Format(FormatOptions{LeftLabel: "older", RightLabel: "newer", ChangesOnly: true, Timeline: true})
+	if !strings.Contains(out, "+ ripgrep  (only in newer)") {
+		t.Errorf("added item not marked +:\n%s", out)
+	}
+	if !strings.Contains(out, "theme = old → new") {
+		t.Errorf("change does not read old → new:\n%s", out)
+	}
+	// Without Timeline the parity reading is unchanged: left-only is +.
+	out = Compare(newer, older).Format(FormatOptions{LeftLabel: "here", RightLabel: "there", ChangesOnly: true})
+	if !strings.Contains(out, "+ ripgrep  (only in here)") {
+		t.Errorf("parity reading changed:\n%s", out)
+	}
 }

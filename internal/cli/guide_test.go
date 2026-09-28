@@ -120,7 +120,7 @@ func TestDevopsProfileWarnsAboutCredentialsInConfigs(t *testing.T) {
 // ready. Exporting here would write them in the clear.
 func TestGuideRefusesToExportSecretsBeforeEncryptionExists(t *testing.T) {
 	p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: false},
-		scripted(t, "clone", "devops", "old", "yes"))
+		scripted(t, "clone", "devops", "old", "chezmoi"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestGuideRefusesToExportSecretsBeforeEncryptionExists(t *testing.T) {
 
 func TestGuideExportsWhenEverythingIsReady(t *testing.T) {
 	p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: true},
-		scripted(t, "clone", "backend", "old", "yes"))
+		scripted(t, "clone", "backend", "old", "chezmoi"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,12 +148,23 @@ func TestGuideExportsWhenEverythingIsReady(t *testing.T) {
 	}
 }
 
-// Without credentials there is nothing to encrypt, so chezmoi is setup for
-// nothing — a plain backup carried across is simpler.
-func TestGuideSkipsChezmoiWhenNoCredentialsTravel(t *testing.T) {
-	p, _ := runGuide(machineFacts{}, scripted(t, "clone", "frontend", "old", "no"))
-	if strings.Contains(planText(p), "chezmoi") {
-		t.Errorf("no credentials means no encryption to set up:\n%s", planText(p))
+// The simplest way across needs no chezmoi at all: one encrypted file,
+// checked first for work that exists only here.
+func TestGuideFilePathIsOneEncryptedBackup(t *testing.T) {
+	p, _ := runGuide(machineFacts{}, scripted(t, "clone", "frontend", "old", "file"))
+	got := planText(p)
+	if strings.Contains(got, "chezmoi") {
+		t.Errorf("the file path should not involve chezmoi:\n%s", got)
+	}
+	if !strings.Contains(got, "backup --encrypt") || p.steps[0].cmd != "dothaven ready" {
+		t.Errorf("want ready, then an encrypted backup:\n%s", got)
+	}
+}
+
+func TestGuideGitHubPath(t *testing.T) {
+	p, _ := runGuide(machineFacts{}, scripted(t, "wipe", "remote", "github"))
+	if !strings.Contains(planText(p), "dothaven github push") {
+		t.Errorf("want a GitHub push:\n%s", planText(p))
 	}
 }
 
@@ -171,18 +182,20 @@ func TestGuideOnTheNewMachinePicksBySource(t *testing.T) {
 		t.Errorf("a backup folder means restore, with the path it found:\n%s", got)
 	}
 
+	// Nothing on disk yet: find it on a drive, or restore from GitHub.
 	withNothing, _ := runGuide(machineFacts{}, scripted(t, "clone", "all", "new"))
-	if strings.Contains(planText(withNothing), "dothaven restore ") {
-		t.Errorf("nothing to restore from — do not suggest restoring:\n%s", planText(withNothing))
+	if got := planText(withNothing); !strings.Contains(got, "restore github") || strings.Contains(got, "restore --dry-run") {
+		t.Errorf("nothing found — offer discovery and GitHub, not a path:\n%s", got)
 	}
 }
 
 // The wipe path holds the only irreversible mistake, so `ready` comes first
 // every time: a backup taken after the disk is erased is not a backup.
 func TestGuideChecksForUnsavedWorkBeforeAnythingElse(t *testing.T) {
-	for _, after := range []string{"same", "remote"} {
+	for _, answers := range [][]string{{"wipe", "same"}, {"wipe", "remote", "file"}, {"wipe", "remote", "chezmoi"}} {
+		after := strings.Join(answers, "/")
 		p, err := runGuide(machineFacts{chezmoiInstalled: true, ageReady: true},
-			scripted(t, "wipe", after))
+			scripted(t, answers...))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -259,7 +272,9 @@ func TestEveryPlanExplainsItself(t *testing.T) {
 	paths := [][]string{
 		{"backup", "backend", "local"},
 		{"backup", "mobile", "portable"},
-		{"clone", "data", "old", "no"},
+		{"clone", "data", "old", "file"},
+		{"clone", "devops", "old", "github"},
+		{"wipe", "remote", "chezmoi"},
 		{"clone", "all", "new"},
 		{"wipe", "same"},
 		{"health", "devops"},
@@ -282,16 +297,20 @@ func TestEveryPlanExplainsItself(t *testing.T) {
 	}
 }
 
-// A backup copies files. It does not copy the Mac's own settings — those live
-// in cfprefsd, not in any file a backup walks — so the guide has to say so, or
-// the new machine arrives with the scroll direction flipped back.
+// A backup now carries the Mac's own settings itself; the guide has to say
+// so, or the reader goes looking for a separate step.
 func TestGuideBackupCoversMacSettings(t *testing.T) {
 	p, err := runGuide(machineFacts{}, scripted(t, "backup", "frontend", "local"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := planText(p); !strings.Contains(got, "dothaven defaults export") {
-		t.Errorf("want the Mac's own settings captured, got:\n%s", got)
+	var why strings.Builder
+	why.WriteString(p.reason)
+	for _, st := range p.steps {
+		why.WriteString(st.why)
+	}
+	if !strings.Contains(why.String(), "macOS settings") {
+		t.Errorf("want the Mac's own settings mentioned, got:\n%s", why.String())
 	}
 }
 

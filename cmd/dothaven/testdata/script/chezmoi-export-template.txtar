@@ -1,16 +1,18 @@
-# A host-varying config (git) is added as a chezmoi template, not a verbatim copy,
-# so its absolute home paths can port to a new machine.
+# A host-varying config is added as a chezmoi template only when it names the
+# home directory, and anything in it that looks like template syntax is escaped
+# so `chezmoi apply` can parse it on the next machine.
 env CHEZMOI_SOURCE=$WORK/source
 mkdir $WORK/source
-exec dothaven chezmoi-export --apply --only git
+exec sh -c 'printf "[core]\n\texcludesfile = %s/.gitignore_global\n[alias]\n\tfmt = log --format={{.Name}}\n" "$HOME" > .gitconfig'
+exec dothaven chezmoi-export --apply --only git,terminal
 stdout 'add --template'
-stdout 'templated'
+stdout 'templated 1 file'
 exists $WORK/source/dot_gitconfig.tmpl
+grep '\{\{ \.chezmoi\.homeDir \}\}/\.gitignore_global' $WORK/source/dot_gitconfig.tmpl
+grep '\{\{ "\{\{" \}\}\.Name\{\{ "\}\}" \}\}' $WORK/source/dot_gitconfig.tmpl
+# no home path → no template at all
+! exists $WORK/source/dot_tmux.conf.tmpl
 ! stderr 'failed'
 
--- .gitconfig --
-[user]
-	name = Dev
-	email = dev@example.com
-[core]
-	excludesfile = ~/.gitignore_global
+-- .tmux.conf --
+set -g mouse on

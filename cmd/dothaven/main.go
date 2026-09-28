@@ -32,6 +32,8 @@ func main() {
 		first := <-sigCh
 		cancel()
 		<-sigCh // a second signal force-exits, even if a command ignores the context
+		// No defer runs past os.Exit: remove decrypted temporary files here.
+		sys.RemoveTempDirs()
 		// Exit code reflects the signal that initiated shutdown (the cause), using
 		// the conventional 128+signum so a supervisor can tell SIGINT (130) from
 		// SIGTERM (143).

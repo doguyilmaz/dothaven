@@ -111,20 +111,37 @@ func Timestamp(t time.Time) string { return t.UTC().Format("20060102150405") }
 // WriteFile atomically writes content to path (0644), creating parent dirs. Used
 // for restoring ordinary configs.
 func WriteFile(path, content string) error {
-	return writeFile(path, content, 0o755, 0o644)
+	return writeFile(path, []byte(content), 0o755, 0o644)
 }
 
 // WriteFileSecure atomically writes content owner-only (0600 file, 0700 dirs).
 // Used for any output that can hold secrets — backups, snapshots, security
 // reports, pre-restore snapshots — so it is never world-readable.
 func WriteFileSecure(path, content string) error {
-	return writeFile(path, content, 0o700, 0o600)
+	return writeFile(path, []byte(content), 0o700, 0o600)
+}
+
+// WriteFileAs atomically writes content with an explicit permission, so a
+// restored script keeps its executable bit. Parent directories are created
+// owner-only when perm is owner-only, 0755 otherwise.
+func WriteFileAs(path, content string, perm os.FileMode) error {
+	return WriteBytesAs(path, []byte(content), perm)
+}
+
+// WriteBytesAs is WriteFileAs for content already in a byte slice, so a large
+// file is not copied into a string just to be written.
+func WriteBytesAs(path string, data []byte, perm os.FileMode) error {
+	dirPerm := os.FileMode(0o755)
+	if perm&0o077 == 0 {
+		dirPerm = 0o700
+	}
+	return writeFile(path, data, dirPerm, perm)
 }
 
 // writeFile writes to a temp file in the destination dir and renames it into
 // place, so an interrupted write can never leave a half-written (or empty)
 // target — the rename is atomic on the same filesystem.
-func writeFile(path, content string, dirPerm, filePerm os.FileMode) error {
+func writeFile(path string, content []byte, dirPerm, filePerm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return err
@@ -135,7 +152,7 @@ func writeFile(path, content string, dirPerm, filePerm os.FileMode) error {
 	}
 	tmpName := tmp.Name()
 	cleanup := func(e error) error { tmp.Close(); os.Remove(tmpName); return e }
-	if _, err := tmp.WriteString(content); err != nil {
+	if _, err := tmp.Write(content); err != nil {
 		return cleanup(err)
 	}
 	if err := tmp.Chmod(filePerm); err != nil {
@@ -155,7 +172,7 @@ func writeFile(path, content string, dirPerm, filePerm os.FileMode) error {
 // DataDir is dothaven's stable per-user data directory ($XDG_DATA_HOME/dothaven,
 // else ~/.local/share/dothaven). Backups live here so `backup` and the commands
 // that read them (restore/status/diff) always agree regardless of the cwd —
-// unlike ResolveOutputDir, which is cwd-aware. ~/Downloads is deliberately
+// regardless of the directory it is run from. ~/Downloads is deliberately
 // avoided: it's user-visible clutter and broadly readable by other apps.
 func (o *OS) DataDir() string {
 	if x := os.Getenv("XDG_DATA_HOME"); x != "" {
@@ -178,20 +195,4 @@ func (o *OS) CacheDir() string {
 		return filepath.Join(x, "dothaven")
 	}
 	return filepath.Join(o.home, ".cache", "dothaven")
-}
-
-// ResolveOutputDir decides where cwd-local inspection outputs land (collect
-// snapshots, service/defaults exports): an explicit path wins; inside a git repo
-// → <cwd>/reports (handy while working in a project); otherwise the stable
-// DataDir. Backups do NOT use this — they always go to DataDir (see above).
-func (o *OS) ResolveOutputDir(explicit string) string {
-	if explicit != "" {
-		return explicit
-	}
-	if cwd, err := os.Getwd(); err == nil {
-		if o.Exists(filepath.Join(cwd, ".git/HEAD")) {
-			return filepath.Join(cwd, "reports")
-		}
-	}
-	return o.DataDir()
 }

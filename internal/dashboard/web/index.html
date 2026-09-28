@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dothaven</title>
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img class="mark" src="/assets/icon.svg" alt="" width="22" height="22">dothaven</div>
+  <div class="machine" id="machine">Loading…</div>
+  <div class="actions">
+    <button type="button" id="refresh">Refresh</button>
+    <button type="button" id="theme" aria-label="Switch light or dark">Theme</button>
+  </div>
+</header>
+
+<main>
+  <section class="hero card" aria-live="polite">
+    <div class="hero-label">Files your backups carry</div>
+    <div class="hero-value" id="hero">—</div>
+    <div class="hero-sub" id="hero-sub"></div>
+  </section>
+
+  <section class="tiles" id="tiles" aria-label="At a glance"></section>
+
+  <section class="grid">
+    <article class="card wide">
+      <h2>Coverage by category</h2>
+      <p class="sub">Files a backup of this machine would carry right now. 🔑 marks categories with credentials — left out of plaintext backups, kept by encrypted ones.</p>
+      <div id="coverage" class="bars"></div>
+      <details><summary>Show as a table</summary><div id="coverage-table"></div></details>
+    </article>
+
+    <article class="card">
+      <h2>Not covered yet</h2>
+      <p class="sub">Looks like config, but no backup includes it. Add with <code>dothaven include &lt;path&gt;</code>.</p>
+      <ul id="uncovered" class="rows"></ul>
+    </article>
+
+    <article class="card">
+      <h2>Backups found</h2>
+      <p class="sub">dothaven's folder, Downloads, Desktop, Documents and mounted drives.</p>
+      <div id="backups"></div>
+    </article>
+
+    <article class="card">
+      <h2>Secrets in plain files</h2>
+      <p class="sub">Which tracked files hold keys or tokens. Values are never shown here.</p>
+      <div id="secrets" class="lazy">Scanning…</div>
+    </article>
+
+    <article class="card">
+      <h2>Work that exists only here</h2>
+      <p class="sub">Repositories with unpushed commits, stashes, no remote, or gitignored secrets.</p>
+      <div id="repos" class="lazy">Looking through your home folder…</div>
+    </article>
+
+    <article class="card wide">
+      <h2>Installed software</h2>
+      <p class="sub" id="inventory-sub">From your newest snapshot or backup.</p>
+      <div id="inventory" class="bars"></div>
+      <details><summary>Show as a table</summary><div id="inventory-table"></div></details>
+    </article>
+
+    <article class="card">
+      <h2>Applied on this machine</h2>
+      <p class="sub">What <code>dothaven restore</code> has written here, from its ledger.</p>
+      <div id="ledger"></div>
+    </article>
+
+    <article class="card">
+      <h2 class="titled"><img class="mark small" src="/assets/bot.svg" alt="" width="18" height="18">GitHub</h2>
+      <p class="sub">Your private backup repository.</p>
+      <div id="github" class="lazy">Checking…</div>
+    </article>
+  </section>
+</main>
+
+<div id="tip" class="tip" role="tooltip" hidden></div>
+<footer>Read-only · served only to this machine · stop it from the terminal (Enter or Ctrl-C)</footer>
+</body>
+</html>

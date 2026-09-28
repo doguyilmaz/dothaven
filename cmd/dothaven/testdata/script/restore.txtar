@@ -1,14 +1,53 @@
+# A misspelled category is an error, not an empty restore.
+! exec dothaven restore Downloads/backup-box-20240101000000 --only shel
+stderr 'unknown category "shel"'
+
 # restore dry-run shows the plan without writing
 exec dothaven restore Downloads/backup-box-20240101000000 --dry-run
 stdout 'Dry run'
-stdout 'shell/.zshrc'
+stdout '~/.zshrc +new'
+stdout '~/.gitconfig +differs from this machine'
 ! exists .zshrc
+# A file with no place on this machine is listed, not silently dropped.
+stdout '1 file has no place on this machine'
+stdout 'mystery/thing.conf'
 
-# default restore writes a NEW file (absent on the machine)
+
+# Off a terminal: new files are written, a differing one is kept. Nobody was
+# asked, so it is not "declined" — it is still on offer next time.
 exec dothaven restore Downloads/backup-box-20240101000000
 stdout 'Restored 1 file'
-exists .zshrc
+stdout '1 file that differs from this machine left as it is'
+! stdout 'remembered'
 grep 'alias ll' .zshrc
+grep 'name = Mine' .gitconfig
+exists .local/share/dothaven/state/applied.json
 
+# Running it again shows the applied file as done, not as work; the one that
+# differs is still offered.
+exec dothaven restore Downloads/backup-box-20240101000000
+stdout '1 already applied'
+stdout '1 differs'
+! stdout 'Restored'
+
+# Editing the restored file after the fact is told apart from a plain conflict.
+exec sh -c 'echo "alias mine=1" >> .zshrc'
+exec dothaven restore --dry-run Downloads/backup-box-20240101000000
+stdout '~/.zshrc +you changed it after restoring'
+
+# --force still overwrites (keeping the old copy aside).
+exec dothaven restore --force Downloads/backup-box-20240101000000
+stdout 'Restored 2 files'
+stdout 'the versions it replaced are in'
+grep 'name = Test' .gitconfig
+
+-- Downloads/backup-box-20240101000000/mystery/thing.conf --
+x = 1
 -- Downloads/backup-box-20240101000000/shell/.zshrc --
 alias ll='ls -la'
+-- Downloads/backup-box-20240101000000/git/.gitconfig --
+[user]
+	name = Test
+-- .gitconfig --
+[user]
+	name = Mine

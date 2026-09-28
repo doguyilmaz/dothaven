@@ -24,8 +24,11 @@ builds:
     # Trim paths and embed the release version into main.version.
     flags:
       - -trimpath
+    # DOTHAVEN_GITHUB_CLIENT_ID (optional) is the OAuth app for browser sign-in
+    # in `dothaven github login`; without it, login falls back to gh / a token.
+    # DOTHAVEN_GITHUB_APP (optional) is the GitHub App whose bot authors pushes.
     ldflags:
-      - -s -w -X main.version={{ .Version }}
+      - -s -w -X main.version={{ .Version }} -X github.com/doguyilmaz/dothaven/internal/github.ClientID={{ envOrDefault "DOTHAVEN_GITHUB_CLIENT_ID" "" }} -X github.com/doguyilmaz/dothaven/internal/github.AppSlug={{ envOrDefault "DOTHAVEN_GITHUB_APP" "" }}
 
 archives:
   - id: dothaven
@@ -73,7 +76,7 @@ homebrew_casks:
     binaries:
       - dothaven
     homepage: "https://github.com/doguyilmaz/dothaven"
-    description: "Discover, back up, and migrate your machine's dev config (chezmoi + age)"
+    description: "Move your dev setup to a new machine: dotfiles, AI tools, keys, apps and settings"
     repository:
       owner: doguyilmaz
       name: homebrew-tap
@@ -83,8 +86,9 @@ homebrew_casks:
     # paths shell out to chezmoi (and age) — not pulled in as a hard cask
     # dependency, so flag them as optional installs.
     caveats: |
-      dothaven runs standalone. The encrypted-migration features
-      (`dothaven chezmoi-export --apply`, `dothaven init`) also need chezmoi and age:
+      dothaven runs standalone; encrypted backups need nothing else.
+      Start with `dothaven` (a menu) or `dothaven doctor` (checks this machine).
+      The optional chezmoi sync (`dothaven chezmoi-export`, `init`) also needs:
         brew install chezmoi age
     # When the signing secret is set (see notarize: above) the release is signed +
     # notarized, so Gatekeeper accepts it with no quarantine workaround.

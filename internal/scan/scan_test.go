@@ -355,3 +355,159 @@ func TestFormatSecurityReport(t *testing.T) {
 		}
 	}
 }
+
+func TestIPRuleIgnoresLoopbackButKeepsRealAddresses(t *testing.T) {
+	if r := ScanContent("x", "export DOCKER_HOST=tcp://127.0.0.1:2375\nbind 0.0.0.0\nmask 255.255.255.0"); r.Action != Include {
+		t.Errorf("loopback/any/netmask flagged: %+v", r.Findings)
+	}
+	r := ScanContent("x", "ssh 127.0.0.1 then 10.2.3.4")
+	if r.Action != Redact || len(r.Findings) != 1 || r.Findings[0].Match != "10.2.3.4" {
+		t.Errorf("a real address after a loopback one: %+v", r.Findings)
+	}
+}
+
+func TestRedactionKeepsKeyAndSparesCode(t *testing.T) {
+	in := "export API_KEY=sk_" + "live_abcdefghijklmnopqrstuvwx\nif [[ $token == x ]]; then\n"
+	out := ApplyRedactions(in, ScanContent("x", in))
+	if !strings.Contains(out, "export API_KEY="+Marker) {
+		t.Errorf("key name not kept: %q", out)
+	}
+	if !strings.Contains(out, "$token == x") {
+		t.Errorf("code that merely mentions a keyword was masked: %q", out)
+	}
+	if strings.Contains(out, "sk_live_") {
+		t.Errorf("secret survived: %q", out)
+	}
+}
+
+// The gate scans long lines; the directory scan may skip them.
+func TestFullScanReadsLongLines(t *testing.T) {
+	line := strings.Repeat("a", 70<<10) + " ghp_" + strings.Repeat("b", 36)
+	if ScanContent("x", line).Action != Include {
+		t.Fatal("ScanContent is expected to skip a 70 KiB line")
+	}
+	if ScanContentFull("x", line).Action != Redact {
+		t.Error("ScanContentFull missed a token on a long line")
+	}
+}
+
+func TestPreviewNeverShowsTheValue(t *testing.T) {
+	for in, want := range map[string]string{
+		"ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaz9": "ghp_••••z9",
+		"API_KEY=sk_live_abcdefghijklmnop":         "API_KEY=••••op",
+		"token: \"short\"":                         "token:••••",
+		"-----BEGIN OPENSSH PRIVATE KEY-----":      "-----BEGIN OPENSSH PRIVATE KEY-----",
+	} {
+		if got := Preview(in); got != want {
+			t.Errorf("Preview(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRedactionNeverCrossesLines(t *testing.T) {
+	// A key with an empty value above a real secret: a \s* that crossed the
+	// line break used to mask the second key and keep its value.
+	for _, content := range []string{
+		"token =\nsecret = hunter2hunter2hunter2\n",
+		"password:\n  token: s3cr3ts3cr3ts3cr3t\n",
+		"API_KEY=\nDB_PASSWORD=correcthorsebattery\n",
+	} {
+		r := ScanContent("config.toml", content)
+		if r.Action != Redact {
+			t.Fatalf("%q: action = %v, want redact", content, r.Action)
+		}
+		out := ApplyRedactions(content, r)
+		for _, v := range []string{"hunter2hunter2hunter2", "s3cr3ts3cr3ts3cr3t", "correcthorsebattery"} {
+			if strings.Contains(out, v) {
+				t.Errorf("%q redacted to %q — the value survived", content, out)
+			}
+		}
+		if strings.Count(out, "\n") != strings.Count(content, "\n") {
+			t.Errorf("%q: line count changed: %q", content, out)
+		}
+	}
+}
+
+func TestAgeAndBase64PrivateKeysAreSkipped(t *testing.T) {
+	age := "# created: 2026-01-01T00:00:00Z\n# public key: age1xyz\nAGE-SECRET-KEY-1QYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQY\n"
+	if r := ScanContentFull("key.txt", age); r.Action != Skip {
+		t.Errorf("age identity: action = %v, want skip", r.Action)
+	}
+	kube := "users:\n- name: admin\n  user:\n    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVB\n"
+	if r := ScanContentFull("config", kube); r.Action != Skip {
+		t.Errorf("base64 private key: action = %v, want skip", r.Action)
+	}
+	// A CA certificate is encoded the same way and is public.
+	ca := "clusters:\n- cluster:\n    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUMvakNDQWVhZ0F3SUJBZ0lC\n"
+	if r := ScanContentFull("config", ca); r.Action == Skip {
+		t.Errorf("CA certificate was treated as a private key")
+	}
+}
+
+// One secret is one finding: GITHUB_TOKEN=ghp_… is the GitHub token, not
+// also a "secret value" beside it. Two secrets on a line are still two.
+func TestOverlappingFindingsCountOnce(t *testing.T) {
+	r := ScanContent(".zshrc", "export GITHUB_TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
+	if len(r.Findings) != 1 || r.Findings[0].Pattern.ID != "github-token" {
+		t.Errorf("findings = %+v", r.Findings)
+	}
+	if out := ApplyRedactions("export GITHUB_TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", r); strings.Contains(out, "ghp_") {
+		t.Errorf("still redacts: %q", out)
+	}
+	r = ScanContent(".env", "OPENAI=sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa DB_PASSWORD=hunter2hunter2\n")
+	if len(r.Findings) != 2 {
+		t.Errorf("two secrets on one line = %d findings", len(r.Findings))
+	}
+	// The preview's tail is the value's, not an ellipsis from truncation.
+	long := "API_TOKEN=" + strings.Repeat("z", 60) + "Q9"
+	r = ScanContent(".env", long+"\n")
+	if len(r.Findings) != 1 || !strings.HasSuffix(Preview(r.Findings[0].Match), "Q9") {
+		t.Errorf("preview = %q", Preview(r.Findings[0].Match))
+	}
+}
+
+// The report is deduplicated; redaction is not. Every value the second
+// review got through (reproduced against a plaintext backup) stays out.
+func TestDedupeNeverSwitchesRedactionOff(t *testing.T) {
+	for _, c := range []struct{ in, secret string }{
+		{"export TOKEN=abcdefghijklmnop password=hunter2hunter2\n", "hunter2hunter2"},
+		{`export CFG='{"token":"opaqueSecretValue123","user":"me@example.com"}'` + "\n", "opaqueSecretValue123"},
+		{"export password=MyP@ss.w0rd\n", "MyP@ss.w0rd"},
+		{"password: MyP@ss.w0rd\n", "MyP@ss.w0rd"},
+		{`{"api_key": "xxxxxxxxxxxxxxxx", "password": "yyyyyyyyyyyyyy"}` + "\n", "yyyyyyyyyyyyyy"},
+	} {
+		r := ScanContentFull(".zshrc", c.in)
+		if r.Action == Include {
+			t.Errorf("%q: action include — the file would not be redacted at all", c.in)
+			continue
+		}
+		if out := ApplyRedactions(c.in, r); strings.Contains(out, c.secret) {
+			t.Errorf("%q redacted to %q — %q survived", c.in, out, c.secret)
+		}
+	}
+}
+
+// A one-line JSON PEM matches from BEGIN to END; the preview is the header.
+// A post-quantum age identity is found like a classic one.
+func TestPreviewOfKeysShowsNoKeyMaterial(t *testing.T) {
+	sa := `{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n-----END PRIVATE KEY-----\n"}`
+	r := ScanContentFull("sa.json", sa)
+	if r.Action != Skip || len(r.Findings) == 0 {
+		t.Fatalf("service-account key: %+v", r)
+	}
+	for _, f := range r.Findings {
+		if p := Preview(f.Match); strings.Contains(p, "MIIE") {
+			t.Errorf("preview shows key material: %q", p)
+		}
+	}
+	pq := "AGE-SECRET-KEY-PQ-1" + strings.Repeat("QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L", 3) + "\n"
+	r = ScanContentFull("key.txt", pq)
+	if r.Action != Skip {
+		t.Errorf("post-quantum age identity: action %v", r.Action)
+	}
+	for _, f := range r.Findings {
+		if p := Preview(f.Match); strings.Contains(p, "QPZRY") {
+			t.Errorf("preview shows the age key: %q", p)
+		}
+	}
+}

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="t" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1f1f1e"/><stop offset="1" stop-color="#0e0e0e"/></linearGradient>
+<clipPath id="k"><path d="M150 700V420H430L390 461C357 475 339 495 339 518V700Z"/></clipPath>
+<clipPath id="c"><rect x="560" y="470" width="110" height="130"/></clipPath>
+<path id="w" d="M634.6 657.6L674.8 645.3L685.1 638.6C711.6 621.2 738.6 594.7 747.2 577.6C751.4 569.3 751.1 559.2 746.4 553.3C741.5 547.1 735.9 544.8 727 545.2C718.3 545.6 714.4 547.3 691.2 561.3C633.1 596.3 597 600.3 551.7 576.8C542.4 572 529.1 563.2 523.5 558.2C514.1 549.8 499.7 535.6 489 524C448.9 480.4 428.8 466.2 395.1 457.4C346.2 444.7 294.5 462.5 247.1 508.5C220.9 533.9 207.7 557 210.9 571.8C214 586.1 222.7 594.8 235.7 596.6C246.7 598 256.1 592.6 267.1 578.5C292.1 546.4 320.9 531.5 346.5 537.4C369.2 542.7 386.8 554.7 426.2 592.1C434.8 600.3 443.9 608.9 446.4 611.1C490.8 650.9 533.6 669.5 581.5 669.9L594.5 670L634.6 657.6Z"/>
+</defs>
+<rect width="1024" height="1024" rx="268" fill="url(#t)"/>
+<g transform="translate(512 512) scale(1.06) translate(-513 -512)">
+<circle cx="141" cy="603" r="62" fill="#e8e2d7"/>
+<rect x="478" y="327" width="268" height="269" rx="35" fill="none" stroke="#f3eee4" stroke-width="58"/>
+<circle cx="553" cy="443" r="33" fill="#f3eee4"/>
+<use href="#w" fill="url(#t)" stroke="url(#t)" stroke-width="56" stroke-linejoin="round"/>
+<rect x="635" y="444" width="277" height="253" rx="35" fill="url(#t)" stroke="#00d7a5" stroke-width="58"/>
+<use href="#w" clip-path="url(#c)" fill="url(#t)" stroke="url(#t)" stroke-width="56" stroke-linejoin="round"/>
+<use href="#w" fill="#00d7a5" stroke="#00d7a5" stroke-width="10" stroke-linejoin="round"/>
+<use href="#w" clip-path="url(#k)" fill="#efe9df" stroke="#efe9df" stroke-width="10" stroke-linejoin="round"/>
+</g>
+</svg>

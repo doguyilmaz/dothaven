@@ -1,8 +1,10 @@
 package scan
 
 import (
+	"bytes"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/snapshot"
 )
@@ -10,23 +12,65 @@ import (
 // Marker replaces redacted values.
 const Marker = "[REDACTED]"
 
-// ApplyRedactions masks every redact-action finding's matches in content. Each
-// pattern's regex runs once (a global replace), so multiple same-pattern
-// secrets on one line are all masked.
+// ApplyRedactions masks every redact-action finding's matches in content, one
+// line at a time, the way the scan found them. A match can therefore never
+// run from one line into the next — which is how `token =` on one line could
+// otherwise swallow the key of `secret = x` on the next and leave x behind.
+// Every match on a line is masked, not just the first.
 func ApplyRedactions(content string, r Result) string {
 	if r.Action != Redact {
 		return content
 	}
-	seen := map[string]bool{}
-	out := content
-	for _, f := range r.Findings {
-		if f.Pattern.Action != Redact || seen[f.Pattern.ID] {
-			continue
+	rules := r.redact
+	if rules == nil {
+		// A Result built by hand rather than by a scan: its findings are all
+		// there is to go on.
+		seen := map[string]bool{}
+		for _, f := range r.Findings {
+			if f.Pattern.Action == Redact && !seen[f.Pattern.ID] {
+				seen[f.Pattern.ID] = true
+				rules = append(rules, f.Pattern)
+			}
 		}
-		seen[f.Pattern.ID] = true
-		out = f.Pattern.re.ReplaceAllString(out, Marker)
 	}
-	return out
+	var b strings.Builder
+	b.Grow(len(content))
+	for line := range strings.SplitAfterSeq(content, "\n") {
+		body, nl := strings.CutSuffix(line, "\n")
+		for _, p := range rules {
+			body = p.re.ReplaceAllStringFunc(body, func(m string) string {
+				// Only what the scan would itself report is masked. A keyword
+				// rule also matches `token == x` in code, and masking that
+				// corrupts a file to hide nothing.
+				if !p.real(m) {
+					return m
+				}
+				if p.keyword {
+					return keepKey(m)
+				}
+				return Marker
+			})
+		}
+		b.WriteString(body)
+		if nl {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+// keepKey masks the value of a `key = value` match and keeps the key, so a
+// redacted file still says which setting held the secret.
+func keepKey(m string) string {
+	i := strings.IndexAny(m, "=:")
+	if i < 0 {
+		return Marker
+	}
+	j := i + 1
+	for j < len(m) && strings.ContainsRune(" \t=:\"'", rune(m[j])) {
+		j++
+	}
+	return m[:j] + Marker
 }
 
 // RedactSection scrubs a section in place — content AND pairs (values and keys)
@@ -86,17 +130,19 @@ func sortedMapKeys(m map[string]string) []string {
 	return ks
 }
 
+var pemHeader = regexp.MustCompile(`-----BEGIN[A-Z0-9 ]*PRIVATE KEY-----`)
+
 // --- Targeted, structure-preserving redactors (used by registry entries) ---
 
 var (
 	ipRe = regexp.MustCompile(`\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`)
 	// npm auth lines: _authToken=, plus the legacy _auth= / _password= (base64)
 	// forms, with or without a //registry:-scoped prefix. Per line, any case.
-	npmAuthRe = regexp.MustCompile(`(?im)^(.*?(?:_authToken|_auth|_password)\s*=\s*).+$`)
+	npmAuthRe = regexp.MustCompile(`(?im)^(.*?(?:_authToken|_auth|_password)[ \t]*=[ \t]*).+$`)
 	// ssh_config keywords are case-insensitive, so the lowercase forms are valid
 	// syntax and must redact too. ${1} preserves the user's original casing.
-	sshHostRe = regexp.MustCompile(`(?i)(HostName\s+).+`)
-	sshIDRe   = regexp.MustCompile(`(?i)(IdentityFile\s+).+`)
+	sshHostRe = regexp.MustCompile(`(?i)(HostName[ \t]+).+`)
+	sshIDRe   = regexp.MustCompile(`(?i)(IdentityFile[ \t]+).+`)
 )
 
 func RedactIPs(text string) string { return ipRe.ReplaceAllString(text, Marker) }
@@ -106,4 +152,51 @@ func RedactNpmTokens(text string) string { return npmAuthRe.ReplaceAllString(tex
 func RedactSSHConfig(text string) string {
 	text = sshHostRe.ReplaceAllString(text, "${1}"+Marker)
 	return sshIDRe.ReplaceAllString(text, "${1}"+Marker)
+}
+
+// Preview is a finding's match made safe to print: enough to recognise it (the
+// setting's name, a token's prefix, its last two characters), never the value.
+// A scan's output lands in terminal scrollback, CI logs and screen shares.
+func Preview(match string) string {
+	// A PEM header names the kind of key, not the key — but only the header:
+	// a one-line JSON PEM (a service-account key) matches with its body.
+	if h := pemHeader.FindString(match); h != "" {
+		return h
+	}
+	if strings.HasPrefix(match, "(") && len(match) <= 40 {
+		return match // a GnuPG s-expression's opening names the kind, not the key
+	}
+	if strings.HasPrefix(match, "AGE-SECRET-KEY-") {
+		return "AGE-SECRET-KEY-••••"
+	}
+	key, val := "", match
+	if i := strings.IndexAny(match, "=:"); i >= 0 && i < len(match)-1 {
+		key, val = match[:i+1], strings.TrimLeft(match[i+1:], " \t\"'")
+	}
+	r := []rune(val)
+	if len(r) <= 8 {
+		return key + "••••"
+	}
+	head := 4
+	if key != "" {
+		head = 0
+	}
+	return key + string(r[:head]) + "••••" + string(r[len(r)-2:])
+}
+
+// ageIdentityRe is a whole age identity, classic or post-quantum.
+var ageIdentityRe = regexp.MustCompile(`AGE-SECRET-KEY-(PQ-)?1[0-9A-Z]{50,}`)
+
+// ContainsAgeIdentity reports whether b holds an age identity — the key that
+// opens every file encrypted to it.
+func ContainsAgeIdentity(b []byte) bool {
+	return bytes.Contains(b, []byte("AGE-SECRET-KEY-")) && ageIdentityRe.Match(b)
+}
+
+// MaskAgeIdentities replaces every age identity in b with Marker.
+func MaskAgeIdentities(b []byte) []byte {
+	if !bytes.Contains(b, []byte("AGE-SECRET-KEY-")) {
+		return b
+	}
+	return ageIdentityRe.ReplaceAll(b, []byte(Marker))
 }

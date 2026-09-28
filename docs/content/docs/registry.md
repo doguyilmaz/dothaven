@@ -1,428 +1,427 @@
 ---
-title: Registry
-weight: 7
+title: What gets backed up
+linkTitle: Registry
+weight: 10
 ---
 
-The registry is dothaven's single declarative source of truth for the config files
-and directories it knows about. Every entry is one Go struct in
-`internal/registry/registry.go`. There is no config file to edit and no plugin
-system — the registry is compiled into the binary, and both `collect` and
-`backup` are driven by the same list. Add or change an entry once, and discovery,
-auditing, and copying all follow.
+dothaven knows over 200 config locations. This list, the registry, is compiled into the binary and is the single source of truth: `backup`, `restore`, `scan`, `check`, `collect`, `chezmoi-export` and the dashboard all read it. If a path below exists on your machine, it is in your backups. Anything else can be added with [`dothaven include`](#your-own-paths).
 
-## The entry model
+Only your **user-level (global)** setup is listed here. Project-level config, such as a repository's own `.claude/`, `.mcp.json` or `.vscode/`, lives in the project and travels with its git repository. Run [`dothaven ready`](../commands#ready) to make sure those repositories are pushed.
 
-Each registered source is an `Entry`:
+## How to read the tables
 
-```go
-type Entry struct {
-	ID          string
-	Name        string
-	Paths       map[string]string // keyed by GOOS: "darwin", "linux", "windows"
-	Category    string
-	Kind        Kind
-	Fields      []string          // JSONExtract only (empty = all keys)
-	BackupDest  string
-	Sensitivity Sensitivity
-	Redact      func(string) string
-}
-```
+| Mark | Meaning | In a plain backup | In an encrypted backup |
+| --- | --- | --- | --- |
+| 🔑 | A credential: logins, keys, tokens | Left out, and listed | Included |
+| 🔒 | Sensitive config that can hold a secret (an MCP server's API key in its `env`, a host name) | Included, with secret values redacted | Included |
+| (none) | Ordinary config | Included (scanned and redacted like everything else) | Included |
 
-- **`ID`** — stable section key in snapshots (e.g. `shell.zshrc`).
-- **`Name`** — human-readable label.
-- **`Paths`** — per-OS path templates (see [Paths and `~` expansion](#paths-and--expansion)).
-- **`Category`** — grouping used by `--only` / `--skip` and in summaries.
-- **`Kind`** — how the source is read (see [Entry kinds](#entry-kinds)).
-- **`Fields`** — for `JSONExtract`, which top-level keys to pull (empty = all).
-- **`BackupDest`** — relative destination path inside a backup tree.
-- **`Sensitivity`** — `low`, `medium`, or `high` (see [Sensitivity levels](#sensitivity-levels)).
-- **`Redact`** — optional content scrubber applied when redaction is on.
+"🔑 never pushed to GitHub" marks age keys: included in an encrypted file backup, left out of every `github push`, even an encrypted one (see [GitHub](../github#storage-modes)).
 
-## Entry kinds
+The list below is generated from the registry itself (a test fails if they disagree), so it is exactly what a backup looks for.
 
-`Kind` decides how `Collect` turns a path into a snapshot section. There are four:
+On restore, 🔒 and 🔑 files are written owner-only (`0600`). In a GitHub `split` push, they go into the encrypted bundle. `.npmrc` and `~/.ssh/config` are credential-adjacent files with a dedicated redactor, so they stay in plain backups with just the token, `HostName` and `IdentityFile` masked.
 
-| Kind | Reads | Snapshot section produced |
-| --- | --- | --- |
-| `File` | Whole file content | `Content` — the trimmed file text (redacted if a `Redact` rule applies) |
-| `FileMetadata` | File, but not its content | `Pairs` — `exists: true` and `lines: <count>` only |
-| `Dir` | Directory listing | `Items` — one row per entry name, sorted |
-| `JSONExtract` | JSON file, selected fields | `Pairs` — key/value pairs from the chosen top-level keys |
+Paths ending in `/` are folders: everything inside is carried, minus clutter each entry names (caches, logs, plugin downloads, shell history and compiled files). Symbolic links are followed. Where macOS and Linux differ, the macOS path is shown first. Entries marked (macOS) exist only there.
 
-The mapping to snapshot shapes (`Content`, `Pairs`, `Items`) comes straight from
-`Collect` in `registry.go`:
+## AI tooling
 
-- **`File`** reads the file, optionally runs the `Redact` function when redaction
-  is enabled, trims surrounding whitespace, and stores the result as the
-  section's `Content`.
-- **`FileMetadata`** reads the file only to count lines. It never stores the
-  content — the section is just `{exists: "true", lines: "<n>"}`. This is how a
-  large generated file like `.p10k.zsh` is recorded without dragging its body
-  into the snapshot.
-- **`Dir`** lists the directory, sorts the names, and emits one `Item` per name.
-  An empty or unreadable directory is skipped entirely.
-- **`JSONExtract`** parses the file as JSON and pulls the keys named in `Fields`.
-  If a selected field is itself an object, its inner keys are flattened into the
-  pair set; otherwise the field's scalar value is stored. An empty `Fields`
-  means "extract every top-level key."
+Your global AI setup is often the hardest thing to rebuild by hand: skills and agents you wrote, slash commands, hooks, plugins and marketplaces, and MCP servers configured with API keys. The `ai` category covers:
 
-Any source that does not exist on disk (or fails to read/parse) is silently
-skipped, so the registry can list more than any one machine has.
+- **Claude Code**: `settings.json` (permissions, plugins, marketplaces, hooks, status line, model), `~/.claude.json` (user-scope MCP servers, from `claude mcp add --scope user`), skills, agents (subagents), commands, hooks, output styles, plugins with their marketplaces, keybindings, the status line script, and `CLAUDE.md`. The whole of `~/.claude.json` is carried, including Claude Code's per-project state. On Linux its login file is carried too; on macOS the login is in the Keychain, which dothaven does not copy, so you sign in again.
+- **Claude Desktop**: its MCP config.
+- **Codex**: `config.toml` (including MCP servers), `AGENTS.md`, prompts, skills, command rules, and its login (`auth.json`).
+- **Gemini CLI**: settings, skills, commands, extensions, `GEMINI.md`, its login, and its `.env` with the API key.
+- **Cursor**: `mcp.json`, skills, commands, rules and agents; its editor settings, keybindings and snippets are in `editor`.
+- **Windsurf**: MCP config, skills, global rules; editor settings and keybindings in `editor`.
+- **Cline** (MCP servers in VS Code and Cursor, global rules and workflows), **Roo Code** (MCP servers, global rules), **VS Code** MCP servers (`mcp.json`), **opencode**, **GitHub Copilot CLI**, **Continue**, **aider**, **Goose**, **Kiro**, **Amp**, **Qwen Code** and **LM Studio**.
 
-## Sensitivity levels
+Local model files (Ollama weights and the like) are not copied. `collect` records which Ollama models you have so you can pull them again.
 
-Every entry carries a `Sensitivity` of `low`, `medium`, or `high`. This is a
-classification of how dangerous the file's contents are if they leak — it
-documents intent and drives how you should treat each entry, especially when
-exporting to chezmoi for age-encryption.
-
-| Level | Meaning | Examples in the registry |
-| --- | --- | --- |
-| `low` | Safe to read and share; no secrets expected | shell rc files, `.gitconfig`, editor settings, `.tmux.conf` |
-| `medium` | May contain identifying or environment detail | `~/.ssh/config`, AWS CLI `config`, gcloud configurations |
-| `high` | Holds credentials or private key material | `~/.npmrc`, AWS `credentials`, `kubeconfig`, Docker config, GnuPG home |
-
-{{< callout type="warning" >}}
-Sensitivity drives real behavior, not just labeling. Entries with a `Redact` rule
-have their content scrubbed during `collect`/`backup`. A `high`-sensitivity entry
-with **no** redactor (e.g. AWS `credentials`, the GnuPG home) is **excluded from a
-plaintext backup** — content scanning can't be trusted to catch every secret
-(binary key material has no signature). Carry those with `chezmoi-export`, which
-age-encrypts them at rest.
-{{< /callout >}}
-
-## Paths and `~` expansion
-
-`Paths` is a map keyed by Go's `runtime.GOOS` — `"darwin"`, `"linux"`, or
-`"windows"`. `ResolvePath` picks the template for the current OS and expands it:
-
-```go
-func ResolvePath(e Entry, home string) string {
-	tmpl, ok := e.Paths[runtime.GOOS]
-	if !ok {
-		return "" // entry not applicable on this platform
-	}
-	return strings.Replace(tmpl, "~", home, 1)
-}
-```
-
-Two rules follow from this:
-
-- **Leading `~` is replaced by the home directory** (first occurrence only).
-- **No entry for the current OS means an empty path**, and the entry is skipped
-  by both `Collect` and `BackupTargets`. That is why some entries (shell rc
-  files, `.p10k.zsh`, GnuPG, gcloud) define only `darwin` and `linux` — they are
-  simply absent on Windows.
-
-Windows templates use `%USERPROFILE%` and `%APPDATA%` literally; these are not
-shell-expanded by `ResolvePath` (it only substitutes `~`).
-
-## The Redact rule
-
-`Redact` is an optional `func(string) string` that scrubs a `File` entry's
-content before it is stored. It runs only for `Kind: File`, and only when
-redaction is enabled (the default; disabled with `--no-redact`). Two registry
-entries set one today, both from `internal/scan`:
-
-- **`ssh.config`** uses `RedactSSHConfig`, which replaces `HostName` and
-  `IdentityFile` values with `[REDACTED]` while keeping the file's structure.
-- **`npm.config`** uses `RedactNpmTokens`, which replaces the value after
-  `_authToken=` with `[REDACTED]`.
-
-These are structure-preserving: the keys and layout survive so the redacted file
-still reads as a valid config, only the secret value is masked.
-
-## Registered entries
-
-The registry currently declares around 130 entries across 18 categories —
-including a `lang` category for per-language toolchain config (Ruby, Python, Go,
-Rust, PHP, .NET, JS, Elixir, Julia) and broad cloud/DevOps, git-ecosystem, and
-database-client coverage. The lists below are grouped by category; large
-categories show the notable entries and end with "and more." The path shown is
-the macOS/Linux (`~`-relative) template; Windows templates differ where defined
-and some entries are macOS/Linux-only.
-
-{{< callout type="warning" >}}
-Every credential-bearing entry is classified `high`. On a chezmoi export those are
-age-encrypted at rest, and because they carry no `Redact` rule they are excluded
-from a plaintext backup entirely.
-{{< /callout >}}
+## The full list
 
 ### ai
 
-AI assistant configs, skills, and project-memory files for Claude, Cursor, Gemini,
-and Windsurf.
-
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `ai.claude.settings` | Claude Settings | `~/.claude/settings.json` | JSONExtract | low |
-| `ai.claude.skills` | Claude Skills | `~/.claude/skills` | Dir | low |
-| `ai.claude.md` | CLAUDE.md | `~/.claude/CLAUDE.md` | File | low |
-| `ai.cursor.mcp` | Cursor MCP Config | `~/.cursor/mcp.json` | File | low |
-| `ai.gemini.settings` | Gemini Settings | `~/.gemini/settings.json` | JSONExtract | low |
-| `ai.gemini.md` | GEMINI.md | `~/.gemini/GEMINI.md` | File | low |
-| `ai.windsurf.mcp` | Windsurf MCP Config | `~/.codeium/windsurf/mcp_config.json` | File | low |
-
-…and the matching skills directories for Cursor, Gemini, and Windsurf.
-
-The Claude settings entry extracts only the `permissions` and `enabledPlugins`
-fields; the Gemini settings entry extracts all top-level keys.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.claude/settings.json` | Claude Settings | 🔒 |
+| `~/.claude.json` | Claude Code state & user MCP servers | 🔒 |
+| `~/.claude/skills/` | Claude Skills |  |
+| `~/.claude/agents/` | Claude subagents |  |
+| `~/.claude/commands/` | Claude slash commands |  |
+| `~/.claude/hooks/` | Claude hook scripts |  |
+| `~/.claude/output-styles/` | Claude output styles |  |
+| `~/.claude/plugins/` | Claude plugins & marketplaces |  |
+| `~/.claude/keybindings.json` | Claude keybindings |  |
+| `~/.claude/statusline.sh` | Claude status line script |  |
+| `~/.claude/.credentials.json` | Claude Code login | 🔑 |
+| `~/.claude/CLAUDE.md` | CLAUDE.md |  |
+| `~/Library/Application Support/Claude/claude_desktop_config.json` (Linux: `~/.config/Claude/claude_desktop_config.json`) | Claude Desktop MCP config | 🔒 |
+| `~/.codex/config.toml` | Codex config & MCP | 🔒 |
+| `~/.codex/AGENTS.md` | Codex AGENTS.md |  |
+| `~/.codex/prompts/` | Codex prompts |  |
+| `~/.codex/skills/` | Codex skills |  |
+| `~/.codex/rules/` | Codex command rules |  |
+| `~/.codex/auth.json` | Codex login | 🔑 |
+| `~/.cursor/mcp.json` | Cursor MCP Config | 🔒 |
+| `~/.cursor/skills/` | Cursor Skills |  |
+| `~/.cursor/commands/` | Cursor commands |  |
+| `~/.cursor/rules/` | Cursor rules |  |
+| `~/.cursor/agents/` | Cursor agents |  |
+| `~/.gemini/settings.json` | Gemini Settings | 🔒 |
+| `~/.gemini/skills/` | Gemini Skills |  |
+| `~/.gemini/GEMINI.md` | GEMINI.md |  |
+| `~/.gemini/commands/` | Gemini commands |  |
+| `~/.gemini/extensions/` | Gemini extensions |  |
+| `~/.gemini/oauth_creds.json` | Gemini login | 🔑 |
+| `~/.gemini/.env` | Gemini .env (API key) | 🔑 |
+| `~/.codeium/windsurf/mcp_config.json` | Windsurf MCP Config | 🔒 |
+| `~/.codeium/windsurf/skills/` | Windsurf Skills |  |
+| `~/.codeium/windsurf/memories/global_rules.md` | Windsurf global rules |  |
+| `~/Library/Application Support/Code/User/mcp.json` (Linux: `~/.config/Code/User/mcp.json`) | VS Code MCP servers | 🔒 |
+| `~/.config/opencode/` | opencode config, agents & commands | 🔒 |
+| `~/.copilot/mcp-config.json` | Copilot CLI MCP config | 🔒 |
+| `~/.copilot/config.json` | Copilot CLI config | 🔒 |
+| `~/.continue/config.yaml` | Continue config | 🔒 |
+| `~/.continue/config.json` | Continue config (json) | 🔒 |
+| `~/.aider.conf.yml` | aider config | 🔒 |
+| `~/.config/goose/config.yaml` | Goose config | 🔒 |
+| `~/.kiro/settings/mcp.json` | Kiro MCP config | 🔒 |
+| `~/.kiro/steering/` | Kiro steering |  |
+| `~/.config/amp/settings.json` | Amp settings | 🔒 |
+| `~/.qwen/settings.json` | Qwen Code settings | 🔒 |
+| `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` (Linux: `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`) | Cline MCP servers | 🔒 |
+| `~/Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` (Linux: `~/.config/Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`) | Cline MCP servers (in Cursor) | 🔒 |
+| `~/Documents/Cline/Rules/` | Cline global rules |  |
+| `~/Documents/Cline/Workflows/` | Cline global workflows |  |
+| `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json` (Linux: `~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`) | Roo Code MCP servers | 🔒 |
+| `~/.roo/rules/` | Roo Code global rules |  |
+| `~/.lmstudio/mcp.json` | LM Studio MCP config | 🔒 |
 
 ### shell
 
-macOS/Linux only.
-
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `shell.zshrc` | .zshrc | `~/.zshrc` | File | low |
-| `shell.zprofile` | .zprofile | `~/.zprofile` | File | low |
-| `shell.bashrc` | .bashrc | `~/.bashrc` | File | low |
-| `shell.profile` | .profile | `~/.profile` | File | low |
-| `shell.fish` | Fish Config | `~/.config/fish` | Dir | low |
-| `shell.nushell` | Nushell Config | `~/.config/nushell` | Dir | low |
-
-…and `shell.zshenv`, `shell.bash_profile`, and `shell.inputrc`.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.zshrc` | .zshrc |  |
+| `~/.zprofile` | .zprofile |  |
+| `~/.zshenv` | .zshenv |  |
+| `~/.bash_profile` | .bash_profile |  |
+| `~/.bashrc` | .bashrc |  |
+| `~/.zlogin` | .zlogin |  |
+| `~/.zlogout` | .zlogout |  |
+| `~/.bash_aliases` | .bash_aliases |  |
+| `~/.bash_logout` | .bash_logout |  |
+| `~/.fzf.zsh` | .fzf.zsh |  |
+| `~/.fzf.bash` | .fzf.bash |  |
+| `~/.zsh/` | ~/.zsh |  |
+| `~/.config/zsh/` | XDG zsh config |  |
+| `~/.profile` | .profile |  |
+| `~/.config/fish/` | Fish Config |  |
+| `~/Library/Application Support/nushell/` (Linux: `~/.config/nushell/`) | Nushell Config |  |
+| `~/.inputrc` | .inputrc |  |
+| `~/.oh-my-zsh/custom/` | oh-my-zsh custom |  |
+| `~/.config/sheldon/plugins.toml` | sheldon plugins |  |
+| `~/.zsh_plugins.txt` | antidote plugins |  |
+| `~/.config/powershell/Microsoft.PowerShell_profile.ps1` | PowerShell profile |  |
 
 ### git
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `git.config` | .gitconfig | `~/.gitconfig` | File | low |
-| `git.ignore` | .gitignore_global | `~/.gitignore_global` | File | low |
-| `git.attributes` | .gitattributes_global | `~/.gitattributes_global` | File | low |
-| `gh.config` | GitHub CLI Config | `~/.config/gh/config.yml` | File | low |
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.gitconfig` | .gitconfig |  |
+| `~/.gitignore_global` | .gitignore_global |  |
+| `~/.config/gh/config.yml` | GitHub CLI Config |  |
+| `~/.gitattributes_global` | .gitattributes_global |  |
+| `~/.config/gh/hosts.yml` | GitHub CLI hosts | 🔑 |
+| `~/.config/glab-cli/config.yml` | GitLab CLI | 🔑 |
+| `~/.config/git/config` | XDG git config |  |
+| `~/.config/git/ignore` | XDG git ignore |  |
+| `~/.config/git/attributes` | XDG git attributes |  |
+| `~/.config/git/allowed_signers` | git allowed_signers |  |
+| `~/.config/git/hooks/` | Global git hooks |  |
+| `~/Library/Application Support/lazygit/config.yml` (Linux: `~/.config/lazygit/config.yml`) | lazygit |  |
+| `~/.config/jj/config.toml` | Jujutsu config |  |
+| `~/.config/gitui/` | gitui |  |
+| `~/.tigrc` | .tigrc |  |
 
 ### editor
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `editor.zed` | Zed Settings | `~/.config/zed/settings.json` | File | low |
-| `editor.cursor` | Cursor Settings | `~/Library/Application Support/Cursor/User/settings.json` | File | low |
-| `editor.nvim` | Neovim Config | `~/.config/nvim` | Dir | low |
-| `editor.vscode.settings` | VS Code Settings | `~/Library/Application Support/Code/User/settings.json` | File | low |
-| `editor.helix` | Helix Config | `~/.config/helix` | Dir | low |
-| `editor.editorconfig` | .editorconfig | `~/.editorconfig` | File | low |
-
-…and `editor.vimrc`, VS Code keybindings/snippets, Doom Emacs, and Sublime Text.
-
-The Cursor settings path differs by OS: `~/.config/Cursor/User/settings.json` on
-Linux and `%APPDATA%/Cursor/User/settings.json` on Windows.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.config/zed/settings.json` | Zed Settings |  |
+| `~/Library/Application Support/Cursor/User/settings.json` (Linux: `~/.config/Cursor/User/settings.json`) | Cursor Settings |  |
+| `~/Library/Application Support/Cursor/User/keybindings.json` (Linux: `~/.config/Cursor/User/keybindings.json`) | Cursor Keybindings |  |
+| `~/Library/Application Support/Cursor/User/snippets/` (Linux: `~/.config/Cursor/User/snippets/`) | Cursor Snippets |  |
+| `~/.config/zed/keymap.json` | Zed Keymap |  |
+| `~/.config/zed/themes/` | Zed Themes |  |
+| `~/.config/zed/snippets/` | Zed Snippets |  |
+| `~/Library/Application Support/Windsurf/User/settings.json` (Linux: `~/.config/Windsurf/User/settings.json`) | Windsurf Settings |  |
+| `~/Library/Application Support/Windsurf/User/keybindings.json` (Linux: `~/.config/Windsurf/User/keybindings.json`) | Windsurf Keybindings |  |
+| `~/.config/nvim/` | Neovim Config |  |
+| `~/.vim/` | ~/.vim (without plugins) |  |
+| `~/.emacs` | Emacs init |  |
+| `~/.emacs.d/` | ~/.emacs.d (config only) |  |
+| `~/.vimrc` | .vimrc |  |
+| `~/Library/Application Support/Code/User/settings.json` (Linux: `~/.config/Code/User/settings.json`) | VS Code Settings |  |
+| `~/Library/Application Support/Code/User/keybindings.json` (Linux: `~/.config/Code/User/keybindings.json`) | VS Code Keybindings |  |
+| `~/Library/Application Support/Code/User/snippets/` (Linux: `~/.config/Code/User/snippets/`) | VS Code Snippets |  |
+| `~/.config/helix/` | Helix Config |  |
+| `~/.config/doom/` | Doom Emacs |  |
+| `~/Library/Application Support/Sublime Text/Packages/User/` (Linux: `~/.config/sublime-text/Packages/User/`) | Sublime Text User |  |
+| `~/.editorconfig` | .editorconfig |  |
+| `~/.ideavimrc` | .ideavimrc |  |
 
 ### terminal
 
-macOS/Linux only.
-
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `terminal.p10k` | .p10k.zsh | `~/.p10k.zsh` | FileMetadata | low |
-| `terminal.tmux` | .tmux.conf | `~/.tmux.conf` | File | low |
-| `terminal.starship` | Starship prompt | `~/.config/starship.toml` | File | low |
-| `terminal.ghostty` | Ghostty | `~/.config/ghostty/config` | File | low |
-
-…and Alacritty, Kitty, and WezTerm.
-
-`.p10k.zsh` is recorded as metadata only (`exists` + `lines`), not content.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.p10k.zsh` | .p10k.zsh |  |
+| `~/.tmux.conf` | .tmux.conf |  |
+| `~/.config/tmux/` | XDG tmux config |  |
+| `~/Library/Application Support/iTerm2/DynamicProfiles/` (macOS) | iTerm2 dynamic profiles |  |
+| `~/.config/starship.toml` | Starship prompt |  |
+| `~/.config/alacritty/` | Alacritty |  |
+| `~/.config/kitty/` | Kitty |  |
+| `~/.config/wezterm/wezterm.lua` | WezTerm |  |
+| `~/.config/ghostty/config` | Ghostty |  |
+| `~/.config/zellij/` | Zellij |  |
+| `~/.screenrc` | .screenrc |  |
 
 ### ssh
 
-| ID | Name | Path | Kind | Sensitivity | Redact |
-| --- | --- | --- | --- | --- | --- |
-| `ssh.config` | SSH Config | `~/.ssh/config` | File | medium | `RedactSSHConfig` |
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.ssh/config` | SSH Config | 🔒 |
+| `~/.ssh/` | SSH keys & known hosts | 🔑 |
 
 ### npm
 
-| ID | Name | Path | Kind | Sensitivity | Redact |
-| --- | --- | --- | --- | --- | --- |
-| `npm.config` | .npmrc | `~/.npmrc` | File | high | `RedactNpmTokens` |
-
-`.npmrc` is the one `high` entry with a redactor: its `_authToken` value is masked
-in plaintext output, so it is the exception that can be backed up scrubbed.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.npmrc` | .npmrc | 🔒 |
 
 ### bun
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `bun.config` | .bunfig.toml | `~/.bunfig.toml` | File | low |
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.bunfig.toml` | .bunfig.toml |  |
 
 ### cloud
 
-Cloud and PaaS CLI configs. The `config`-style files are `medium`; anything that
-stores auth tokens or keys is `high` (age-encrypted on export, never in a
-plaintext backup).
-
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `cloud.aws.config` | AWS CLI config | `~/.aws/config` | File | medium |
-| `cloud.aws.credentials` | AWS CLI credentials | `~/.aws/credentials` | File | high |
-| `cloud.gcloud.configurations` | gcloud configurations | `~/.config/gcloud/configurations` | Dir | medium |
-| `cloud.kube.config` | kubeconfig | `~/.kube/config` | File | high |
-| `cloud.docker.config` | Docker config | `~/.docker/config.json` | File | high |
-| `cloud.vercel` | Vercel CLI | `~/Library/Application Support/com.vercel.cli/auth.json` | File | high |
-| `cloud.stripe` | Stripe CLI | `~/.config/stripe/config.toml` | File | high |
-
-…and Azure, OCI, DigitalOcean, Fly.io, Linode, Hetzner, Netlify, Supabase,
-Railway, Terraform Cloud, Pulumi, and Cloudflared — all `high`.
-
-gcloud configurations and most token-bearing entries are macOS/Linux only.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.aws/config` | AWS CLI config | 🔒 |
+| `~/.aws/credentials` | AWS CLI credentials | 🔑 |
+| `~/.config/gcloud/configurations/` | gcloud configurations | 🔒 |
+| `~/.kube/config` | kubeconfig | 🔑 |
+| `~/.kube/` | kube configs | 🔑 |
+| `~/.docker/daemon.json` | Docker daemon.json |  |
+| `~/.boto` | gsutil / boto config | 🔑 |
+| `~/.config/gcloud/application_default_credentials.json` | gcloud application default credentials | 🔑 |
+| `~/.config/configstore/firebase-tools.json` | Firebase CLI login | 🔑 |
+| `~/.docker/config.json` | Docker config | 🔑 |
+| `~/.azure/` | Azure CLI | 🔑 |
+| `~/.oci/` | Oracle Cloud (OCI) | 🔑 |
+| `~/Library/Application Support/doctl/config.yaml` (Linux: `~/.config/doctl/config.yaml`) | DigitalOcean (doctl) | 🔑 |
+| `~/.fly/` | Fly.io | 🔑 |
+| `~/.config/linode-cli` | Linode CLI | 🔑 |
+| `~/.config/hcloud/cli.toml` | Hetzner (hcloud) | 🔑 |
+| `~/Library/Application Support/com.vercel.cli/auth.json` (Linux: `~/.local/share/com.vercel.cli/auth.json`) | Vercel CLI | 🔑 |
+| `~/.config/netlify/config.json` | Netlify CLI | 🔑 |
+| `~/.supabase/` | Supabase CLI | 🔑 |
+| `~/.config/stripe/config.toml` | Stripe CLI | 🔑 |
+| `~/.railway/config.json` | Railway CLI | 🔑 |
+| `~/.terraform.d/credentials.tfrc.json` | Terraform Cloud creds | 🔑 |
+| `~/.pulumi/credentials.json` | Pulumi creds | 🔑 |
+| `~/.cloudflared/` | Cloudflared | 🔑 |
+| `~/.tsh/` | Teleport (tsh) | 🔑 |
+| `~/Library/Application Support/ngrok/ngrok.yml` (Linux: `~/.config/ngrok/ngrok.yml`) | ngrok | 🔑 |
+| `~/.config/scw/config.yaml` | Scaleway CLI | 🔑 |
+| `~/.config/argocd/config` | Argo CD | 🔑 |
+| `~/.config/op/config` | 1Password CLI | 🔒 |
 
 ### devops
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `devops.helm` | Helm repositories | `~/.config/helm/repositories.yaml` | File | medium |
-| `devops.k9s` | k9s config | `~/.config/k9s/config.yaml` | File | low |
-| `devops.colima` | Colima config | `~/.colima/default/colima.yaml` | File | low |
-| `devops.podman` | Podman config | `~/.config/containers` | Dir | medium |
-
-macOS/Linux only.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/Library/Preferences/helm/repositories.yaml` (Linux: `~/.config/helm/repositories.yaml`) | Helm repositories | 🔒 |
+| `~/Library/Application Support/k9s/config.yaml` (Linux: `~/.config/k9s/config.yaml`) | k9s config |  |
+| `~/.colima/default/colima.yaml` | Colima config |  |
+| `~/.config/containers/` | Podman config | 🔒 |
+| `~/.ansible.cfg` | Ansible config | 🔒 |
+| `~/.terraformrc` | Terraform CLI config |  |
+| `~/.packerconfig` | Packer config |  |
+| `~/.skaffold/config` | Skaffold config |  |
 
 ### build
 
-Build tools that may hold repository credentials, so both are `high`.
-
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `build.maven` | Maven settings | `~/.m2/settings.xml` | File | high |
-| `build.gradle` | Gradle properties | `~/.gradle/gradle.properties` | File | high |
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.m2/settings.xml` | Maven settings | 🔑 |
+| `~/.gradle/gradle.properties` | Gradle properties | 🔑 |
 
 ### db
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `db.pgpass` | .pgpass | `~/.pgpass` | File | high |
-| `db.mycnf` | .my.cnf | `~/.my.cnf` | File | high |
-| `db.psqlrc` | .psqlrc | `~/.psqlrc` | File | low |
-| `db.sqliterc` | .sqliterc | `~/.sqliterc` | File | low |
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.pgpass` | .pgpass | 🔑 |
+| `~/.my.cnf` | .my.cnf | 🔑 |
+| `~/.psqlrc` | .psqlrc |  |
+| `~/.sqliterc` | .sqliterc |  |
+| `~/.pg_service.conf` | .pg_service.conf | 🔑 |
+| `~/.config/pgcli/config` | pgcli config |  |
+| `~/.myclirc` | .myclirc |  |
+| `~/.config/litecli/config` | litecli config |  |
+| `~/.mongoshrc.js` | .mongoshrc.js |  |
 
-`.pgpass` and `.my.cnf` carry DB passwords, so both are `high`.
+### schedule
+
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/Library/LaunchAgents/` (macOS) | launchd agents | 🔒 |
 
 ### net
 
-macOS/Linux only.
-
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `net.curlrc` | .curlrc | `~/.curlrc` | File | medium |
-| `net.wgetrc` | .wgetrc | `~/.wgetrc` | File | medium |
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.curlrc` | .curlrc | 🔒 |
+| `~/.wgetrc` | .wgetrc | 🔒 |
 
 ### dev
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `dev.direnv` | direnv | `~/.config/direnv` | Dir | low |
-
-macOS/Linux only.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.config/direnv/` | direnv |  |
+| `~/.config/chezmoi/` | chezmoi config | 🔒 |
 
 ### apps
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `apps.karabiner` | Karabiner | `~/.config/karabiner/karabiner.json` | File | low |
-
-macOS only.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.config/karabiner/` (macOS) | Karabiner |  |
+| `~/.hammerspoon/` (macOS) | Hammerspoon |  |
+| `~/.aerospace.toml` (macOS) | AeroSpace |  |
+| `~/.config/aerospace/` (macOS) | AeroSpace (XDG) |  |
+| `~/.yabairc` (macOS) | yabai |  |
+| `~/.skhdrc` (macOS) | skhd |  |
+| `~/.config/sketchybar/` (macOS) | SketchyBar |  |
+| `~/.config/bat/` | bat |  |
+| `~/.ripgreprc` | .ripgreprc |  |
+| `~/.config/atuin/config.toml` | atuin |  |
+| `~/.config/yazi/` | yazi |  |
+| `~/.config/btop/btop.conf` | btop |  |
 
 ### vm
 
-Version-manager declarative config (live installed versions come from collectors).
-macOS/Linux only.
-
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `vm.tool-versions` | .tool-versions | `~/.tool-versions` | File | low |
-| `vm.nvmrc` | .nvmrc | `~/.nvmrc` | File | low |
-| `vm.mise` | mise config | `~/.config/mise/config.toml` | File | low |
-| `vm.asdfrc` | .asdfrc | `~/.asdfrc` | File | low |
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.tool-versions` | .tool-versions |  |
+| `~/.nvmrc` | .nvmrc |  |
+| `~/.config/mise/config.toml` | mise config |  |
+| `~/.asdfrc` | .asdfrc |  |
 
 ### secrets
 
-Bare credential stores. All `high`: age-encrypted on chezmoi export and never
-written to a plaintext backup. macOS/Linux only.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.config/chezmoi/key.txt` | chezmoi age key | 🔑 never pushed to GitHub |
+| `~/Library/Application Support/sops/age/keys.txt` (Linux: `~/.config/sops/age/keys.txt`) | sops age keys | 🔑 never pushed to GitHub |
+| `~/.netrc` | .netrc | 🔑 |
+| `~/.vault-token` | Vault token | 🔑 |
+| `~/.gnupg/` | GnuPG home | 🔑 |
 
-| ID | Name | Path | Kind | Sensitivity |
-| --- | --- | --- | --- | --- |
-| `secrets.netrc` | .netrc | `~/.netrc` | File | high |
-| `secrets.vault` | Vault token | `~/.vault-token` | File | high |
-| `secrets.gnupg` | GnuPG home | `~/.gnupg` | Dir | high |
+### lang
 
-The GnuPG entry is declarative: it is a no-op until `~/.gnupg` holds real keys.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.gemrc` | .gemrc |  |
+| `~/.bundle/config` | Bundler config | 🔒 |
+| `~/.irbrc` | .irbrc |  |
+| `~/.config/uv/uv.toml` | uv config | 🔒 |
+| `~/Library/Application Support/pip/pip.conf` (Linux: `~/.config/pip/pip.conf`) | pip config | 🔒 |
+| `~/.condarc` | .condarc |  |
+| `~/Library/Application Support/pypoetry/auth.toml` (Linux: `~/.config/pypoetry/auth.toml`) | Poetry auth | 🔑 |
+| `~/.config/go/env` | go env |  |
+| `~/.cargo/config.toml` | Cargo config | 🔒 |
+| `~/.cargo/credentials.toml` | Cargo credentials | 🔑 |
+| `~/.composer/composer.json` (Linux: `~/.config/composer/composer.json`) | Composer config |  |
+| `~/.composer/auth.json` (Linux: `~/.config/composer/auth.json`) | Composer auth | 🔑 |
+| `~/.nuget/NuGet/NuGet.Config` | NuGet config | 🔑 |
+| `~/.yarnrc.yml` | .yarnrc.yml | 🔑 |
+| `~/.iex.exs` | .iex.exs |  |
+| `~/.julia/config/startup.jl` | Julia startup |  |
 
-## How the registry feeds collect and backup
+### mobile
 
-The same `Entries` slice drives two different projections.
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.android/debug.keystore` | Android debug keystore | 🔑 |
+| `~/Library/Developer/Xcode/UserData/KeyBindings/` (macOS) | Xcode key bindings |  |
+| `~/Library/Developer/Xcode/UserData/FontAndColorThemes/` (macOS) | Xcode themes |  |
+| `~/Library/Developer/Xcode/UserData/CodeSnippets/` (macOS) | Xcode code snippets |  |
 
-### Collect
+### fonts
 
-`collect` calls `registry.Collect(env, home, redact, registry.Entries)`. For each
-entry it resolves the path, skips it if empty or missing, and reads it according
-to its `Kind` into a snapshot section. Redaction (on by default) applies a `File`
-entry's `Redact` rule before the content is stored:
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/Library/Fonts/` (Linux: `~/.local/share/fonts/`) | Your fonts |  |
 
-```bash
-dothaven collect
-```
+### dothaven
 
-Pass `--no-redact` to keep raw values:
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/.config/dothaven/include` | dothaven include list |  |
 
-```bash
-dothaven collect --no-redact
-```
+## Your own paths
 
-### Backup
+**Files your git config points at come along by themselves.** A `.gitconfig` often names files that have to travel with it: `core.hooksPath`, `core.excludesFile`, `commit.template`, `init.templateDir`, and the files `[include]` and `[includeIf]` pull in (a work identity, a signing key's config). Whatever those point at inside your home folder is carried like an include, without you listing it, and restored to the same place.
 
-`backup` and `restore` both consume `registry.BackupTargets(home, entries)`,
-which is the single projection of the registry into copy operations. For every
-entry that has a path on the current platform it produces a `BackupTarget`:
-
-```go
-type BackupTarget struct {
-	Src      string             // resolved live path
-	Dest     string             // entry's BackupDest, relative to the backup tree
-	Category string
-	IsDir    bool               // true when Kind == Dir
-	Redact   func(string) string
-}
-```
-
-`Src` is the resolved live path, `Dest` is the entry's `BackupDest`, `IsDir`
-reflects whether the kind is `Dir`, and `Redact` carries the same optional
-scrubber. Because backup and restore read from one projection, a file always
-maps back to the live path it came from.
-
-```bash
-dothaven backup
-```
-
-Backups honor the same redaction default and accept category filters that match
-the entry `Category` field:
+The registry will never know every tool you use. `dothaven include` adds anything in your home folder to every backup:
 
 ```bash
-dothaven backup --only shell,git
-dothaven backup --skip cloud,secrets
-dothaven backup --archive          # write a .tar.gz instead of a directory
-dothaven backup --no-redact        # keep raw values
+dothaven include ~/.config/raycast ~/bin
+dothaven include --list      # what you added, and what looks like config but nothing covers
+dothaven include --review    # pick from those interactively
 ```
 
-The output directory follows dothaven's standard resolution: an explicit `-o`
-wins; otherwise `<cwd>/reports` when run inside a git repo, else `~/.local/share/dothaven`.
+- Your paths are kept in `~/.config/dothaven/include` (one per line; a line starting with `!` is a path you declined, so dothaven stops asking). That file is itself in the registry, so it travels with your backups.
+- In a backup they live under `extra/`, and restore puts them back in the same place under your home folder, even on a new machine that has no include list yet.
+- They are treated as 🔒: scanned and redacted in plain backups, written owner-only on restore.
+- A credential folder stays protected however it is reached. Including `~/.aws` does not put `~/.aws/credentials` into a plain backup.
 
-{{< callout type="info" >}}
-Sensitive entries are best carried through the hybrid model: dothaven discovers,
-audits, and exports them; chezmoi stores them and encrypts with age. Losing the
-age key means those encrypted files are unrecoverable, so back the key up
-separately.
-{{< /callout >}}
+To find candidates, dothaven looks at the dot-files in your home folder, the entries in `~/.config`, `~/.claude`, `~/.codex` and `~/.gemini` (skipping their sessions, history and caches), and `~/bin`, and lists what no entry or include covers. On a terminal, `backup` offers these once.
 
 ## Missing a tool?
 
-dothaven aims to be a **superset** of what chezmoi covers. If a config or CLI you use isn't in the registry yet, adding it is usually a one-line entry — open a request with the tool name and its config path:
+If a config or CLI you use should be in the registry, [request it](https://github.com/doguyilmaz/dothaven/issues/new?template=config-request.yml) with the tool's name and config path. In the meantime, `dothaven include <path>` carries it today.
 
-{{< callout type="info" >}}
-**[Request a config / tool →](https://github.com/doguyilmaz/dothaven/issues/new?template=config-request.yml)**
-{{< /callout >}}
+## For contributors: the entry model
 
-## Related
+Each entry is one Go struct in `internal/registry/registry.go`:
+
+```go
+type Entry struct {
+	ID          string            // stable section key, e.g. "shell.zshrc"
+	Name        string            // human-readable label
+	Paths       map[string]string // keyed by GOOS: "darwin", "linux", "windows"
+	Category    string            // what --only / --skip select
+	Kind        Kind              // File, FileMetadata, Dir, JSONExtract
+	Fields      []string          // JSONExtract only: keys to pull into a snapshot
+	BackupDest  string            // path inside a backup
+	Sensitivity Sensitivity       // low, medium, high
+	Redact      func(string) string // optional structure-preserving scrubber
+	Exclude     []string          // Dir only: clutter to skip (caches, logs…)
+}
+```
+
+- `Paths` use `~` for your home folder. An entry with no path for the current OS is skipped.
+- `Kind` decides what a `collect` snapshot records: the file's text (`File`), just whether it exists and its line count (`FileMetadata`, used for the large generated `.p10k.zsh`), a folder listing (`Dir`), or selected JSON keys (`JSONExtract`). Backups always carry the whole file or folder.
+- `Sensitivity: high` with no `Redact` is what keeps an entry out of plain backups. Two entries have a redactor: `ssh.config` (`HostName`, `IdentityFile`) and `npm.config` (`_authToken` and the legacy `_auth`/`_password`).
+- `Exclude` patterns without a `/` match any path segment (`logs`, `*.log`); with a `/` they match from the entry's root.
+
+`registry.BackupTargets` projects the entries onto source and destination paths. Backup uses it to copy and restore uses it to map each file back, so a file always returns to the path it came from.
 
 {{< cards >}}
-  {{< card link="../commands" title="Commands" >}}
-  {{< card link="../security" title="Security & redaction" >}}
+  {{< card link="../backup-restore" title="Backup & restore" >}}
+  {{< card link="../security" title="Security" >}}
 {{< /cards >}}

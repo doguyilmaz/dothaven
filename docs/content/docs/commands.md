@@ -1,34 +1,51 @@
 ---
 title: Commands
-weight: 5
+weight: 9
 ---
 
-dothaven is a single static Go binary built on [Cobra](https://github.com/spf13/cobra). It ships the commands below — plus the interactive [`tui`](../interactive) launcher and Cobra's auto-generated `help` and `completion`. This page is the complete reference: purpose, synopsis, every flag with its default, argument rules, and an example for each.
+Every dothaven command, grouped the way `dothaven --help` groups them, with every flag. Flags are copied from each command's `--help`. Run `dothaven <command> --help` for the same text in your terminal.
 
-dothaven covers the **discovery, audit, and export** half of the workflow; [chezmoi](https://www.chezmoi.io/) handles **storage, age-encryption, and apply** on the target machine. Several commands stop at planning by design — they print what they would do and leave execution to chezmoi.
+```text
+dothaven [flags]
+dothaven [command]
+```
 
-## How output paths are resolved
+| Global flag | Meaning |
+| --- | --- |
+| `-h`, `--help` | Help for dothaven or any command |
+| `-v`, `--version` | Print the version |
 
-**Backups** (`backup`, and the commands that read them — `restore` / `status` / `diff`) use a **stable, cwd-independent** location so they always agree on where the latest backup is:
+With no command, on a terminal, `dothaven` opens the [menu](../interactive). Off a terminal it prints the help.
 
-1. An explicit `-o`/`--output` value always wins.
-2. Otherwise, `~/.local/share/dothaven` (or `$XDG_DATA_HOME/dothaven`).
-
-**Inspection output** (`collect` snapshots, `services` / `defaults` exports) is cwd-aware, since you typically read it where you ran it:
-
-1. An explicit `-o`/`--output` value always wins.
-2. Otherwise, if the current directory is a git repository (a `.git/HEAD` exists), output goes to `<cwd>/reports`.
-3. Otherwise, `~/.local/share/dothaven`.
-
-Snapshot files are named `<hostname>-<timestamp>.json`; backups are named `backup-<hostname>-<timestamp>`. The timestamp is UTC `YYYYMMDDHHMMSS`.
-
-{{< callout type="info" >}}
-`compare` and `list` read from the literal `reports/` directory under the current working directory — they do not use the resolution logic above. Run them from your repo root.
-{{< /callout >}}
+**Rule for anything that writes:** a command that would change files you already have asks first on a terminal, and refuses off a terminal unless you pass `--yes`. Most take `--dry-run` to show what would change.
 
 ---
 
 ## Start here
+
+### tui
+
+Interactive menu — pick what to do.
+
+```text
+dothaven tui
+```
+
+The same menu as plain `dothaven`: grouped actions, run one, press Enter to come back. It needs a terminal and exits with an error without one. See [Interactive mode](../interactive). No flags.
+
+### ui
+
+Open a live dashboard in your browser (local and read-only). Alias: `dashboard`.
+
+```text
+dothaven ui [flags]
+```
+
+Serves a dashboard from this machine only: what your backups cover and what they miss, the backups it can find, secrets sitting in plain files, repositories with unpushed work, installed software, what restore has applied, and your GitHub backup repo. It listens on `127.0.0.1` with a one-time key in the link, never writes anything, and loads nothing from the internet. Stop it with Enter or Ctrl-C. See [Dashboard](../dashboard).
+
+| Flag | Meaning |
+| --- | --- |
+| `--no-open` | Print the link but don't open a browser |
 
 ### guide
 
@@ -38,30 +55,95 @@ Answer a few questions, get the exact commands to run.
 dothaven guide
 ```
 
-Asks what you are trying to do (back up, set up a new computer, reinstall, health check, compare two machines, make a private repo, see what you have) and what kind of work you do (backend, frontend, mobile, devops, data). It answers with an ordered list of commands, a one-line reason for each, a `Why` for the plan, and notes about what your kind of work should know does **not** travel. It then offers to run the first step.
+Asks what you want to do (back up, set up a new computer from this one, reinstall or replace this computer, check your setup is healthy, compare two computers, put your config in a private repo, see everything you have) and, where it matters, what kind of work you do. It answers with an ordered list of commands, a reason for each, and notes about what does not travel for your kind of work, then offers to run step 1. It does not ask what it can detect, such as whether chezmoi is installed. Needs a terminal. No flags.
 
-It deliberately does **not** ask what it can detect — whether chezmoi is installed, whether age is configured, whether a backup exists. Those are read from disk. A question whose answer is already known wastes attention and can be answered wrong.
+### ready
 
-**Arguments:** none. Requires an interactive terminal.
+Before a wipe: is anything on this machine only here? (read-only)
 
-This command has no flags.
+```text
+dothaven ready [flags]
+```
 
-```bash
-$ dothaven guide
-? What do you want to do?  › Reinstall or replace this computer
-? Once that's clean, what happens to the setup?  › It moves to another computer
+Looks through your home folder for git repositories with uncommitted changes, commits that are on no remote, stashes, and gitignored files a fresh clone won't bring back (`.env` files, keys, Terraform state). Repositories with no remote at all are listed first and separately. Then it checks how old your newest backup is.
 
-Here's what I'd do:
+Nothing is fetched, so it is fast and works offline, which also means it judges against the remote state git last saw. Dependency and cache folders (`node_modules`, `vendor`, `Library`, …) are skipped.
 
-  1. dothaven ready
-     Every repository, checked for changes, commits and stashes that exist on no remote.
+| Flag | Meaning |
+| --- | --- |
+| `--depth int` | How many folders deep below each root a repository can be (default 5) |
+| `--root strings` | Where to look (default: your whole home folder). Repeatable |
+
+**Exit code:** 2 if anything is at risk, or if there is no backup newer than 7 days. So it can gate a wipe script: `dothaven ready && …`.
+
+```text
+1 repository with no remote — these exist ONLY on this machine:
+  ✗ ~/code/prototype                              12 commits, 1 file uncommitted
+
+1 repository with work not pushed anywhere:
+  ⚠ ~/code/api                                    2 files uncommitted, 5 commits unpushed, 1 stash
+
+  ✓ Newest backup is 2 hours old (encrypted, /Volumes/MyDrive/backup-mymac-….tar.gz.age).
+
+❌ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
 ```
 
 ---
 
-## Capture
+## Save this machine
 
-These commands read your machine and write artifacts: a snapshot, a backup, or a security report.
+### backup
+
+Save your config — a folder here, or one encrypted file to carry.
+
+```text
+dothaven backup [flags]
+```
+
+Copies every config dothaven tracks (plus anything you added with `include`), a list of your installed apps and packages, and your macOS settings.
+
+- `dothaven backup`: a folder on this machine. Secrets are redacted and credential files (SSH keys, cloud logins) left out, and listed.
+- `dothaven backup --encrypt`: one age-encrypted file with everything, keys and tokens included. This is the one for a new machine. Nothing is written in plaintext, not even temporarily.
+
+On a terminal with no `--only`/`--skip`, it shows a category picker and then offers config that nothing covers yet. See [Backup & restore](../backup-restore#backup).
+
+| Flag | Meaning |
+| --- | --- |
+| `--archive` | One `.tar.gz` file instead of a folder (still redacted, not encrypted) |
+| `--encrypt` | One age-encrypted file with everything, credentials included (asks for a passphrase) |
+| `--no-redact` | Keep raw secret values in a plaintext backup (prefer `--encrypt`) |
+| `-o`, `--output string` | Where to write it, e.g. a USB drive (default: `~/.local/share/dothaven`) |
+| `--only strings` | Only these categories (comma-separated; see the [category list](../backup-restore#categories)) |
+| `--skip strings` | Skip these categories, e.g. `--skip inventory,macos` |
+
+The passphrase must be at least 10 characters. `DOTHAVEN_PASSPHRASE` supplies it in scripts. An unknown category name is an error that lists the valid ones.
+
+```bash
+dothaven backup --encrypt -o /Volumes/MyDrive
+dothaven backup --only ai,shell,git
+dothaven backup --archive --skip inventory,macos
+```
+
+### include
+
+Add your own files and folders to every backup.
+
+```text
+dothaven include [path...] [flags]
+```
+
+dothaven knows a few hundred config locations. Everything else you care about (a tool nobody else uses, a scripts folder, an app's config dir) goes here. Paths must be inside your home folder; restore puts them back in the same place. The list lives in `~/.config/dothaven/include` and travels with your backups. With no arguments it behaves like `--list`.
+
+| Flag | Meaning |
+| --- | --- |
+| `--list` | Show what you added and what nothing covers yet |
+| `--remove` | Remove the given paths instead of adding them |
+| `--review` | Pick from the untracked files and folders interactively |
+
+```bash
+dothaven include ~/.config/raycast ~/bin
+dothaven include --remove ~/bin
+```
 
 ### collect
 
@@ -71,47 +153,283 @@ Inventory this machine into a timestamped JSON snapshot.
 dothaven collect [flags]
 ```
 
-Runs the full collector pipeline (host metadata, the declarative registry, SSH, Ollama, apps, Homebrew, packages, runtimes, editor extensions, fonts, and a dotfiles sweep), redacts secrets by default, and writes a single JSON snapshot. When redaction runs, a summary of what was redacted is printed after the save.
+Runs every collector (installed apps, Homebrew, global packages, runtimes, version managers, editor extensions, fonts, mobile toolchains, scheduled jobs, and the contents of tracked config files) and writes one JSON file named `<host>-<UTC timestamp>.json`. Secrets are redacted by default, with a summary printed afterwards. Credential files (🔑 in the [registry](../registry)) are recorded as present, with their size, and their contents are never copied into a snapshot, not even with `--no-redact`. The file is owner-only. See [Collectors](../collectors) and [Snapshot format](../snapshot-format).
 
-**Arguments:** none.
+A backup already includes the installed-software part of this, so you only need `collect` to compare machines or to inspect the inventory.
 
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--no-redact` | `false` | Keep raw values (skip secret redaction). |
-| `--slim` | `false` | Truncate long file contents to 10 lines. |
-| `-o`, `--output` | _(resolved)_ | Output directory. Default: `./reports` in a repo, else `~/.local/share/dothaven`. |
+| Flag | Meaning |
+| --- | --- |
+| `--no-redact` | Keep raw values (skip secret redaction) |
+| `-o`, `--output string` | Output directory (default: `~/.local/share/dothaven/snapshots`) |
+| `--slim` | Truncate long file contents to 10 lines |
 
-```bash
-$ dothaven collect
-Report saved to: /Users/you/project/reports/macbook-20260604120000.json
+```text
+Snapshot saved to: /Users/you/.local/share/dothaven/snapshots/mymac-20260927233425.json
+  24 sections. Browse with `dothaven list <section>`, e.g. `dothaven list brew`.
 ```
 
-{{< callout type="warning" >}}
-`--no-redact` writes raw secret values into the snapshot. Only use it for a snapshot you keep local and never commit.
-{{< /callout >}}
+### defaults
+
+Capture and restore macOS preferences. macOS only; it does nothing useful without the `defaults` tool.
+
+```text
+dothaven defaults [command]
+```
+
+A backup already captures your settings. These commands are for doing it on its own, or for putting settings back from a backup later.
+
+#### defaults export
+
+Export curated macOS defaults to plist files.
+
+```text
+dothaven defaults export [flags]
+```
+
+Writes into `<output>/macos-defaults/`:
+
+- whole preference domains, as plists, for a curated list of apps (iTerm2, Terminal, Rectangle, Rectangle Pro, Hammerspoon, AltTab);
+- `prefs.json`: every preference domain on the machine read key by key and sorted into settings worth carrying (natural scrolling, key repeat, hot corners, Finder options), settings that point at this machine's files (listed for you to set by hand), and application state (ignored). A few settings that are lists or tables are kept whole: keyboard shortcuts, keyboard layouts (input sources), language order, and App Shortcuts you defined for any app. It also records the apps pinned in your Dock. Secret-looking values are redacted or dropped.
+
+| Flag | Meaning |
+| --- | --- |
+| `-o`, `--output string` | Output directory (default: `~/.local/share/dothaven`) |
+
+#### defaults import
+
+Put saved macOS settings back (from a backup or an export).
+
+```text
+dothaven defaults import [backup-or-dir] [flags]
+```
+
+Takes a backup (folder, `.tar.gz`, encrypted `.age`, or `github`) or a `defaults export` folder. With no argument it uses dothaven's own export folder (`~/.local/share/dothaven/macos-defaults`).
+
+- It compares each setting with this Mac and shows the ones already set as done, instead of offering them again.
+- By default it writes only the core system domains: global settings, Finder, Dock, Spaces, Stage Manager, Control Center, the menu-bar clock, screenshots, keyboard shortcuts and input sources, accessibility, trackpad and mouse, Software Update and the crash reporter, plus App Shortcuts wherever they live. Everything else is mostly application state, held back unless you pass `--all`.
+- On a terminal you pick which domains to apply.
+- It rebuilds the Dock from the old machine's apps that are installed here, and names the ones that are not ("reinstall first, then import again"). An unchanged Dock is left alone.
+- It restarts the Dock, Finder or SystemUIServer when their settings changed, and reloads keyboard shortcuts, so most changes show at once. Some still need you to log out and back in.
+- A list or table setting (shortcuts, layouts, languages) is read back after writing; if macOS stored it as plain text instead, the previous value is put back and it is counted as not written.
+- App plists from `defaults export` replace those apps' preference domains wholesale.
+
+| Flag | Meaning |
+| --- | --- |
+| `--all` | Also write settings outside the core system domains (mostly application state) |
+| `--dry-run` | List the domains that would be replaced, write nothing |
+| `--yes` | Skip the confirmation (required off a terminal) |
+
+### services
+
+Capture and restore Homebrew-managed local service config.
+
+```text
+dothaven services [command]
+```
+
+Exports user-editable service config under `$(brew --prefix)/etc` (nginx, httpd, MySQL, Redis, dnsmasq) and re-imports it on a new machine, re-pointing the Homebrew prefix so Intel, Apple silicon and Linuxbrew paths resolve. The service programs come back through the Brewfile; databases and other data are out of scope.
+
+#### services export
+
+```text
+dothaven services export [flags]
+```
+
+Writes `<output>/services/`, owner-only. A file that looks like it holds a secret (a password in `my.cnf`) is kept as it is, since it must round-trip, and you are warned to keep the export safe.
+
+| Flag | Meaning |
+| --- | --- |
+| `-o`, `--output string` | Output directory (default: `~/.local/share/dothaven`) |
+
+#### services import
+
+```text
+dothaven services import <dir> [flags]
+```
+
+Writes into this machine's `$(brew --prefix)/etc`, outside your home folder. It lists every file first and marks the ones it would overwrite.
+
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | List the files that would be written, write nothing |
+| `--yes` | Skip the confirmation (required off a terminal) |
+
+---
+
+## Set up a machine
+
+### restore
+
+Put a backup's files back into your home folder.
+
+```text
+dothaven restore [backup] [flags]
+```
+
+Accepts a backup folder, a `.tar.gz`, an encrypted `.tar.gz.age` (asks for the passphrase; no other tools needed), or `github` for your [GitHub repo](../github#restoring-from-github). With no path on a terminal, it lists the backups it can find: dothaven's folder, the current folder, Downloads, Desktop, Documents and mounted drives.
+
+New files are written. A file that already exists and differs is a conflict: on a terminal you choose per file, with a diff; otherwise it is kept, unless `--force`. Anything overwritten is saved to a pre-restore snapshot first. Restore remembers what it applied and what you skipped, so running it again shows what is done. Afterwards it offers your macOS settings and reinstalling apps. See [Backup & restore](../backup-restore#restore).
+
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Show what would change without writing |
+| `--force` | Overwrite differing files (a pre-restore snapshot is saved first) |
+| `--keep-paths` | Don't rewrite the old machine's home folder path to this one's ([why](../backup-restore#a-different-home-folder)) |
+| `--only strings` | Only these categories (comma-separated) |
+| `--skip strings` | Skip these categories (comma-separated) |
+| `--yes` | Don't ask before writing |
+
+```bash
+dothaven restore
+dothaven restore --dry-run /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
+dothaven restore github --only ai,shell
+```
+
+### reinstall
+
+Install the apps & packages a backup recorded — only what's missing.
+
+```text
+dothaven reinstall [backup] [flags]
+```
+
+Every backup records what was installed: Homebrew formulae, casks and App Store apps, global npm/pnpm/bun/pipx/uv/cargo packages, editor extensions, Linux packages. This compares that list with this machine, shows what is already installed, and installs the rest: all of it, or the groups and packages you pick. It runs on the terminal, with no time limit, so Homebrew and `sudo` can ask for your password. Each step skips itself if its tool is missing, so it is safe to run again.
+
+The argument can be a backup (any kind, or `github`) or a `collect` snapshot. With none on a terminal, it lets you pick a backup. On a Mac without Homebrew it warns you, skips the Homebrew part, and prints the Homebrew install command.
+
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Show what would be installed and the script, run nothing |
+| `--yes` | Install everything missing without asking (required off a terminal) |
+
+---
+
+## Look, without changing anything
+
+### status
+
+Latest backup vs this machine — one-screen summary.
+
+```text
+dothaven status
+```
+
+Compares the newest backup folder in `~/.local/share/dothaven` with this machine: files tracked, modified, unchanged, not on this machine, redacted, and the names of modified files. If there is no backup folder but there is a one-file backup (`.tar.gz` or encrypted), it names the newest and suggests `dothaven diff <file>`. No flags.
+
+### diff
+
+Backup vs this machine — file by file.
+
+```text
+dothaven diff [backup-path] [flags]
+```
+
+Lists every file grouped by category as `modified`, `unchanged`, `new in backup (missing on machine)` or `redacted`, with a summary. With no argument it uses the newest backup folder; the argument can be any kind of backup, including an encrypted one or `github`.
+
+| Flag | Meaning |
+| --- | --- |
+| `--section string` | Only show this category |
+
+### missing
+
+What the old machine had installed that this one doesn't.
+
+```text
+dothaven missing [backup-or-snapshot]
+```
+
+Compares the app & package list inside a backup (or a `collect` snapshot) with this machine and lists what is missing, with the command that installs each group. It matches names and ignores versions. Run it on the new machine after restoring; `dothaven reinstall <backup>` installs them for you. With no argument it uses your newest `collect` snapshot. No flags.
+
+**Exit code:** 1 if anything is missing.
+
+This used to be `dothaven doctor <backup>`. That spelling still works and says where it moved.
+
+### check
+
+Are my config files still valid? — parses each one.
+
+```text
+dothaven check [flags]
+```
+
+Checks the config files dothaven tracks with the parser that owns each format: Go's JSON parser for JSON, `zsh -n` and `bash -n` for shell files, `git config` and `ssh -G` for their own configs. Formats with no parser to hand, and JSON with comments (which editors allow), are reported as unchecked rather than assumed fine. A missing `zsh` or `ssh` makes those files unchecked, not broken.
+
+| Flag | Meaning |
+| --- | --- |
+| `--all` | List files that passed and files nothing could check |
+
+**Exit code:** 2 if anything is broken.
+
+### doctor
+
+Check dothaven itself: tools, folders, permissions, and what it can reach.
+
+```text
+dothaven doctor
+```
+
+Checks that dothaven can do its job on this machine, and says what to fix when it cannot: the platform, its folders and their permissions, free disk space, its own settings, the keychain it keeps tokens in, the tools each feature relies on, the files it backs up (unreadable, too large), your backups, and GitHub if you are signed in. Nothing is changed. No flags. See [Doctor & troubleshooting](../troubleshooting).
+
+**Exit code:** 1 if anything is broken (warnings alone exit 0).
+
+### compare
+
+Snapshot vs snapshot — what changed between two.
+
+```text
+dothaven compare [file1] [file2]
+```
+
+Compares two `collect` snapshots and prints only the differences. Every line says which snapshot it is only in, and `~` marks a value that changed (`old → new`). No flags.
+
+- **With no arguments** it compares your two newest snapshots as a timeline: `+` is what the newer one added, `-` what it no longer has.
+- **With two files** it compares them side by side: `+` lines are only in the first file, `-` lines only in the second. Put this machine's snapshot first to see what the other one lacks.
+
+```text
+[packages.npm.global]
+  + typescript  (only in mymac-20260927233425)
+  - eslint  (only in mymac-20260101120000)
+```
+
+### list
+
+Print sections of the latest snapshot (or of a backup's inventory).
+
+```text
+dothaven list [section] [snapshot-or-backup]
+```
+
+With no section, lists the section names. A section is fuzzy-matched: `list brew` shows formulae, casks and the Brewfile. Reads the newest snapshot from `dothaven collect`, or the inventory inside a backup you name (any kind, or `github`). No flags.
+
+```bash
+dothaven list
+dothaven list brew
+dothaven list npm /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
+```
+
+---
+
+## Secrets
 
 ### scan
 
-Scan a file or directory for sensitive data (console).
+Find secrets in your config, or in any file or folder (exits 2 if any are HIGH).
 
 ```text
-dothaven scan [path]
+dothaven scan [path] [flags]
 ```
 
-Walks a path looking for secrets and prints findings line-by-line with severity, then a summary. Findings are sorted high severity first. If `[path]` is omitted, the current directory (`.`) is scanned. A missing path is an error.
+With no path, scans every config file dothaven tracks: the ones a backup would carry. With a path, scans that file or folder (skipping `.git`, `node_modules`, caches and files over 1 MiB). Each finding shows the file, line, severity and kind, and a masked preview (the setting's name, a token's prefix, its last two characters), never the value itself.
 
-**Arguments:** optional single `path` (file or directory). Defaults to `.`.
+| Flag | Meaning |
+| --- | --- |
+| `--no-fail` | Always exit 0, even with HIGH findings |
 
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--no-fail` | `false` | Always exit 0, even with HIGH findings. |
+**Exit code:** 2 when anything HIGH turns up, so this can gate a commit hook or a CI job. A scanner that always exits 0 can only ever be read by a human.
 
-**Exit code:** `2` when anything HIGH is found, so it can gate a commit hook or a CI job (`dothaven scan . && git commit`). A scanner that always exits 0 can only be read by a human, and the point of scanning is to catch what a human missed.
-
-```bash
-$ dothaven scan ~/.aws/credentials
+```text
 ~/.aws/credentials
-  L3 [High] AWS access key: AKIA****************
+  L2 [HIGH] AWS access key: AKIA••••LE
 ```
 
 ### security
@@ -119,318 +437,98 @@ $ dothaven scan ~/.aws/credentials
 Write a Markdown security report (default `SECURITY.md`).
 
 ```text
-dothaven security [path]
+dothaven security [path] [flags]
 ```
 
-Scans the same way as `scan`, but writes the result as a Markdown report to disk instead of printing findings, then prints how many files were scanned and how many had findings. If `[path]` is omitted, the current directory (`.`) is scanned.
+Scans like `scan` (with no path: your tracked config), but writes a Markdown report grouped by severity, owner-only, and prints how many files were scanned and how many had findings. The report names files, rules and line numbers, never the values.
 
-**Arguments:** optional single `path` (file or directory). Defaults to `.`.
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `-o`, `--output` | `SECURITY.md` | Report output path. |
-
-```bash
-$ dothaven security ./reports -o audit.md
-Security report written to: audit.md
-  12 scanned, 2 with findings.
-```
+| Flag | Meaning |
+| --- | --- |
+| `-o`, `--output string` | Report output path (default `SECURITY.md`) |
 
 ---
 
-## Inspect
+## Keep it in a private GitHub repo
 
-These commands read existing snapshots (or the live machine) and report — they never write.
+### github
 
-### ready
-
-Is this Mac safe to wipe? Checks for work that exists nowhere else.
+Keep your backup in a private GitHub repository.
 
 ```text
-dothaven ready [--depth N] [--root PATH]
+dothaven github [command]
 ```
 
-Walks your code directories for git repositories and reports uncommitted changes, commits that are on no remote, and stashes. Repositories with **no remote at all** are listed separately: every commit in them exists only on this machine, and the fix is not "push" but "give it somewhere to be pushed to". Also reports how old the newest backup is.
+Pushes this machine's backup to a private repository on your GitHub account (created for you as `dothaven-backup`), and restores from it on another machine. No git is needed on either side. With no subcommand it shows the status. dothaven refuses to write to a public repository. See [GitHub sync](../github).
 
-Nothing is fetched, so it is fast and works offline — which also means it judges against the remote state git last saw.
+#### github login
 
-**Arguments:** none.
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--depth` | `4` | How far below each root to look for repositories. |
-| `--root` | common code directories | Where to look. Repeatable. Defaults to `~/Developer`, `~/Projects`, `~/src`, `~/code`, `~/work` and similar, falling back to `$HOME`. |
-
-**Exit code:** `2` when anything is at risk, so it can gate a wipe script (`dothaven ready && diskutil eraseDisk ...`).
-
-```bash
-$ dothaven ready
-2 repositories with no remote — these exist ONLY on this Mac:
-  ✗ ~/Developer/old-prototype                   412 commits, 3 files uncommitted
-
-1 repository with work not pushed anywhere:
-  ⚠ ~/Developer/api                             2 files uncommitted, 5 commits unpushed, 1 stash
-
-36 repositories checked.
-  ✓ Newest backup is 2 hours old.
-
-❌ Not safe to wipe: 3 repositories hold work that exists nowhere else.
-```
-
-### check
-
-Are my config files still valid? Parses each one.
+Sign in to GitHub (browser, gh CLI, or a token on stdin).
 
 ```text
-dothaven check [--all]
+dothaven github login [flags]
 ```
 
-Checks every tracked config file that exists on this machine, using the parser that owns its format: `encoding/json` for JSON, `zsh -n` / `bash -n` for shell files, `git config --file` and `ssh -G` for their own configs.
+Opens github.com in your browser with a one-time code when your build includes its sign-in app; approve it and the terminal carries on by itself. The token is kept in your system keychain. If you are signed in to the GitHub CLI (`gh`), dothaven uses that login and stores nothing of its own. Most locked down: a fine-grained token limited to the one repository (Contents: read & write, Administration: read & write to create it).
 
-No YAML or TOML library is bundled. A config is correct when the program that reads it accepts it, so asking that program is both more accurate than a re-implementation and nothing extra to trust. Formats with no parser to hand are reported as **unchecked** rather than assumed fine. JSON containing comments (jsonc, which editors allow) is unchecked, not broken.
-
-**Arguments:** none.
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--all` | `false` | Also list files that passed and files nothing could check. |
-
-**Exit code:** `2` when anything is broken, so it can gate a backup or a commit.
+| Flag | Meaning |
+| --- | --- |
+| `--with-token` | Read a token from stdin instead of opening the browser |
 
 ```bash
-$ dothaven check
-  ✗ ~/.config/Code/User/settings.json      invalid character '}' looking for beginning of object key string
-
-15 checked, 13 unchecked (--all to list them).
-❌ 1 file broken. Fix these before they reach another machine.
+dothaven github login --with-token < token.txt
 ```
 
-### list
+#### github logout
 
-Print a section (fuzzy-matched) from the most recent report.
+Forget the stored GitHub token and remembered passphrase. No flags.
+
+#### github status
+
+Who you're signed in as, which repo, and which machines are in it. No flags.
+
+#### github push
+
+Back this machine up to your private GitHub repo. Aliases: `sync`, `save`.
 
 ```text
-dothaven list <section>
+dothaven github push [flags]
 ```
 
-Loads the newest `.json` file in `reports/` (relative to the current directory) and prints every section whose name fuzzy-matches the query. Matching is case-insensitive and also matches against the dot-separated parts of a section id (so `brew` matches `apps.brew.bundle`).
+Builds a backup of this machine (the same one `dothaven backup` makes) and commits it to `machines/<this machine>/` in your private repository, replacing the previous one there. Other machines in the repo are left alone, and git history keeps every earlier push. Nothing changes if nothing changed.
 
-**Arguments:** exactly one `section` query.
+| Flag | Meaning |
+| --- | --- |
+| `--machine string` | Folder name for this machine in the repo (default: hostname) |
+| `--mode string` | `encrypted` (default), `split`, or `plain`; see [storage modes](../github#storage-modes) |
+| `--only strings` | Only these categories |
+| `--repo string` | `owner/name` (default: `<you>/dothaven-backup`) |
+| `--skip strings` | Skip these categories |
+| `--yes` | Create the repository without asking (required off a terminal) |
 
-This command has no flags.
+#### github pull
 
-```bash
-$ dothaven list packages
-[packages.bun.global]
-  typescript
-  prettier
-```
-
-### compare
-
-Diff two JSON snapshots (newest two in `reports/` if omitted).
+Restore from your GitHub repo (same as `dothaven restore github`). Alias: `restore`.
 
 ```text
-dothaven compare [file1] [file2]
+dothaven github pull [flags]
 ```
 
-Compares two snapshots and prints only the differences. With no arguments, it picks the two newest `.json` files in `reports/` (relative to the current directory); with fewer than two available it prints usage and exits cleanly. Both explicit files must exist.
-
-**Arguments:** zero, or exactly two file paths. (One argument is accepted by the parser but falls through to the auto-pick path.)
-
-This command has no flags.
-
-```bash
-$ dothaven compare reports/old.json reports/new.json
-+ packages.bun.global: vitest
-- packages.npm.global: eslint
-```
-
-### doctor
-
-Compare a snapshot against this machine; list what's missing.
-
-```text
-dothaven doctor <snapshot.json>
-```
-
-Re-inventories the live machine and reports installable items present in the snapshot but missing locally — packages, runtimes, Homebrew formulae, macOS apps, fonts, and editor extensions. Parity is keyed on item name, so version drift is ignored: the question is "present?", not "same version?".
-
-**Arguments:** exactly one snapshot file path.
-
-This command has no flags.
-
-```bash
-$ dothaven doctor reports/macbook-20260604120000.json
-Missing on this machine (present in the snapshot):
-
-  packages.bun.global (1)
-    - vitest
-
-1 item(s) missing across 1 section(s).
-```
-
-{{< callout type="warning" >}}
-`doctor` exits **non-zero** when anything is missing — it is built for CI. A clean machine prints a parity message and exits `0`; any drift exits `1` with the report still on stdout.
-{{< /callout >}}
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Show what would change without writing |
+| `--force` | Overwrite differing files (a pre-restore snapshot is saved first) |
+| `--machine string` | Which machine's backup (default: ask, or the only one) |
+| `--repo string` | `owner/name` (default: the one you pushed to, or `<you>/dothaven-backup`) |
+| `--only strings` | Only these categories (comma-separated) |
+| `--skip strings` | Skip these categories (comma-separated) |
+| `--keep-paths` | Don't rewrite the old machine's home folder path to this one's |
+| `--yes` | Don't ask before writing |
 
 ---
 
-## Backup and restore
+## Sync through a chezmoi repo (optional)
 
-These commands copy tracked config files into a timestamped backup and bring them back. They share `--only` / `--skip` category filtering.
-
-### backup
-
-Copy tracked config files into a timestamped backup.
-
-```text
-dothaven backup [flags]
-```
-
-Collects the registry's backup targets from your home directory, redacts secrets by default, and copies them into a timestamped `backup-<host>-<timestamp>` directory (or a `.tar.gz` with `--archive`). Prints a per-category file count and, when redaction ran, a redaction summary.
-
-**Arguments:** none.
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--no-redact` | `false` | Keep raw values (skip secret redaction). |
-| `--archive` | `false` | Create a `.tar.gz` instead of a directory. |
-| `--encrypt` | `false` | Encrypt the archive with [age](https://age-encryption.org), prompting for a passphrase. Implies `--archive`. |
-| `-o`, `--output` | _(resolved)_ | Output directory. Default: `~/.local/share/dothaven` (stable, cwd-independent). |
-| `--only` | _(none)_ | Only these categories (comma-separated). |
-| `--skip` | _(none)_ | Skip these categories (comma-separated). |
-
-```bash
-$ dothaven backup --only shell,git
-Backup saved to: /Users/you/.local/share/dothaven/backup-macbook-20260604120000
-  5 files across: git (2), shell (3)
-```
-
-### restore
-
-Restore files from a backup into your home directory.
-
-```text
-dothaven restore <backup-path> [flags]
-```
-
-Builds a plan from a backup directory, mapping each backed-up file to its home-directory target, then applies it. New files are written; files that differ from what's on disk are treated as conflicts and **skipped unless `--force`** is given. With `--force`, a pre-restore snapshot of the files about to be overwritten is saved first. Redacted entries are never restored.
-
-**Arguments:** exactly one `backup-path` (a backup directory).
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--dry-run` | `false` | Show what would change without writing. |
-| `--force` | `false` | Overwrite differing files (a pre-restore snapshot is saved first). |
-| `--only` | _(none)_ | Only these categories (comma-separated). |
-| `--skip` | _(none)_ | Skip these categories (comma-separated). |
-
-```bash
-$ dothaven restore ~/.local/share/dothaven/backup-macbook-20260604120000 --dry-run
-
-Dry run — no files will be changed:
-
-  [NEW]      git/gitconfig → /Users/you/.gitconfig
-  [CONFLICT] shell/zshrc → /Users/you/.zshrc
-
-  2 files total: 1 new, 1 conflicts
-```
-
-`restore` accepts a backup **directory**, a `.tar.gz`, or an age-encrypted `.tar.gz.age`. An archive is unpacked into a temporary directory (mode `0700`) that is removed afterwards; an encrypted one prompts for its passphrase first. Entries that would escape the extraction directory, and symlinks, are refused rather than written.
-
----
-
-### status
-
-Summarize the latest backup against the live machine.
-
-```text
-dothaven status
-```
-
-Finds the newest `backup-*` directory in `~/.local/share/dothaven` and reports how it compares to the live machine: files tracked, modified (conflicts), unchanged, new in backup, and redacted. Modified files are listed by name. If no backup exists, it tells you to run `backup` first.
-
-**Arguments:** none.
-
-This command has no flags.
-
-```bash
-$ dothaven status
-Last backup: 2h ago (backup-macbook-20260604120000)
-  12 files tracked: 1 modified, 11 unchanged
-
-Modified since backup:
-  shell/zshrc
-```
-
-### diff
-
-Compare a backup against the live machine, grouped by category.
-
-```text
-dothaven diff [backup-path] [flags]
-```
-
-Like `status`, but prints every entry grouped by category with a per-file status (modified, new, unchanged, redacted) and a colored summary when stdout is a terminal. With no argument it uses the latest backup; pass a `backup-path` to compare a specific one.
-
-**Arguments:** optional single `backup-path`. Defaults to the latest backup.
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--section` | _(none)_ | Only show this category. |
-
-```bash
-$ dothaven diff --section shell
-
-Comparing backup against live system:
-
-  shell/
-    shell/zshrc — modified
-    shell/zprofile — unchanged
-
-  2 files: 1 modified, 1 unchanged
-```
-
----
-
-## Migrate
-
-These commands bridge to chezmoi: they plan (and optionally apply) bringing your configs under chezmoi management, and verify the prerequisites for doing so.
-
-### chezmoi-export
-
-Plan (or apply) adding configs to chezmoi, encrypting secrets.
-
-```text
-dothaven chezmoi-export [flags]
-```
-
-Builds a chezmoi-add plan — plain `add` for ordinary configs, `add --encrypt` for secrets, and `add --template` for host-varying configs (shell rc, gitconfig, editor settings), whose absolute home paths are rewritten to `{{ .chezmoi.homeDir }}` so they port across machines — plus a `run_onchange` install script for Homebrew and global packages. **Dry-run by default:** it prints the plan and stops. With `--apply`, it executes against chezmoi (which must be installed, with a configured age key). When the plan encrypts anything it warns that those files are recoverable only with your age key and, on a terminal, asks you to confirm the key is backed up. If your editor's built-in Settings Sync looks active, it warns that cloud sync and chezmoi will both rewrite those files. On apply it also merges `.chezmoiignore` patterns for GnuPG runtime cruft when relevant and writes `run_onchange_install-packages.sh` into the chezmoi source path.
-
-**Arguments:** none.
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--apply` | `false` | Execute the plan (default: dry-run). |
-| `--pin` | `false` | Pin global packages to their captured version. |
-| `--only` | _(none)_ | Only these categories/groups (comma-separated). |
-| `--skip` | _(none)_ | Skip these categories/groups (comma-separated). |
-
-```bash
-$ dothaven chezmoi-export
-chezmoi-export plan — 3 path(s), 1 encrypted:
-
-      add            /Users/you/.gitconfig  (git config)
-   🔒 add --encrypt  /Users/you/.ssh/id_ed25519  (ssh private key)
-  + run_onchange install script (brew, packages)
-
-Dry-run. Re-run with --apply to execute (requires chezmoi + a configured age key).
-```
-
-{{< callout type="warning" >}}
-age is the encryption backend. **Losing the age key means encrypted files are unrecoverable** — back the key up somewhere safe and separate from the chezmoi source repo. If chezmoi is not installed, `--apply` exits non-zero and points you at `brew install chezmoi`.
-{{< /callout >}}
+These commands hand your config to [chezmoi](https://www.chezmoi.io/) instead of a dothaven backup. They need chezmoi, and an age key set up for chezmoi. See [Encryption & chezmoi](../encryption#the-chezmoi-path).
 
 ### init
 
@@ -440,173 +538,123 @@ Check the chezmoi + age prerequisites for export.
 dothaven init
 ```
 
-A read-only bootstrap check. It probes whether chezmoi is installed, whether age encryption is configured in `~/.config/chezmoi/chezmoi.toml`, whether the chezmoi source is an initialized git repo, and your GitHub login (via `gh`), then prints each step as done (`✓`) or pending (`→`) with the exact command to run. When everything is ready it prints the next `chezmoi-export` steps. It never changes anything.
+Checks three things and prints each as done (`✓`) or with the command that fixes it (`→`): chezmoi is installed, age encryption is configured in `~/.config/chezmoi/chezmoi.toml`, and your chezmoi source is an initialized git repository. On a terminal it offers to run the safe steps for you (installing chezmoi with Homebrew, `chezmoi init <url>`). It never creates your age key: that is yours to make and back up. No flags.
 
-**Arguments:** none.
-
-This command has no flags.
-
-```bash
-$ dothaven init
+```text
 dothaven init — chezmoi + age bootstrap
 
   ✓ chezmoi installed
-  → configure age encryption
-      chezmoi age setup
-
-Run the commands above, then re-run `dothaven init`.
+  → age encryption key configured
+      age-keygen -o ~/.config/chezmoi/key.txt
+      ⚠ Back this key up offline (password manager). Lose it and encrypted files are unrecoverable.
+  → chezmoi source (private dotfiles repo) initialized
+      chezmoi init git@github.com:you/dotfiles.git
 ```
+
+### chezmoi-export
+
+Plan (or apply) adding configs to chezmoi, encrypting secrets.
+
+```text
+dothaven chezmoi-export [flags]
+```
+
+Builds a plan of `chezmoi add` calls, one file at a time: plain for ordinary config, `--encrypt` for credentials and any file with a secret in it, `--template` for config that names your home folder. It also builds a `run_onchange` install script that reinstalls your packages when chezmoi applies. **Dry run by default**; `--apply` executes it (needs chezmoi, and age configured when anything is encrypted). On a terminal with no `--only`/`--skip`, it asks which categories and install groups (`brew`, `packages`) to export. Details: [Encryption & chezmoi](../encryption#chezmoi-export).
+
+| Flag | Meaning |
+| --- | --- |
+| `--apply` | Execute the plan (default: dry-run) |
+| `--only strings` | Only these categories/groups (comma-separated) |
+| `--pin` | Pin global packages to their captured version |
+| `--skip strings` | Skip these categories/groups (comma-separated) |
 
 ### migrate
 
 Set up this machine from your chezmoi source (prereqs → apply → verify).
 
 ```text
-dothaven migrate
+dothaven migrate [flags]
 ```
 
-The clean-machine happy path — one command for the moment you're staring at an empty laptop. It verifies chezmoi is installed and the source repo is initialized (printing guidance and exiting non-zero if not), warns if age encryption isn't configured, asks for confirmation on a terminal, then runs `chezmoi apply` — which pulls your managed configs and runs the generated install script. It finishes by pointing at `chezmoi diff` and `dothaven doctor` to verify. On a non-terminal (CI) it skips the confirmation.
+On a clean machine: checks that chezmoi is installed and your source repo is initialized (and warns if age is not configured, since encrypted files will not decrypt), then runs `chezmoi apply`, which writes your configs and runs your install script. It runs on your terminal with no time limit, so a long `brew bundle` can finish and ask for passwords. It ends by pointing at `chezmoi diff` and `dothaven check`.
 
-**Arguments:** none.
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--dry-run` | `false` | Show what chezmoi would change, via `chezmoi diff`. Writes nothing. |
-| `--yes` | `false` | Skip the confirmation. Required off a terminal. |
-
-{{< callout type="warning" >}}
-`migrate` overwrites files in `$HOME` and runs your install script. On a terminal it asks first; off one — piped, in a script, over SSH without a TTY — it **refuses** unless `--yes` is passed. A pipe cannot answer a question, and silence is not consent.
-{{< /callout >}}
-
----
-
-## macOS preferences & local services
-
-Two paired commands for config that doesn't live in a `~/.dotfile`: macOS app preferences (binary plists managed by `cfprefsd`) and Homebrew service config (under the brew prefix). Both capture to a directory and replay onto a new machine; both are macOS-oriented and no-op gracefully where the underlying tool is absent.
-
-### defaults
-
-Capture and restore macOS preferences — both whole app domains and individual system settings.
-
-```text
-dothaven defaults export [-o dir]
-dothaven defaults import <dir> [--all]
-```
-
-Two mechanisms, because they are good at different things.
-
-**Whole-domain plists.** `export` runs `defaults export` for a curated allowlist of app domains (iTerm2, Terminal.app, Rectangle, Hammerspoon, AltTab) into owner-only `.plist` files under `<dir>/macos-defaults/`, and `import` replays them with `defaults import` — the safe round-trip for `cfprefsd`-managed prefs, since a raw file copy is silently ignored. This preserves nested structure such as terminal profiles, which a per-key replay cannot.
-
-**Per-key system settings.** `export` also reads *every* preference domain on the machine (several hundred) and classifies each key into `<dir>/macos-defaults/prefs.json`. This is what carries natural scroll, key repeat, hot corners, Dock size, keyboard shortcuts and Finder options to a new Mac. Reading is free, so the capture is deliberately wide; what gets *written back* is not.
-
-Each key lands in one of three buckets:
-
-| Bucket | Meaning |
+| Flag | Meaning |
 | --- | --- |
-| `apply` | A portable scalar. Replayed with `defaults write <domain> <key> -<type> <value>`. |
-| `review` | A real setting pointing into the old machine's filesystem — where screenshots land, which folder a dialog opens. Captured and listed on import so you can set it by hand; never written. |
-| _dropped_ | Not a setting: window frames, recent items, migration markers, launch counters, bare identifiers (boot and display UUIDs — there is no version of one worth setting here), and anything that is not a single value, which is where Spaces layouts live. |
-
-`dothaven backup` runs the same capture and writes `prefs.json` into the backup folder, so `dothaven defaults import <backup-dir>` restores a machine's settings from a plain backup with no separate export step.
-
-Values are run through the same secret scanner as every other captured file, so a token sitting in an app's preferences is redacted or dropped rather than written to disk.
-
-By default `import` writes only the **core system domains** — `NSGlobalDomain`, Finder, Dock, trackpad and mouse drivers, `symbolichotkeys`, `WindowManager`, `universalaccess`, `screencapture`, and a handful more. Everything else is captured but held back, because on a real machine the wide list is dominated by application internals: several hundred keys belonging to Outlook, Xcode or a menu-bar widget that nobody chose. `--all` writes those too.
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for `macos-defaults/`. |
-| `--dry-run` (import) | `false` | List what would be written. Writes nothing. |
-| `--all` (import) | `false` | Also write settings outside the core system domains. |
-| `--yes` (import) | `false` | Skip the confirmation. Required off a terminal. |
-
-{{< callout type="warning" >}}
-`defaults import` replaces an app preference domain wholesale, and writes system keys one at a time. It summarises both first and asks; off a terminal it refuses unless `--yes` is passed. Log out and back in for everything to take effect.
-{{< /callout >}}
-
-### services
-
-Capture and restore Homebrew-managed local service config.
-
-```text
-dothaven services export [-o dir]
-dothaven services import <dir>
-```
-
-`export` captures user-editable service config under `$(brew --prefix)/etc` (nginx, httpd, my.cnf, redis, dnsmasq), writes it owner-only, records the source brew prefix, and warns — without redacting, since it must round-trip — if a file looks secret-bearing (e.g. a password in `my.cnf`). `import` resolves *this* machine's `$(brew --prefix)` and re-points the old prefix to the new one in the content, so Intel/ARM/Linuxbrew paths resolve. The service binaries themselves come back via the Brewfile; databases and other data are out of scope.
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `-o`, `--output` (export) | _(repo `./reports`, else `~/.local/share/dothaven`)_ | Output directory for the `services/` tree. |
-| `--dry-run` (import) | `false` | List the files that would be written, marking which already exist. Writes nothing. |
-| `--yes` (import) | `false` | Skip the confirmation. Required off a terminal. |
-
-{{< callout type="warning" >}}
-`services import` writes into `$(brew --prefix)/etc` — outside `$HOME`, in Homebrew's own tree. It lists every file first and marks the ones it would **overwrite**, then asks; off a terminal it refuses unless `--yes` is passed.
-{{< /callout >}}
+| `--dry-run` | Show what chezmoi would change, write nothing |
+| `--yes` | Skip the confirmation (required off a terminal) |
 
 ---
 
-## Keeping dothaven current
+## Additional commands
 
 ### upgrade
 
-Update dothaven to the latest release.
+Update dothaven to the latest release. Alias: `update`.
 
 ```text
-dothaven upgrade [--check] [--yes]
+dothaven upgrade [flags]
 ```
 
-Also spelled `dothaven update`. Checks GitHub for the newest release, works out how this copy of dothaven was installed, and runs that installer's upgrade.
+Checks GitHub for the newest release, works out how this copy of dothaven was installed, and runs that installer's upgrade for you.
 
-| Installed with | What `upgrade` runs                                             |
-| -------------- | --------------------------------------------------------------- |
-| Homebrew       | `brew update && brew upgrade --cask dothaven`                     |
-| `go install`   | `go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest`   |
-| Anything else  | Nothing — it prints the release page to replace the binary from   |
+| Installed with | What `upgrade` runs |
+| --- | --- |
+| Homebrew | `brew update && brew upgrade --cask dothaven` |
+| `go install` | `go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest` |
+| Anything else | Nothing; it prints the release page to replace the binary from |
 
-`brew update` comes first because the tap is a git clone that only refreshes on update: upgrading against a stale clone reports "already installed" for a version that has been published for hours.
+dothaven never overwrites its own binary. Homebrew tracks the version it installed, so replacing that file behind its back leaves `brew outdated` describing something that no longer exists, and the next `brew upgrade` would undo it anyway.
 
-**Flags:** `--check` reports what is available and changes nothing; `--yes` skips the confirmation prompt.
+| Flag | Meaning |
+| --- | --- |
+| `--check` | Report what is available, change nothing |
+| `--yes` | Skip the confirmation prompt |
+
+### help and completion
 
 ```bash
-$ dothaven upgrade
-⇡ dothaven 0.4.0 → 0.5.0
-
-Homebrew installed this, so Homebrew replaces it:
-  brew update && brew upgrade --cask dothaven
-
-Run it now? [y/N]
+dothaven help [command]
+dothaven completion bash|zsh|fish|powershell
 ```
-
-{{< callout type="info" >}}
-dothaven never overwrites its own binary. Homebrew records which version it put in the Caskroom, so a binary that replaces itself leaves that record describing a file which no longer exists — `brew outdated` keeps reporting the old version, and the next real `brew upgrade` throws the replacement away. Delegating also means the download is verified against the cask's pinned checksum by the tool that pinned it.
-{{< /callout >}}
 
 ### The update notice
 
-Once a day at most, dothaven checks whether a newer release exists and prints a single line on **stderr** when there is one:
+At most once a day, dothaven checks whether a newer release exists and prints one line on **stderr** when there is one:
 
 ```text
 ⇡ dothaven 0.5.0 is available (you have 0.4.0) — run `dothaven upgrade`
 ```
 
-Nothing is ever added to stdout, because snapshot output is parsed JSON. The check is skipped entirely when:
+Nothing is added to stdout. The check is skipped when stderr is not a terminal, when `CI` is set, for development builds, during `upgrade` itself, and when `DOTHAVEN_NO_UPDATE_CHECK` is set to anything.
 
-- stderr is not a terminal (a piped or redirected run, so `dothaven collect > snap.json` stays clean)
-- `CI` is set
-- the binary is a development build, which has no version to compare
-- `DOTHAVEN_NO_UPDATE_CHECK` is set to anything at all
-
-{{< callout type="info" >}}
-The check requests one URL — `https://github.com/doguyilmaz/dothaven/releases/latest` — and reads the version out of the redirect it answers with. No response body is downloaded, the redirect is never followed, and nothing identifying the machine is sent beyond a `dothaven/<version>` user agent. The answer is cached in `$XDG_CACHE_HOME/dothaven/update-check.json` (else `~/.cache/dothaven/`), separate from the data directory where backups and snapshots live, and a failed check is silent. Deleting the cache is always safe.
-{{< /callout >}}
+It requests one URL, `https://github.com/doguyilmaz/dothaven/releases/latest`, and reads the version from the redirect. It downloads no page body, sends nothing about your machine beyond a `dothaven/<version>` user agent, and caches the answer in `~/.cache/dothaven/update-check.json`. A failed check is silent.
 
 ---
 
-## See also
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | An error. Also: `missing` found something missing, `doctor` found something broken, or a command refused to change things off a terminal without `--yes` |
+| `2` | `scan` found a HIGH secret, `check` found a broken config, or `ready` found work at risk (or no recent backup) |
+| `130` | Cancelled with Ctrl-C (`143` for SIGTERM). A second Ctrl-C forces an immediate exit |
+
+## Environment variables
+
+| Variable | Meaning |
+| --- | --- |
+| `DOTHAVEN_PASSPHRASE` | Passphrase for encrypted backups, instead of the prompt (at least 10 characters for a new backup) |
+| `DOTHAVEN_GITHUB_TOKEN` | GitHub token to use instead of the stored one or `gh` |
+| `DOTHAVEN_SECRET_STORE=file` | Keep secrets in an owner-only file instead of the keychain |
+| `DOTHAVEN_GITHUB_API`, `DOTHAVEN_GITHUB_WEB` | Another GitHub endpoint, such as GitHub Enterprise (`https` only) |
+| `DOTHAVEN_GITHUB_CLIENT_ID` | OAuth app for browser sign-in |
+| `DOTHAVEN_GITHUB_APP` | GitHub App whose bot authors each push |
+| `DOTHAVEN_NO_UPDATE_CHECK` | Turn off the daily update notice |
+| `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` | Move dothaven's data (`~/.local/share`), settings (`~/.config`) and cache (`~/.cache`) folders |
 
 {{< cards >}}
-  {{< card link="../installation" title="Installation" >}}
-  {{< card link="../quick-start" title="Quick start" >}}
+  {{< card link="../interactive" title="Interactive mode" >}}
+  {{< card link="../backup-restore" title="Backup & restore" >}}
+  {{< card link="../troubleshooting" title="Troubleshooting" >}}
 {{< /cards >}}

@@ -79,6 +79,9 @@ func TestHeaderNamesTheAction(t *testing.T) {
 func TestMenuActionsResolve(t *testing.T) {
 	root := NewRoot(sys.Real(), "0.0.0")
 	for action := range actionTitles {
+		if action == "pack" {
+			continue // a menu-only flow, written out in runPack
+		}
 		fields := strings.Fields(action)
 		sub, _, err := root.Find(fields)
 		if err != nil || sub == nil {

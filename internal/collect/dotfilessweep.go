@@ -178,3 +178,127 @@ func DotfilesSweepCollector(c Ctx) snapshot.Snapshot {
 	}
 	return out
 }
+
+// uncoveredNoise are home entries that are state, caches or toolchains rather
+// than config: offering them for backup would bury the real candidates. None
+// of it is lost by leaving it out — it rebuilds, or it is history.
+var uncoveredNoise = map[string]bool{
+	".local": true, ".npm": true, ".cargo": true, ".rustup": true, ".nvm": true,
+	".pyenv": true, ".rbenv": true, ".gem": true, ".gradle": true, ".m2": true,
+	".cocoapods": true, ".pub-cache": true, ".dartServer": true, ".bun": true,
+	".deno": true, ".vscode": true, ".vscode-server": true, ".cursor-server": true,
+	".pnpm-store": true, ".yarn": true, ".cpan": true, ".conda": true, ".julia": true,
+	".swiftpm": true, ".expo": true, ".android": true, ".oh-my-zsh": true,
+	".zsh_history": true, ".bash_history": true, ".python_history": true,
+	".psql_history": true, ".mysql_history": true, ".sqlite_history": true,
+	".viminfo": true, ".lesshst": true, ".node_repl_history": true, ".irb_history": true,
+	".zcompdump": true, ".zsh_sessions": true, ".Trash": true, ".cache": true,
+	".DS_Store": true, ".CFUserTextEncoding": true, ".localized": true, ".cups": true,
+	".wget-hsts": true, ".sudo_as_admin_successful": true, ".bash_sessions": true,
+	".dbus": true, ".pki": true, ".xsession-errors": true, ".ICEauthority": true,
+	".Xauthority": true, ".dotnet": true, ".nuget": true, ".sdkman": true, ".jenv": true,
+	".volta": true, ".fnm": true, ".asdf": true, ".proto": true, ".fvm": true,
+	".docker": true, ".minikube": true, ".colima": true, ".lima": true, ".orbstack": true,
+	".ollama": true, ".lmstudio": true, ".matplotlib": true, ".ipython": true, ".keras": true,
+	".vim": true, ".emacs.d": true, ".tmp": true,
+}
+
+var claudeNoise = map[string]bool{
+	"projects": true, "todos": true, "shell-snapshots": true, "statsig": true, "ide": true,
+	"debug": true, "file-history": true, "session-env": true, "history.jsonl": true,
+	"cache": true, "logs": true, "telemetry": true, ".credentials.json": true, "local": true,
+	"downloads": true, "paste-cache": true, "stats-cache.json": true, "__store.db": true,
+	".DS_Store": true, "sessions": true, "tasks": true, "backups": true, ".last-cleanup": true,
+	"policy-limits.json": true, "policy-limits.json.stamp.json": true, "remote-settings.json": true,
+	"environment-manager": true, "launcher-settings.json": true, "plans": true,
+}
+
+// Codex and Gemini keep sessions, history and caches beside their config;
+// what is left once those are skipped is worth asking about.
+var codexNoise = map[string]bool{
+	"sessions": true, "archived_sessions": true, "history.jsonl": true, "log": true,
+	"cache": true, "tmp": true, "shell_snapshots": true, "version.json": true,
+	"models_cache.json": true, "internal_storage.json": true, ".DS_Store": true,
+}
+
+var geminiNoise = map[string]bool{
+	"tmp": true, "history": true, "installation_id": true, "user_id": true,
+	"google_accounts.json": true, "google_account_id": true, ".DS_Store": true,
+}
+
+// configNoise under ~/.config: browser profiles on Linux (gigabytes of cache
+// and history, synced by the browser's own account) are not config to carry.
+var configNoise = map[string]bool{
+	".DS_Store": true, ".git": true, "dothaven": true,
+	"chromium": true, "google-chrome": true, "google-chrome-beta": true, "BraveSoftware": true,
+	"microsoft-edge": true, "vivaldi": true, "opera": true, "pulse": true,
+}
+
+// Uncovered lists paths under home that look like config and that neither the
+// registry nor the user's includes cover, as "~/"-relative paths. It looks one
+// level into ~, ~/.config, ~/.claude, ~/.codex and ~/.gemini, which is where
+// nearly all of it lives.
+//
+// This is how a backup stops being limited to what dothaven already knows
+// about: whatever it does not recognise is put in front of the user once,
+// instead of being left behind without a word.
+func Uncovered(listDir func(string) ([]string, error), home string, entries []registry.Entry, inc registry.Includes) []string {
+	covered := map[string]bool{}
+	for _, e := range entries {
+		for _, goos := range []string{"darwin", "linux"} {
+			if p := e.Paths[goos]; strings.HasPrefix(p, "~/") {
+				covered[p] = true
+			}
+		}
+	}
+	for _, p := range append(append([]string(nil), inc.Paths...), inc.Declined...) {
+		covered[p] = true
+	}
+	// isCovered: the path itself, one of its parents, or (for a directory
+	// the registry reaches into) any child is tracked.
+	isCovered := func(p string) bool {
+		for c := range covered {
+			if c == p || strings.HasPrefix(p, c+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	reachesInto := func(p string) bool {
+		for c := range covered {
+			if strings.HasPrefix(c, p+"/") {
+				return true
+			}
+		}
+		return false
+	}
+
+	var out []string
+	sweep := func(dir, prefix string, noise map[string]bool, dotOnly bool) {
+		names, err := listDir(filepath.Join(home, dir))
+		if err != nil {
+			return
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			if noise[n] || (dotOnly && !strings.HasPrefix(n, ".")) {
+				continue
+			}
+			p := prefix + n
+			if isCovered(p) || reachesInto(p) {
+				continue
+			}
+			out = append(out, p)
+		}
+	}
+	sweep("", "~/", uncoveredNoise, true)
+	sweep(".config", "~/.config/", configNoise, false)
+	sweep(".claude", "~/.claude/", claudeNoise, false)
+	sweep(".codex", "~/.codex/", codexNoise, false)
+	sweep(".gemini", "~/.gemini/", geminiNoise, false)
+	// Personal scripts are the classic thing nobody remembers to copy.
+	if names, err := listDir(filepath.Join(home, "bin")); err == nil && len(names) > 0 && !isCovered("~/bin") {
+		out = append(out, "~/bin")
+	}
+	return out
+}

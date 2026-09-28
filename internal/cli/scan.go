@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/doguyilmaz/dothaven/internal/backup"
+	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/scan"
 	"github.com/doguyilmaz/dothaven/internal/sys"
 	"github.com/spf13/cobra"
@@ -62,29 +64,66 @@ func formatDetailed(results []scan.Result) string {
 				sev = dim(sev)
 			}
 			lines = append(lines, fmt.Sprintf("  %s [%s] %s: %s",
-				dim(fmt.Sprintf("L%d", f.Line)), sev, f.Pattern.Label, f.Match))
+				dim(fmt.Sprintf("L%d", f.Line)), sev, f.Pattern.Label, scan.Preview(f.Match)))
 		}
 	}
 	return strings.Join(lines, "\n")
 }
 
-func newScanCmd(_ *sys.OS) *cobra.Command {
+// scanTracked scans every file a backup would carry — the registry and your
+// includes — which is the question "are there secrets in my config?".
+func scanTracked(ctx context.Context, env *sys.OS, progress bool) ([]scan.Result, error) {
+	var files []string
+	for _, t := range registry.BackupTargets(env.Home(), allEntries(env)) {
+		walked, _ := backup.Walk(t, backup.WalkOptions{MaxSize: scan.MaxFileSize})
+		for _, f := range walked {
+			files = append(files, f.Path)
+		}
+	}
+	var done int64
+	if progress {
+		stop := startProgress("scanning your config", &done, len(files))
+		defer stop()
+	}
+	seen := map[string]bool{}
+	var out []scan.Result
+	for _, f := range files {
+		if ctx.Err() != nil {
+			return out, ctx.Err()
+		}
+		done++
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		if r := scan.ScanFile(f); r != nil {
+			r.Path = shortHome(env, f)
+			out = append(out, *r)
+		}
+	}
+	return out, nil
+}
+
+func newScanCmd(env *sys.OS) *cobra.Command {
 	var noFail bool
 	c := &cobra.Command{
 		Use:   "scan [path]",
-		Short: "Scan a file or directory for secrets (exits 2 if any are HIGH)",
-		Long: "Scans for secrets and prints what it finds.\n\n" +
+		Short: "Find secrets in your config, or in any file or folder (exits 2 if any are HIGH)",
+		Long: "With no path, scans every config file dothaven tracks — the ones a backup\n" +
+			"would carry. With a path, scans that file or folder.\n\n" +
 			"Exits 2 when anything HIGH turns up, so this can gate a commit hook or a CI\n" +
 			"job — a scanner that always exits 0 can only ever be read by a human, and\n" +
 			"the point of scanning is to catch what a human missed. Use --no-fail for a\n" +
 			"report without the verdict.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			target := "."
+			var results []scan.Result
+			var err error
 			if len(args) > 0 {
-				target = args[0]
+				results, err = scanTarget(c.Context(), args[0])
+			} else {
+				results, err = scanTracked(c.Context(), env, true)
 			}
-			results, err := scanTarget(c.Context(), target)
 			if errors.Is(err, context.Canceled) {
 				fmt.Fprintln(os.Stderr, "scan cancelled.")
 				return ExitError{Code: 130} // aborted ≠ clean; surface 130 for scripts/CI
@@ -108,9 +147,9 @@ func newScanCmd(_ *sys.OS) *cobra.Command {
 				return nil
 			}
 			fmt.Println(formatDetailed(results))
-			fmt.Println(scan.FormatReport(scan.Summarize(results), scan.ReportOptions{Color: colorOn()}))
+			fmt.Println(scan.FormatReport(scan.Summarize(results), scan.ReportOptions{Color: colorOn(), Scan: true}))
 			if high > 0 && !noFail {
-				fmt.Fprintf(os.Stderr, "\n%s\n", danger(fmt.Sprintf("%d HIGH severity finding(s). Exiting 2 — pass --no-fail to ignore.", high)))
+				fmt.Fprintf(os.Stderr, "\n%s\n", danger(fmt.Sprintf("%s. Exiting 2 — pass --no-fail to ignore.", plural(high, "HIGH finding"))))
 				return ExitError{Code: 2}
 			}
 			return nil
@@ -120,18 +159,22 @@ func newScanCmd(_ *sys.OS) *cobra.Command {
 	return c
 }
 
-func newSecurityCmd(_ *sys.OS) *cobra.Command {
+func newSecurityCmd(env *sys.OS) *cobra.Command {
 	var out string
 	c := &cobra.Command{
 		Use:   "security [path]",
-		Short: "Write a Markdown security report (default SECURITY.md)",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Write a Markdown report of the secrets in your config (default SECURITY.md)",
+		Long: "The same scan as `dothaven scan` — your tracked config, or the path given —\n" +
+			"written as a Markdown report. It names files, rules and line numbers, never values.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			target := "."
+			var results []scan.Result
+			var err error
 			if len(args) > 0 {
-				target = args[0]
+				results, err = scanTarget(c.Context(), args[0])
+			} else {
+				results, err = scanTracked(c.Context(), env, false)
 			}
-			results, err := scanTarget(c.Context(), target)
 			if errors.Is(err, context.Canceled) {
 				fmt.Fprintln(os.Stderr, "scan cancelled.")
 				return ExitError{Code: 130} // aborted ≠ clean; surface 130 for scripts/CI

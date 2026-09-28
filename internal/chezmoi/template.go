@@ -36,10 +36,20 @@ const HomeDirVar = "{{ .chezmoi.homeDir }}"
 // sibling like /Users/devops is never corrupted when home is /Users/dev, and no
 // greedy username/value substitution (autotemplate's known footgun) happens.
 // Returns the (possibly unchanged) content and whether anything was rewritten.
+//
+// Anything in the file that looks like template syntax is escaped first. A
+// .tmpl is parsed on every apply, and WezTerm's `keys = {{…}}`, a Go format
+// string in a gitconfig alias or a Helm snippet in a shell function would
+// otherwise fail `chezmoi apply` on the new machine — the worst place to find
+// out.
 func Templatize(content, home string) (string, bool) {
-	if len(home) < 2 { // guard against "" and "/"
+	if len(home) < 2 || !strings.Contains(content, home+"/") { // guard "" and "/"
 		return content, false
 	}
-	out := strings.ReplaceAll(content, home+"/", HomeDirVar+"/")
-	return out, out != content
+	escaped := delimEscaper.Replace(content)
+	return strings.ReplaceAll(escaped, home+"/", HomeDirVar+"/"), true
 }
+
+// delimEscaper turns literal delimiters into template expressions that print
+// them. A Replacer makes one pass, so its own output is never re-escaped.
+var delimEscaper = strings.NewReplacer("{{", `{{ "{{" }}`, "}}", `{{ "}}" }}`)

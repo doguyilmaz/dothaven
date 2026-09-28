@@ -22,7 +22,7 @@ var coreDomains = map[string]bool{
 	"com.apple.screencapture":   true, // format, shadow, where screenshots land
 	"com.apple.desktopservices": true, // .DS_Store on network and USB volumes
 
-	"com.apple.symbolichotkeys": true, // keyboard shortcuts
+	"com.apple.symbolichotkeys": true, // keyboard shortcuts (AppleSymbolicHotKeys)
 	"com.apple.HIToolbox":       true, // input sources and the keyboard menu
 	"com.apple.universalaccess": true, // zoom, pointer size, reduce motion
 
@@ -38,6 +38,13 @@ var coreDomains = map[string]bool{
 
 // IsCore reports whether a domain is applied by default.
 func IsCore(domain string) bool { return coreDomains[domain] }
+
+// IsCoreEntry reports whether one setting is applied by default: everything in
+// a core domain, and App Shortcuts wherever they live — a menu shortcut is
+// always somebody's choice, never an app's bookkeeping.
+func IsCoreEntry(domain, key string) bool {
+	return coreDomains[domain] || key == "NSUserKeyEquivalents"
+}
 
 // CoreDomainCount is how many domains the default apply covers, for help text.
 func CoreDomainCount() int { return len(coreDomains) }

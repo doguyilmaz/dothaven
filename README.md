@@ -1,120 +1,126 @@
-# dothaven
+<p align="center">
+  <img src="docs/static/images/logo.svg" width="96" height="96" alt="dothaven logo: a dot and a tilde flowing out of an old window into a new green one">
+</p>
 
-Discover, back up, and migrate your machine's dev config — feeding [chezmoi](https://chezmoi.io) with age-encrypted secrets.
+<h1 align="center">dothaven</h1>
 
-dothaven inventories what's on your machine (shell, git, editors, SSH, cloud CLIs, Homebrew, global packages, runtimes, fonts, AI tooling), scans it for secrets, and prepares an encrypted hand-off to chezmoi so a clean-install machine comes back without losing a thing.
+<p align="center">
+  Move your whole dev setup to a new machine — dotfiles, AI tools, SSH keys, cloud logins,<br>
+  installed apps and macOS settings — encrypted, selective, and checked.
+</p>
+
+<p align="center">
+  <a href="https://doguyilmaz.github.io/dothaven"><b>Docs</b></a> ·
+  <a href="https://doguyilmaz.github.io/dothaven/docs/migration/">Migration guide</a> ·
+  <a href="https://doguyilmaz.github.io/dothaven/docs/commands/">Commands</a>
+</p>
+
+---
+
+Migration Assistant copies a disk. A clean install gives you a fresh machine — and a week of
+finding out what you forgot: the zsh plugin config, the Claude Code skills and MCP servers, the
+kubeconfig, the git hooks, the scroll direction. dothaven is for the clean install.
 
 | | |
 |---|---|
-| **Binary** | Single static Go binary — no runtime to install |
-| **Platforms** | macOS & Linux · amd64 & arm64 |
-| **Backbone** | [chezmoi](https://chezmoi.io) + [age](https://age-encryption.org) for storage, encryption, and `apply` |
-| **Docs** | **https://doguyilmaz.github.io/dothaven** |
+| **One file, everything in it** | `dothaven backup --encrypt` writes one age-encrypted file with your config, keys and tokens, the list of apps and packages you had, and your macOS settings. Nothing is ever written unencrypted, not even temporarily. |
+| **Knows where things live** | Hundreds of config locations — shells, git, editors, terminals, cloud CLIs, SSH, databases, version managers — and the global setup of Claude Code, Codex, Gemini, Cursor, Windsurf, VS Code, opencode, Copilot and more: skills, agents, commands, hooks, plugins, MCP servers. |
+| **Not limited to that list** | Anything else that looks like config is offered to you once; `dothaven include` adds whatever you like. |
+| **Restore what you choose** | Pick everything, some categories, or single files; see a diff before anything is replaced; the replaced copy is kept. It remembers what it applied, so running it again shows what's done — not everything again. |
+| **Apps come back too** | `dothaven reinstall` installs only what's missing — Homebrew formulae, casks and App Store apps, global npm/pnpm/bun/pipx/uv/cargo packages, editor extensions. |
+| **Or keep it on GitHub** | `dothaven github push` keeps each machine in a private repo, encrypted by default; `dothaven restore github` brings it back anywhere. |
+| **Checks before you wipe** | `dothaven ready` finds uncommitted, unpushed and stashed work, repos with no remote, and gitignored `.env` files and keys that a fresh clone won't bring back. |
 
 ## Install
 
 ```bash
-# Homebrew (signed and notarized)
-brew install --cask doguyilmaz/tap/dothaven
+# A fresh machine — no Homebrew needed (verifies the release checksum, no sudo):
+curl -fsSL https://raw.githubusercontent.com/doguyilmaz/dothaven/main/scripts/install.sh | sh
 
-# Go
-go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest
-
-# From source
-git clone https://github.com/doguyilmaz/dothaven && cd dothaven && go build ./cmd/dothaven
+brew install --cask doguyilmaz/tap/dothaven                      # macOS (signed, notarized)
+go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest    # macOS or Linux
 ```
 
-Running dothaven needs nothing else. The `chezmoi-export` and `init` commands additionally use [chezmoi](https://chezmoi.io) and a configured age key — see [Encryption & chezmoi](https://doguyilmaz.github.io/dothaven/docs/encryption/).
+One static binary; nothing else is needed — encryption is built in. Binaries for every
+platform are on the [releases page](https://github.com/doguyilmaz/dothaven/releases).
 
-## Quick start
+## Moving to a new machine
 
 ```bash
-dothaven                         # menu — start here if you're not sure
-dothaven guide                   # a few questions → the exact commands for your case
-dothaven ready                   # before wiping: is anything only on this Mac?
-dothaven scan ~                  # scan for secrets (exits 2 if any are HIGH)
-dothaven backup                  # timestamped copy of your config, on this Mac
-dothaven chezmoi-export          # plan what would go to chezmoi, plain vs encrypted
-dothaven chezmoi-export --apply  # execute (needs chezmoi + age)
-dothaven check                   # do my config files still parse?
-dothaven backup --archive --encrypt   # one age-encrypted file you can carry
-dothaven status                  # latest backup vs this machine
-dothaven migrate --dry-run       # on a new Mac: what chezmoi would apply
+# On the old machine
+dothaven ready                                   # anything that exists only here?
+dothaven backup --encrypt -o /Volumes/MyDrive    # everything, in one encrypted file
+
+# On the new machine
+dothaven restore                                 # finds the backup (drives, Downloads…) and lets you pick
+dothaven reinstall /Volumes/MyDrive/backup-….tar.gz.age    # apps & packages you had
+dothaven missing   /Volumes/MyDrive/backup-….tar.gz.age    # anything still not here
 ```
 
-Anything that changes files you already have asks first and takes `--dry-run`;
-`backup` and the exports only ever add. Off a terminal there is nobody to ask,
-so those commands refuse unless you pass `--yes`.
+Or run `dothaven` with no arguments: a menu walks you through the same steps, including a
+**Pack everything** flow that checks for unpushed work, asks where to write the file, and
+verifies that it decrypts before you wipe anything.
 
-## The hybrid model
+Prefer GitHub to a drive?
 
-dothaven is the **discovery + audit + export** layer; chezmoi is the **storage + encryption + apply** backbone.
+```bash
+dothaven github push       # old machine: private repo <you>/dothaven-backup, encrypted
+dothaven restore github    # new machine
+```
 
-| Stage | Owner |
-|---|---|
-| Discover the machine, snapshot installed config | dothaven |
-| Scan for secrets, redact by default | dothaven |
-| Build a `chezmoi add` plan + a `run_onchange` install script | dothaven |
-| Track files in a private source repo | chezmoi |
-| Encrypt the files marked secret | chezmoi + age |
-| Write files back into `$HOME` on a new machine | chezmoi |
+## Everyday
 
-dothaven decides *what* to encrypt; chezmoi *performs* it. It is not itself an encryption or sync engine.
+```bash
+dothaven status            # what changed since the last backup
+dothaven include --list    # what nothing covers yet
+dothaven scan              # secrets sitting in your config files (exits 2 on HIGH)
+dothaven check             # do your config files still parse?
+dothaven ui                # a local dashboard in your browser
+dothaven doctor            # is dothaven itself set up right on this machine?
+```
 
-## Commands
+## Safety
 
-| | |
-|---|---|
-| `collect` | Inventory the machine into a JSON snapshot |
-| `doctor` | Diff a snapshot against this machine (non-zero exit on drift) |
-| `guide` | Answer a few questions, get the commands that fit |
-| `check` | Parse every tracked config; report the broken ones |
-| `ready` | Before a wipe: uncommitted, unpushed and stashed work |
-| `scan` / `security` | Find secrets (console / Markdown report) |
-| `backup` / `restore` | Copy tracked config files out and back, with a redaction gate |
-| `status` / `diff` | Compare a backup against the live machine |
-| `compare` / `list` | Diff two snapshots / print a snapshot section |
-| `chezmoi-export` | Plan (or `--apply`) adding configs to chezmoi, encrypting secrets, templating host paths |
-| `init` / `migrate` | Check chezmoi + age prerequisites / apply your source on a clean machine |
-| `defaults` / `services` | Capture & restore macOS app prefs / Homebrew service config (export + import) |
+- **Plaintext backups never hold a credential.** Secrets are redacted (the key name stays, the
+  value goes), and SSH keys, cloud logins and other credential files are left out — and listed,
+  in the output and in the backup's `MANIFEST.txt`. The encrypted backup is the one that carries them.
+- **Encrypted means age.** Backups are standard [age](https://age-encryption.org) files: they
+  open with `age -d` too, and old ones from earlier versions still restore.
+- **Nothing you have is replaced without asking.** Restores preview, ask per differing file,
+  and keep what they replace. Off a terminal, commands that change things need `--yes`.
+- **Tokens live in your keychain** (macOS Keychain or the Secret Service), never on a command line,
+  and never in the environment of a tool dothaven runs.
+- **The GitHub repo must be private** — dothaven refuses to write to a public one. Every `.age`
+  file is checked before upload, and your chezmoi/sops age key never goes to GitHub, not even encrypted.
+- **Decrypted files don't linger.** Temporary folders are owner-only, removed even on a forced exit,
+  and swept on the next run after a crash; read-only commands unpack only what they read.
+- **The dashboard is local and read-only**: loopback only, one-time key, strict CSP, no outside assets.
 
-Full reference, with every flag: **[Commands](https://doguyilmaz.github.io/dothaven/docs/commands/)**.
+What stays out on purpose: data (databases, Docker volumes), system config under `/etc`, app
+bundles, caches and toolchains (they are reinstalled, not copied), and Keychain items such as
+signing certificates. See [Security](https://doguyilmaz.github.io/dothaven/docs/security/).
 
-## Missing a tool?
+## Also
 
-dothaven aims to be a **superset** of what chezmoi covers — every cloud CLI, version manager, editor, terminal, and credential store a developer uses. If something you rely on isn't tracked yet, it's a one-line registry add:
+- `dothaven defaults import <backup>` — puts macOS settings back, showing which are already set.
+- `dothaven services export` — Homebrew service configs (nginx, mysql, redis…).
+- `dothaven chezmoi-export` / `migrate` — hand your config to a [chezmoi](https://chezmoi.io)
+  repo instead, secrets age-encrypted, if you want machines kept in sync.
 
-**→ [Request a config / tool](https://github.com/doguyilmaz/dothaven/issues/new?template=config-request.yml)** (just the tool name + its config path).
-
-## What's out of scope
-
-dothaven captures **configuration**, not data or system state. By design it does **not** carry:
-
-- **Data** — databases (Postgres/MySQL data dirs, `~/.docker` images & volumes), anything you'd `dump`/`restore`. Reinstall the engine; re-import the data.
-- **System & service-daemon config** in `/etc` (e.g. `/etc/nginx`) — needs root and is machine-specific. (Homebrew-prefix service config under `$(brew --prefix)/etc` *is* in scope — it's user-editable dev config.)
-- **App-bundle internals** — XAMPP/MAMP and similar live in `/Applications`; the app comes back via its Homebrew cask, its bundled config/data does not.
-- **Toolchain binaries & caches** — language runtimes, SDKs, build caches (`~/.gradle/caches`, Xcode `DerivedData`, `~/.pub-cache`), `node_modules`. Versions are *inventoried* and reinstalled via your version manager / package manager, not copied byte-for-byte.
-- **Secrets dothaven can't reach** — the macOS Keychain / Secret Service.
-
-The rule of thumb: if it's a file you'd edit, it's in scope; if it's data, a binary, or owned by root, it isn't.
-
-## Security
-
-A pattern scanner classifies findings as HIGH/MEDIUM/LOW with an action of skip/redact/include. Secrets are redacted by default before anything is written, and a file containing a private key (a `skip`-action secret) is **never** written into a plaintext backup or snapshot. On export, high-sensitivity files are added with `chezmoi add --encrypt`. See [Security & redaction](https://doguyilmaz.github.io/dothaven/docs/security/).
-
-> The age key is the only thing protecting your encrypted files. Lose it and they are unrecoverable — back it up offline and never commit it.
+Full reference: **[Commands](https://doguyilmaz.github.io/dothaven/docs/commands/)**.
+Missing a tool? [Request it](https://github.com/doguyilmaz/dothaven/issues/new?template=config-request.yml) —
+or add it yourself today with `dothaven include`.
 
 ## Development
 
 ```bash
-go build ./...      # build
-go test ./...       # unit + testscript e2e
-gofmt -l ./cmd ./internal   # formatting (CI gate)
+go build ./...                 # build
+go test ./...                  # unit + testscript e2e (a fake GitHub included)
+gofmt -l ./cmd ./internal      # must be empty; also: go vet ./...
+cd docs && hugo server         # docs preview
 ```
 
-Layout: `cmd/dothaven` (entry point) + `internal/{snapshot,scan,sys,collect,registry,backup,restore,chezmoi,cli}`. See [Architecture](https://doguyilmaz.github.io/dothaven/docs/architecture/).
-
-The docs site is Hugo + [Hextra](https://github.com/imfing/hextra): `cd docs && hugo server`.
+Layout: `cmd/dothaven` (entry) + `internal/…` — see [Architecture](https://doguyilmaz.github.io/dothaven/docs/architecture/).
 
 ## License
 

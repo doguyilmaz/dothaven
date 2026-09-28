@@ -56,16 +56,16 @@ func TestBackupGroups(t *testing.T) {
 		{Category: "cloud", Sensitivity: registry.High},
 		{Category: "cloud"},
 	}
-	got := backupGroups(targets)
+	got := backupGroups(targets, "creds")
 	// sorted by category: cloud, git, shell
 	if len(got) != 3 {
 		t.Fatalf("groups = %d, want 3", len(got))
 	}
-	if got[0].Name != "cloud" || got[0].Count != 2 || !got[0].Encrypted {
-		t.Errorf("cloud group = %+v (want count 2, encrypted)", got[0])
+	if got[0].Name != "cloud" || got[0].Note != "creds" || got[0].About == "" {
+		t.Errorf("cloud group = %+v (want the credentials note and a description)", got[0])
 	}
-	if got[2].Name != "shell" || got[2].Count != 2 || got[2].Encrypted {
-		t.Errorf("shell group = %+v (want count 2, not encrypted)", got[2])
+	if got[2].Name != "shell" || got[2].Note != "" {
+		t.Errorf("shell group = %+v (want no note)", got[2])
 	}
 }
 
@@ -178,6 +178,9 @@ func TestPlural(t *testing.T) {
 		{4, "key", "4 keys"},
 		{5, "day", "5 days"},
 		{6, "branch", "6 branches"},
+		// "pathes" shipped in doctor's output: -es only after a sibilant.
+		{2, "path", "2 paths"},
+		{2, "stash", "2 stashes"},
 		{0, "setting", "0 settings"},
 	}
 	for _, tt := range tests {

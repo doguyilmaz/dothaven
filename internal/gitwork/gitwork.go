@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Repo is one repository's unsaved work.
@@ -26,40 +27,98 @@ type Repo struct {
 	Unsaved   int  // commits on a local branch that are on no remote
 	Stashes   int  // stash entries
 	HasRemote bool // false means the whole repository exists only here
-	Err       string
+	// Ignored lists files git deliberately does not track that hold what a
+	// clone cannot give back: .env files, keys, local terraform state. They
+	// are ignored precisely because they are secret or machine-local, which is
+	// also why a wipe followed by `git clone` loses them.
+	Ignored []string
+	Err     string
 }
 
 // AtRisk reports whether this repo holds anything a wipe would destroy.
 func (r Repo) AtRisk() bool {
-	return r.Dirty > 0 || r.Unsaved > 0 || r.Stashes > 0 || !r.HasRemote
+	return r.Dirty > 0 || r.Unsaved > 0 || r.Stashes > 0 || !r.HasRemote || len(r.Ignored) > 0
+}
+
+// IsLocalOnlyName reports whether an ignored file's name marks it as the kind
+// that exists only on one machine and matters: environment files, private keys
+// and keystores, cloud credentials, local terraform state.
+func IsLocalOnlyName(name string) bool {
+	n := strings.ToLower(name)
+	for _, sample := range []string{".example", ".sample", ".template", ".dist", ".defaults", ".tpl"} {
+		if strings.HasSuffix(n, sample) {
+			return false
+		}
+	}
+	switch n {
+	case ".env", ".envrc", ".dev.vars", ".npmrc", ".pypirc", ".netrc", "master.key",
+		"google-services.json", "googleservice-info.plist", "id_rsa", "id_ed25519", ".secrets":
+		return true
+	}
+	if strings.HasPrefix(n, ".env.") || strings.HasPrefix(n, "service-account") || strings.HasPrefix(n, "secrets.") {
+		return true
+	}
+	for _, ext := range []string{".pem", ".key", ".p12", ".pfx", ".p8", ".jks", ".keystore",
+		".mobileprovision", ".tfstate", ".tfstate.backup", ".tfvars", ".secret"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	return strings.Contains(n, "credentials") && strings.HasSuffix(n, ".json")
 }
 
 // Runner executes git in a directory. Injected so the walk and the reporting
 // can be tested without building repositories on disk.
 type Runner func(ctx context.Context, dir string, args ...string) (string, error)
 
+// gitTimeout bounds one git call. A repo on a stalled network mount, or one so
+// large that `git status` crawls, must cost one repo's answer, not the run.
+const gitTimeout = 20 * time.Second
+
 // GitRunner runs the real git.
 func GitRunner(ctx context.Context, dir string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	// A repo whose remote needs a password must not hang the whole scan.
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
+	// fsmonitor daemons inherit stdout; without WaitDelay a daemon git forks
+	// keeps Wait blocked after the timeout kills git itself.
+	cmd.WaitDelay = 2 * time.Second
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }
 
 // skipDirs are subtrees that never contain a repo worth reporting: dependency
-// trees vendor their own, and caches are regenerated.
+// trees vendor their own, caches and toolchains are regenerated, and media
+// libraries are enormous and hold no code. Skipping them is most of what keeps
+// a walk of the whole home directory to a second or two.
 var skipDirs = map[string]bool{
 	"node_modules": true, "vendor": true, ".cache": true, "Caches": true,
 	"Library": true, ".Trash": true, ".venv": true, "venv": true,
 	"__pycache__": true, ".terraform": true, "Pods": true, ".gradle": true,
 	"CloudStorage": true, ".npm": true, ".bun": true, ".cargo": true,
+	".rustup": true, ".nvm": true, ".pyenv": true, ".rbenv": true, ".gem": true,
+	".m2": true, ".pub-cache": true, ".cocoapods": true, ".android": true,
+	".docker": true, ".vscode": true, ".cursor": true, ".deno": true,
+	".oh-my-zsh": true, ".zinit": true, ".antidote": true, ".zplug": true,
+	"Applications": true, "Pictures": true, "Movies": true, "Music": true,
+	"DerivedData": true, "build": true, "dist": true, "target": true, ".next": true,
 }
 
-// Find walks roots for git repositories, no deeper than maxDepth below each
-// root. Depth is bounded because a home directory contains tens of thousands of
-// directories and a migration check that takes minutes is one nobody runs.
+// skipPaths are subtrees skipped by their path below a root: plugin managers
+// whose every plugin is a clean clone.
+var skipPaths = []string{".local/share/nvim", ".vim/plugged", ".tmux/plugins", "go/pkg", ".local/share/Trash"}
+
+// Find walks roots for git repositories. A repository is found when it sits
+// at most maxDepth levels below a root (~/code/org/repo is depth 3). Depth is
+// bounded because a home directory contains tens of thousands of directories
+// and a migration check that takes minutes is one nobody runs.
+//
+// A directory is recognised by its .git entry before the depth limit is
+// applied — checking afterwards missed every repository sitting exactly at
+// the limit — and a .git file (a worktree or submodule) counts as well.
 func Find(ctx context.Context, roots []string, maxDepth int) []string {
 	seen := map[string]bool{}
 	var found []string
@@ -73,16 +132,24 @@ func Find(ctx context.Context, roots []string, maxDepth int) []string {
 			if err != nil || !d.IsDir() {
 				return nil
 			}
-			if skipDirs[d.Name()] {
+			if d.Name() == ".git" {
 				return fs.SkipDir
 			}
-			if d.Name() == ".git" {
-				repo := filepath.Dir(path)
-				if !seen[repo] {
-					seen[repo] = true
-					found = append(found, repo)
+			// Recognised before any pruning: a repository that happens to be
+			// called "build" is still a repository.
+			if _, gerr := os.Lstat(filepath.Join(path, ".git")); gerr == nil && !seen[path] {
+				seen[path] = true
+				found = append(found, path)
+			}
+			if path != root && skipDirs[d.Name()] {
+				return fs.SkipDir
+			}
+			if rel, rerr := filepath.Rel(root, path); rerr == nil {
+				for _, sp := range skipPaths {
+					if filepath.ToSlash(rel) == sp {
+						return fs.SkipDir
+					}
 				}
-				return fs.SkipDir // never descend into a repo's own .git
 			}
 			if strings.Count(path, string(os.PathSeparator))-rootDepth >= maxDepth {
 				return fs.SkipDir
@@ -151,6 +218,20 @@ func inspectOne(ctx context.Context, run Runner, path string) Repo {
 
 	if s, err := run(ctx, path, "stash", "list"); err == nil {
 		r.Stashes = countLines(s)
+	}
+
+	// --directory reports an ignored directory once instead of listing it,
+	// so a node_modules costs one line rather than a walk of its contents.
+	if s, err := run(ctx, path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "--no-empty-directory"); err == nil {
+		for _, l := range strings.Split(s, "\n") {
+			l = strings.TrimSpace(l)
+			if l == "" || strings.HasSuffix(l, "/") {
+				continue
+			}
+			if IsLocalOnlyName(filepath.Base(l)) {
+				r.Ignored = append(r.Ignored, l)
+			}
+		}
 	}
 	return r
 }
