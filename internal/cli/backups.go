@@ -339,7 +339,9 @@ func openBackupOnly(ctx context.Context, env *sys.OS, path string, dirs ...strin
 			return "", cleanup, err
 		}
 		cleanup = done
-		root, err := backup.ExtractArchiveOnly(path, tmp, askPassphrase(), keep)
+		// Into a folder of its own: the temp folder also holds its marker,
+		// and a loose file beside the backup would be taken for its root.
+		root, err := backup.ExtractArchiveOnly(path, filepath.Join(tmp, "backup"), askPassphrase(), keep)
 		if err == nil {
 			return root, cleanup, nil
 		}
