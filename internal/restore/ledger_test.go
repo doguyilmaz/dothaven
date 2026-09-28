@@ -12,7 +12,7 @@ import (
 // The whole lifecycle: first run writes; a second run shows it applied; an
 // edit afterwards reads as "changed since", not as a plain conflict; a newer
 // backup over an untouched file reads as an update; a declined file stays
-// declined.
+// declined, and a category not picked stays on offer.
 func TestLedgerLifecycle(t *testing.T) {
 	home := t.TempDir()
 	backupA := filepath.Join(t.TempDir(), "backup-box-1")
@@ -34,10 +34,20 @@ func TestLedgerLifecycle(t *testing.T) {
 		t.Fatalf("Restored = %d", res.Restored)
 	}
 
+	// A category not picked is still on offer: a restore done in phases
+	// must not find the later phases already "declined".
 	plan, _ = BuildPlanWith(backupA, home, targets, lg)
 	got := statuses(plan)
-	if got["shell/.zshrc"] != StatusSame || got["git/.gitconfig"] != StatusSkipped {
+	if got["shell/.zshrc"] != StatusSame || got["git/.gitconfig"] != StatusNew {
 		t.Fatalf("second run: %v", got)
+	}
+	// Unpicking a file by name, from a list that showed it, is a decision,
+	// and that one is remembered.
+	res, _ = Execute(plan, ExecuteOptions{Selected: func(Entry) bool { return false }, DeclineUnselected: true})
+	lg.Record(plan.BackupID, res.Outcomes, time.Now())
+	plan, _ = BuildPlanWith(backupA, home, targets, lg)
+	if s := statuses(plan)["git/.gitconfig"]; s != StatusSkipped {
+		t.Fatalf("declined by name = %s, want skipped", s)
 	}
 	for _, e := range plan.Entries {
 		if e.BackupPath == "shell/.zshrc" && e.AppliedAt.IsZero() {
@@ -110,5 +120,45 @@ func mustWriteT(t *testing.T, p, body string) {
 	}
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Off a terminal, a file that differs is kept, and kept on offer: nobody was
+// asked, so nothing was decided.
+func TestUnattendedConflictIsNotRemembered(t *testing.T) {
+	home := t.TempDir()
+	b := filepath.Join(t.TempDir(), "backup-box-1")
+	mustWriteT(t, filepath.Join(b, "git", ".gitconfig"), "[user]\n\tname = Old\n")
+	mustWriteT(t, filepath.Join(home, ".gitconfig"), "[user]\n\tname = New\n")
+	targets := []registry.BackupTarget{{Src: filepath.Join(home, ".gitconfig"), Dest: "git/.gitconfig", Category: "git"}}
+	lg := NewLedger()
+	plan, _ := BuildPlanWith(b, home, targets, lg)
+	res, _ := Execute(plan, ExecuteOptions{})
+	if len(res.Outcomes) != 1 || !res.Outcomes[0].Kept || res.Outcomes[0].Declined {
+		t.Fatalf("outcomes = %+v", res.Outcomes)
+	}
+	lg.Record(plan.BackupID, res.Outcomes, time.Now())
+	plan, _ = BuildPlanWith(b, home, targets, lg)
+	if s := statuses(plan)["git/.gitconfig"]; s != StatusConflict {
+		t.Errorf("after an unattended run = %s, want conflict", s)
+	}
+}
+
+// Restore never loosens a file's permissions: one made owner-only stays so.
+func TestRestoreKeepsStricterPermissions(t *testing.T) {
+	home := t.TempDir()
+	b := filepath.Join(t.TempDir(), "backup-box-1")
+	mustWriteT(t, filepath.Join(b, "shell", ".zshrc"), "alias a=1\n")
+	live := filepath.Join(home, ".zshrc")
+	os.WriteFile(live, []byte("alias b=2\n"), 0o600)
+	os.Chmod(live, 0o600)
+	targets := []registry.BackupTarget{{Src: live, Dest: "shell/.zshrc", Category: "shell", Sensitivity: registry.Low}}
+	plan, _ := BuildPlanWith(b, home, targets, NewLedger())
+	if _, err := Execute(plan, ExecuteOptions{Force: true, SnapshotDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ := os.Stat(live)
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("perm = %o, want 600", got)
 	}
 }

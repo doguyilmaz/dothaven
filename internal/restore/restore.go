@@ -288,8 +288,11 @@ type ExecuteOptions struct {
 	// conflicts unless Force.
 	Resolve func(e Entry, backupContent, liveContent string) ConflictAction
 	// Selected, when set, narrows the run to the entries the user picked.
-	// An actionable entry left out is recorded as declined.
 	Selected func(e Entry) bool
+	// DeclineUnselected records entries Selected left out as declined. Set it
+	// when the user saw each file and unpicked it; leave it off when they
+	// picked categories, so the rest is still on offer next time.
+	DeclineUnselected bool
 	// Approved, when set, marks entries the user explicitly chose to
 	// overwrite (picked by name), so they are written without a second ask.
 	Approved func(e Entry) bool
@@ -297,9 +300,17 @@ type ExecuteOptions struct {
 
 // Outcome is what happened to one entry.
 type Outcome struct {
-	Entry    Entry
-	Written  bool
-	Declined bool // looked at and not written: unselected, or a conflict kept
+	Entry   Entry
+	Written bool
+	// Declined is a decision to remember: the user was shown this file and
+	// said no. The next restore lists it as skipped rather than offering it.
+	Declined bool
+	// Kept is a file that differs, left alone because nobody was there to
+	// ask (off a terminal). It is still offered next time.
+	Kept bool
+	// NoCopy is a file that differs and was not replaced because the current
+	// version could not be read — and so could not be kept aside first.
+	NoCopy bool
 }
 
 // ExecuteResult summarizes an applied restore.
@@ -329,7 +340,9 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 		}
 		if opts.Selected != nil && !opts.Selected(e) {
 			res.Skipped++
-			res.Outcomes = append(res.Outcomes, Outcome{Entry: e, Declined: true})
+			if opts.DeclineUnselected {
+				res.Outcomes = append(res.Outcomes, Outcome{Entry: e, Declined: true})
+			}
 			continue
 		}
 		// A file declined on an earlier run stays declined unless it is picked
@@ -365,20 +378,28 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			}
 			if !overwrite {
 				res.Skipped++
-				res.Outcomes = append(res.Outcomes, Outcome{Entry: e, Declined: true})
+				// Remembered only when somebody decided: asked, or picked by
+				// hand. Kept off a terminal, it stays on offer.
+				decided := opts.Resolve != nil || opts.Selected != nil
+				res.Outcomes = append(res.Outcomes, Outcome{Entry: e, Declined: decided, Kept: !decided})
 				continue
 			}
 		}
 		// Anything already on disk is snapshotted before it is replaced — an
-		// update of restore's own earlier write included.
+		// update of restore's own earlier write included. A file that cannot
+		// be read cannot be kept aside, so it is not replaced either.
 		if e.LiveSHA != "" && opts.SnapshotDir != "" {
-			if raw, err := os.ReadFile(e.TargetPath); err == nil {
-				// Capture the live (unredacted) file before overwrite, owner-only.
-				if err := sys.WriteFileSecure(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
-					return res, err
-				}
-				res.SnapshotDir = opts.SnapshotDir
+			raw, err := os.ReadFile(e.TargetPath)
+			if err != nil {
+				res.Skipped++
+				res.Outcomes = append(res.Outcomes, Outcome{Entry: e, NoCopy: true})
+				continue
 			}
+			// Capture the live (unredacted) file before overwrite, owner-only.
+			if err := sys.WriteFileSecure(filepath.Join(opts.SnapshotDir, e.BackupPath), string(raw)); err != nil {
+				return res, err
+			}
+			res.SnapshotDir = opts.SnapshotDir
 		}
 		raw, err := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))
 		if err != nil {
@@ -405,6 +426,10 @@ func writeTarget(path, content string, sens registry.Sensitivity, exec bool) err
 	}
 	if exec {
 		perm |= (perm & 0o444) >> 2 // r → x for each class that can read it
+	}
+	// Never loosen: a file someone made owner-only stays owner-only.
+	if fi, err := os.Stat(path); err == nil {
+		perm &^= 0o077 &^ fi.Mode().Perm()
 	}
 	return sys.WriteFileAs(path, content, perm)
 }

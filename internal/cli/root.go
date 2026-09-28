@@ -197,7 +197,8 @@ func newestJSON(dir string, n int) []string {
 	}
 	var files []fe
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		// applied.json is an older version's restore ledger, not a snapshot.
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || e.Name() == "applied.json" {
 			continue
 		}
 		info, err := e.Info()

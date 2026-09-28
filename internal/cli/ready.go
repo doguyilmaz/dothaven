@@ -221,6 +221,15 @@ func humanAge(d time.Duration) string {
 	}
 }
 
+// pick is the singular or plural form of a word that plural cannot make
+// ("it is"/"they are", "differs"/"differ").
+func pick(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 func plural(n int, unit string) string {
 	if n == 1 {
 		return fmt.Sprintf("1 %s", unit)

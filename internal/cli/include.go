@@ -72,7 +72,8 @@ func newIncludeCmd(env *sys.OS) *cobra.Command {
 				return nil
 			}
 			if review {
-				return reviewUncovered(env, true)
+				_, err := reviewUncovered(env, true)
+				return err
 			}
 			changed := 0
 			for _, a := range args {

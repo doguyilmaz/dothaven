@@ -5,20 +5,21 @@ stdout '~/.zshrc +new'
 stdout '~/.gitconfig +differs from this machine'
 ! exists .zshrc
 
-# Off a terminal: new files are written, a differing one is kept — and that
-# decision is remembered.
+# Off a terminal: new files are written, a differing one is kept. Nobody was
+# asked, so it is not "declined" — it is still on offer next time.
 exec dothaven restore Downloads/backup-box-20240101000000
 stdout 'Restored 1 file'
-stdout '1 file left as they are — remembered'
+stdout '1 file that differs from this machine left as it is'
+! stdout 'remembered'
 grep 'alias ll' .zshrc
 grep 'name = Mine' .gitconfig
-exists .local/share/dothaven/applied.json
+exists .local/share/dothaven/state/applied.json
 
-# Running it again shows everything as done, not as work.
+# Running it again shows the applied file as done, not as work; the one that
+# differs is still offered.
 exec dothaven restore Downloads/backup-box-20240101000000
-stdout 'already applied|Nothing new to restore'
-stdout '1 skipped last time'
 stdout '1 already applied'
+stdout '1 differs'
 ! stdout 'Restored'
 
 # Editing the restored file after the fact is told apart from a plain conflict.

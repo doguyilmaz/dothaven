@@ -188,7 +188,8 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 		sub.SetContext(ctx)
 		return sub.RunE(sub, []string{p})
 	case "include":
-		return reviewUncovered(env, true)
+		_, err := reviewUncovered(env, true)
+		return err
 	case "collect":
 		sub, _, _ := cmd.Root().Find([]string{"collect"})
 		sub.SetContext(ctx)
@@ -228,7 +229,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 	}
 
 	fmt.Println("\n" + bold("Step 2 of 4 — anything else to take?"))
-	if err := reviewUncovered(env, false); err != nil {
+	if _, err := reviewUncovered(env, false); err != nil {
 		return err
 	}
 	if len(collectUncovered(env, loadIncludes(env))) == 0 {

@@ -149,8 +149,14 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 					return err
 				}
 				o.only = chosen
-				if err := reviewUncovered(env, false); err != nil {
+				added, err := reviewUncovered(env, false)
+				if err != nil {
 					return err
+				}
+				// The categories were picked before these paths existed as
+				// includes; "in this backup" has to mean this one too.
+				if added > 0 && !contains(o.only, registry.ExtraCategory) {
+					o.only = append(o.only, registry.ExtraCategory)
 				}
 			}
 			out, err := runBackup(cmd.Context(), cmd, env, o)
@@ -199,7 +205,7 @@ func pickBackupCategories(env *sys.OS, encrypt bool) ([]string, error) {
 // reviewUncovered offers the paths nothing covers, once. Picked ones join the
 // include list; the rest are remembered as declined so the question is not
 // asked on every backup. force re-asks about declined paths too.
-func reviewUncovered(env *sys.OS, force bool) error {
+func reviewUncovered(env *sys.OS, force bool) (int, error) {
 	inc := loadIncludes(env)
 	if force {
 		inc.Declined = nil
@@ -209,10 +215,10 @@ func reviewUncovered(env *sys.OS, force bool) error {
 		if force {
 			fmt.Println(good("✓ Everything that looks like config is covered."))
 		}
-		return nil
+		return 0, nil
 	}
 	if !tui.Interactive() {
-		return nil
+		return 0, nil
 	}
 	picked, err := tui.PickSome(
 		fmt.Sprintf("%d things in your home folder aren't in any backup yet — include some?", len(pending)),
@@ -220,10 +226,10 @@ func reviewUncovered(env *sys.OS, force bool) error {
 			"(change your mind any time: dothaven include <path>).",
 		pending)
 	if errors.Is(err, tui.ErrAborted) {
-		return nil // skip the question this time; ask again next backup
+		return 0, nil // skip the question this time; ask again next backup
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, p := range pending {
 		if contains(picked, p) {
@@ -233,12 +239,12 @@ func reviewUncovered(env *sys.OS, force bool) error {
 		}
 	}
 	if err := saveIncludes(env, inc); err != nil {
-		return err
+		return 0, err
 	}
 	if len(picked) > 0 {
 		fmt.Printf("%s %s added — they will be in this and every later backup.\n", good("+"), plural(len(picked), "path"))
 	}
-	return nil
+	return len(picked), nil
 }
 
 func collectUncovered(env *sys.OS, inc registry.Includes) []string {

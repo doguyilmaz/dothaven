@@ -97,7 +97,20 @@ func ignoreAbort(err error) error {
 }
 
 // ledgerPath is where restore remembers what it applied.
-func ledgerPath(env *sys.OS) string { return filepath.Join(env.DataDir(), "applied.json") }
+//
+// It lives in its own folder: in the data directory itself, where earlier
+// versions put it, every command that looks for the newest snapshot picked it
+// up and failed to parse it. A ledger found there is moved on first use.
+func ledgerPath(env *sys.OS) string {
+	p := filepath.Join(env.DataDir(), "state", "applied.json")
+	old := filepath.Join(env.DataDir(), "applied.json")
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		if _, err := os.Stat(old); err == nil && os.MkdirAll(filepath.Dir(p), 0o700) == nil {
+			_ = os.Rename(old, p)
+		}
+	}
+	return p
+}
 
 // statusMark is the one-glyph, one-phrase form of a restore status, used in
 // every list so they read the same everywhere.
@@ -168,15 +181,15 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 			return ignoreAbort(err)
 		}
 		in := func(e restore.Entry) bool { return sel[e.BackupPath] }
-		opts.Selected, opts.Approved = in, in
+		opts.Selected, opts.Approved, opts.DeclineUnselected = in, in, true
 		interactive = false // chosen by name: no further questions
 	} else if interactive {
-		sel, approved, ok, err := chooseRestore(env, plan, t)
+		sel, approved, byFile, ok, err := chooseRestore(env, plan, t)
 		if err != nil || !ok {
 			fmt.Println("Nothing written.")
 			return ignoreAbort(err)
 		}
-		opts.Selected, opts.Approved = sel, approved
+		opts.Selected, opts.Approved, opts.DeclineUnselected = sel, approved, byFile
 		opts.Resolve = func(e restore.Entry, backup, live string) restore.ConflictAction {
 			choice, err := tui.ResolveConflict(shortHome(env, e.TargetPath), backup, live)
 			if err != nil {
@@ -202,17 +215,29 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	} else {
 		fmt.Println("\nNo files restored.")
 	}
-	declined := 0
+	declined, kept, noCopy := 0, 0, 0
 	for _, oc := range res.Outcomes {
-		if oc.Declined {
+		switch {
+		case oc.Declined:
 			declined++
+		case oc.Kept:
+			kept++
+		case oc.NoCopy:
+			noCopy++
 		}
 	}
 	if declined > 0 {
-		fmt.Printf("  %s %s left as they are — remembered, so the next restore won't offer them again\n", dim("○"), plural(declined, "file"))
-		if !interactive && !o.force {
-			fmt.Printf("    %s\n", dim("(files that differ are kept off a terminal; --force overwrites them)"))
-		}
+		fmt.Printf("  %s %s left as %s — remembered, so the next restore won't offer %s again\n",
+			dim("○"), plural(declined, "file"), pick(declined, "it is", "they are"), pick(declined, "it", "them"))
+	}
+	if kept > 0 {
+		fmt.Printf("  %s %s that %s from this machine left as %s — off a terminal nothing is replaced without asking.\n",
+			warn("≠"), plural(kept, "file"), pick(kept, "differs", "differ"), pick(kept, "it is", "they are"))
+		fmt.Printf("    %s\n", dim("Run dothaven restore in a terminal to decide, or pass --force to overwrite (the old copies are kept)."))
+	}
+	if noCopy > 0 {
+		fmt.Printf("  %s %s not replaced: the current %s could not be read, so no copy could be kept aside first.\n",
+			warn("⚠"), plural(noCopy, "file"), pick(noCopy, "version", "versions"))
 	}
 	if res.SnapshotDir != "" {
 		fmt.Printf("  %s the versions it replaced are in %s\n", dim("•"), shortHome(env, res.SnapshotDir))
@@ -227,7 +252,7 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 // chooseRestore asks how much of the plan to apply. It returns which entries
 // to write, which the user approved overwriting by name, and false when they
 // backed out.
-func chooseRestore(env *sys.OS, plan restore.Plan, t restore.Counts) (func(restore.Entry) bool, func(restore.Entry) bool, bool, error) {
+func chooseRestore(env *sys.OS, plan restore.Plan, t restore.Counts) (sel, approved func(restore.Entry) bool, byFile, ok bool, err error) {
 	easy := t.New + t.Update
 	differ := t.Conflict + t.Changed
 	allHint := "nothing that differs is replaced without asking"
@@ -247,30 +272,33 @@ func chooseRestore(env *sys.OS, plan restore.Plan, t restore.Counts) (func(resto
 		}
 		c, err := tui.Ask("What should be restored?", "Already-applied files are not listed again.", choices)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, false, false, err
 		}
 		switch c {
 		case "all":
-			return func(e restore.Entry) bool { return e.Status != restore.StatusSkipped }, nil, true, nil
+			return func(e restore.Entry) bool { return e.Status != restore.StatusSkipped }, nil, false, true, nil
 		case "cats":
-			sel, err := pickRestoreCategories(plan)
-			if err != nil || sel == nil {
-				return nil, nil, false, err
+			cats, err := pickRestoreCategories(plan)
+			if err != nil || cats == nil {
+				return nil, nil, false, false, err
 			}
-			return func(e restore.Entry) bool { return sel[e.Category] && e.Status != restore.StatusSkipped }, nil, true, nil
+			// Categories not picked stay on offer; files declined before stay
+			// declined (pick them by name to change that).
+			return func(e restore.Entry) bool { return cats[e.Category] && e.Status != restore.StatusSkipped }, nil, false, true, nil
 		case "files":
-			sel, err := pickRestoreFiles(env, plan)
-			if err != nil || sel == nil {
-				return nil, nil, false, err
+			files, err := pickRestoreFiles(env, plan)
+			if err != nil || files == nil {
+				return nil, nil, false, false, err
 			}
 			// Picking a file by name is the approval; asking again would be
-			// the question the user just answered.
-			in := func(e restore.Entry) bool { return sel[e.BackupPath] }
-			return in, in, true, nil
+			// the question the user just answered. Every file was on screen,
+			// so the unpicked ones were declined.
+			in := func(e restore.Entry) bool { return files[e.BackupPath] }
+			return in, in, true, true, nil
 		case "list":
 			printRestorePlan(env, plan, true)
 		default:
-			return nil, nil, false, nil
+			return nil, nil, false, false, nil
 		}
 	}
 }
@@ -340,7 +368,7 @@ func restoreBreakdownPlain(t restore.Counts) string {
 		n    int
 		what string
 	}{
-		{t.New, "new"}, {t.Update, "updated"}, {t.Conflict, "differ"}, {t.Changed, "changed by you"},
+		{t.New, "new"}, {t.Update, "updated"}, {t.Conflict, pick(t.Conflict, "differs", "differ")}, {t.Changed, "changed by you"},
 		{t.Skipped, "skipped before"}, {t.Same, "applied"}, {t.Redacted, "redacted"},
 	} {
 		if p.n > 0 {
@@ -360,7 +388,7 @@ func restoreBreakdown(t restore.Counts) string {
 	id := func(s string) string { return s }
 	add(t.New, "new", id)
 	add(t.Update, "updated", id)
-	add(t.Conflict, "differ from this machine", warn)
+	add(t.Conflict, pick(t.Conflict, "differs", "differ")+" from this machine", warn)
 	add(t.Changed, "changed by you since restoring", warn)
 	add(t.Skipped, "skipped last time", dim)
 	add(t.Same, "already applied", dim)
