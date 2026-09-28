@@ -232,6 +232,10 @@ Restore keeps a ledger at `~/.local/share/dothaven/state/applied.json` of what i
 
 The ledger holds file hashes, never file contents. Only a decision is remembered: a file you were shown and said no to. A category you did not pick, or a file kept off a terminal because nobody was there to ask, is still on offer next time. What you declined is remembered per backup: restoring a different (for example, newer) backup asks about those files again.
 
+### A different home folder
+
+A new Mac often comes with a different account name, and a move to Linux turns `/Users/you` into `/home/you`. Every backup records the home folder it was made under. When this machine's differs, restore writes the new one wherever a text file mentions the old one: a `PATH` entry, an editor setting, a Claude hook command, `includeIf "gitdir:/Users/you/work/"`. Only a whole path component is changed (`/Users/dogu`, never `/Users/doguyilmaz`), and binary files are left as they are. The plan says how many files this touches; `--keep-paths` turns it off.
+
 ### Files with no place here
 
 A backup can hold config whose tool lives somewhere else on this OS, or nowhere: Karabiner or iTerm2 restored on Linux, or a tool that a newer dothaven knew about. Restore lists those files beside the plan (in `--dry-run` too) rather than dropping them silently, and says how to copy them out by hand.
@@ -261,6 +265,7 @@ Other safeguards:
 | `--yes` | Don't ask before writing |
 | `--only` | Only these categories (comma-separated). A misspelled one is an error |
 | `--skip` | Skip these categories (comma-separated) |
+| `--keep-paths` | Don't rewrite the old machine's home folder path to this one's |
 
 Off a terminal, or with `--yes`, there are no questions: new and updated files are written, files that differ are kept (and still offered next time), unless you add `--force`.
 

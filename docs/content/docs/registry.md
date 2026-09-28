@@ -366,6 +366,8 @@ Local model files (Ollama weights and the like) are not copied. `collect` record
 
 ## Your own paths
 
+**Files your git config points at come along by themselves.** A `.gitconfig` often names files that have to travel with it: `core.hooksPath`, `core.excludesFile`, `commit.template`, `init.templateDir`, and the files `[include]` and `[includeIf]` pull in (a work identity, a signing key's config). Whatever those point at inside your home folder is carried like an include, without you listing it, and restored to the same place.
+
 The registry will never know every tool you use. `dothaven include` adds anything in your home folder to every backup:
 
 ```bash

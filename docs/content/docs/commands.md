@@ -274,6 +274,7 @@ New files are written. A file that already exists and differs is a conflict: on 
 | --- | --- |
 | `--dry-run` | Show what would change without writing |
 | `--force` | Overwrite differing files (a pre-restore snapshot is saved first) |
+| `--keep-paths` | Don't rewrite the old machine's home folder path to this one's ([why](../backup-restore#a-different-home-folder)) |
 | `--only strings` | Only these categories (comma-separated) |
 | `--skip strings` | Skip these categories (comma-separated) |
 | `--yes` | Don't ask before writing |
@@ -520,6 +521,7 @@ dothaven github pull [flags]
 | `--repo string` | `owner/name` (default: the one you pushed to, or `<you>/dothaven-backup`) |
 | `--only strings` | Only these categories (comma-separated) |
 | `--skip strings` | Skip these categories (comma-separated) |
+| `--keep-paths` | Don't rewrite the old machine's home folder path to this one's |
 | `--yes` | Don't ask before writing |
 
 ---
