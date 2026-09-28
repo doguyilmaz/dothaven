@@ -40,8 +40,113 @@ func TestDeviceFlow(t *testing.T) {
 	}
 	dc.Interval = 0
 	tok, err := c.WaitForToken(context.Background(), "client-id", dc)
-	if err != nil || tok != "tok" {
-		t.Fatalf("token = %q, %v", tok, err)
+	if err != nil || tok.Access != "tok" {
+		t.Fatalf("token = %+v, %v", tok, err)
+	}
+	if tok.Refresh != "" || !tok.Expires.IsZero() || tok.Stale(time.Now().AddDate(10, 0, 0)) {
+		t.Errorf("an OAuth app token never expires: %+v", tok)
+	}
+}
+
+// A GitHub App sign-in lasts 8 hours; its refresh token buys a new pair once.
+func TestAppSignInRenews(t *testing.T) {
+	s := githubtest.New("ghu_first", "dev")
+	defer s.Close()
+	s.Refresh = "ghr_first"
+	minPollInterval = 10 * time.Millisecond
+	c := client(t, s)
+	c.Token = ""
+	ctx := context.Background()
+	dc, err := c.StartDeviceFlow(ctx, "client-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dc.Interval = 0
+	tok, err := c.WaitForToken(ctx, "client-id", dc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Access != "ghu_first" || tok.Refresh != "ghr_first" {
+		t.Fatalf("token = %+v", tok)
+	}
+	if d := time.Until(tok.Expires); d < 7*time.Hour+59*time.Minute || d > 8*time.Hour {
+		t.Errorf("expires in %v, want 8h", d)
+	}
+	if d := time.Until(tok.RefreshExpires); d < 183*24*time.Hour || d > 184*24*time.Hour {
+		t.Errorf("refresh token expires in %v, want about 6 months", d)
+	}
+	if tok.Stale(time.Now()) || !tok.Stale(tok.Expires.Add(-4*time.Minute)) {
+		t.Error("a token is stale from five minutes before its expiry, not before")
+	}
+
+	fresh, err := c.RefreshToken(ctx, "client-id", tok.Refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Access != s.Token || fresh.Access == tok.Access || fresh.Refresh == tok.Refresh || fresh.Stale(time.Now()) {
+		t.Fatalf("renewed = %+v", fresh)
+	}
+	if _, err := c.RefreshToken(ctx, "client-id", tok.Refresh); !errors.Is(err, ErrSignInExpired) {
+		t.Errorf("a spent refresh token: %v, want ErrSignInExpired", err)
+	}
+}
+
+func TestAppSlugFromEnv(t *testing.T) {
+	for in, want := range map[string]string{
+		"dothaven": "dothaven", "dot-haven2": "dot-haven2",
+		"": "", "DotHaven": "", "../users/x": "", "a/b": "", "-x": "", "x[bot]": "",
+	} {
+		t.Setenv("DOTHAVEN_GITHUB_APP", in)
+		if got := AppSlugFromEnv(); got != want {
+			t.Errorf("AppSlugFromEnv(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Commits name the account as author and the app's bot as committer — the
+// first one too, which an empty repository gets from the Contents API.
+func TestCommitsSignedByBot(t *testing.T) {
+	s := githubtest.New("tok", "dev")
+	defer s.Close()
+	s.AppSlug = "dothaven"
+	s.AddEmptyRepo("dev/dothaven-backup", true)
+	c := client(t, s)
+	ctx := context.Background()
+
+	bot, err := c.Bot(ctx, "dothaven")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bot.Name != "dothaven[bot]" || bot.Email != "2002+dothaven[bot]@users.noreply.github.com" {
+		t.Fatalf("bot = %+v", bot)
+	}
+	if _, err := c.Bot(ctx, "no-such-app"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown app: %v", err)
+	}
+	me, err := c.Me(ctx)
+	if err != nil || me.ID != githubtest.UserID {
+		t.Fatalf("me = %+v, %v", me, err)
+	}
+	author := NoReply(me.Login, me.ID)
+	c.Author, c.Committer = &author, &bot
+
+	dir := t.TempDir()
+	files := []File{write(t, dir, "shell/.zshrc", "alias ll='ls -la'\n", 0o644)}
+	if _, err := c.Commit(ctx, "dev/dothaven-backup", "main", "machines/m", files, map[string]string{"README.md": "# x\n"}, "push"); err != nil {
+		t.Fatal(err)
+	}
+	want := githubtest.Signature{
+		Author:    "dev <1001+dev@users.noreply.github.com>",
+		Committer: "dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com>",
+	}
+	sigs := s.Signatures()
+	if len(sigs) != 2 {
+		t.Fatalf("want the seed commit and the push, got %+v", sigs)
+	}
+	for i, sig := range sigs {
+		if sig != want {
+			t.Errorf("commit %d signed %+v, want %+v", i, sig, want)
+		}
 	}
 }
 

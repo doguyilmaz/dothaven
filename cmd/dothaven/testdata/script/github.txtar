@@ -22,6 +22,9 @@ stdout 'Created .*tester/dothaven-backup \(private\)'
 stdout 'Pushed 3 files as machines/oldmac'
 stdout 'dothaven restore github'
 exists .config/dothaven/github.json
+# The author is the account, by its noreply address — a push never publishes
+# a real email. With no GitHub App in this build, GitHub picks the committer.
+signedby 'tester <1001+tester@users.noreply.github.com>' -
 
 # Same machine, nothing changed: no second copy in the history.
 exec dothaven github push --only shell,ssh --machine oldmac
@@ -61,10 +64,14 @@ stdout 'Restored 3 files'
 grep 'alias ll' .zshrc
 grep 'BEGIN OPENSSH PRIVATE KEY' .ssh/id_ed25519
 
-# Split mode: readable files, plus an encrypted bundle for the key.
+# Split mode: readable files, plus an encrypted bundle for the key. A build
+# with the GitHub App names its bot as the committer.
+env DOTHAVEN_GITHUB_APP=dothaven
 exec dothaven github push --mode split --only shell,ssh --machine laptop
 stdout '2 files readable, 2 files encrypted'
 stdout 'Pushed'
+signedby 'tester <1001+tester@users.noreply.github.com>' 'dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com>'
+env DOTHAVEN_GITHUB_APP=
 rm .zshrc .ssh
 ! exec dothaven restore github
 stderr 'several machines'

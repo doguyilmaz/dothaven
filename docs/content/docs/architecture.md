@@ -112,6 +112,27 @@ The client talks HTTPS to the API directly, so neither machine needs git and the
 
 `DOTHAVEN_GITHUB_API` and `DOTHAVEN_GITHUB_WEB` point the client elsewhere (`https`, or `http` on loopback only), which is how the tests use `githubtest`, and how GitHub Enterprise would work.
 
+Sign-in is the device flow of a GitHub App. Its user tokens last 8 hours; `resolveToken` renews them with the refresh token (no client secret is needed for device-flow tokens) and saves the new pair, since a refresh token works only once. Read-only callers pass `renew=false` and report instead. Commits name the account's noreply address as author and the app's `<slug>[bot]` account as committer, looked up once per push. Commits made with a user token are not signed by GitHub whatever they name; a signed bot commit needs an installation token, which needs the app's private key, which a program on users' machines cannot hold.
+
+### Setting up the GitHub App (maintainers)
+
+Releases get sign-in from two repository **variables** (Settings → Secrets and variables → Actions → Variables), read by `release.yml` and baked in with `-ldflags`: `DOTHAVEN_GITHUB_CLIENT_ID` (public by design) and `DOTHAVEN_GITHUB_APP` (the app's URL name). To create the app, go to **Settings → Developer settings → GitHub Apps → New GitHub App**:
+
+| Setting | Value |
+| --- | --- |
+| Name | `dothaven` (its URL name becomes `DOTHAVEN_GITHUB_APP`; the bot is `dothaven[bot]`) |
+| Homepage URL | The docs site |
+| Callback URL | Leave empty; the device flow does not use one |
+| Expire user authorization tokens | Keep it on; dothaven renews them |
+| Request user authorization during installation | Off |
+| Enable Device Flow | **On** |
+| Webhook | Off (untick **Active**) |
+| Repository permissions | **Contents: Read and write**. Metadata: Read-only is added automatically. Nothing else |
+| Account permissions | None |
+| Where can this app be installed | **Any account** |
+
+Then upload `docs/static/images/bot-1024.png` as the logo, copy the **Client ID** (not the App ID) into `DOTHAVEN_GITHUB_CLIENT_ID`, and never create a client secret or private key: the CLI needs neither, and neither must ship in it. Without **Administration** or **Repository creation** permission the app cannot create repositories, so users make the private one themselves and install the app on it; `push` explains this when it happens.
+
 ## Dashboard
 
 `dashboard.Start` listens on `127.0.0.1:0` and serves the embedded page. Its guard runs before every handler: security headers, a `Host` check against the bound address, `GET`/`HEAD` only, and the key (from `?k=`, exchanged for a cookie) compared in constant time. Each panel is a `Source` function from `cli`, run detached from the request with a 90-second deadline, deduplicated while in flight, and cached for 20 seconds.

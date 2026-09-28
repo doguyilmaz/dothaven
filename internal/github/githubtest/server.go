@@ -36,7 +36,30 @@ type Server struct {
 	// DeviceApproveAfter is how many polls answer "pending" before a token.
 	DeviceApproveAfter int
 	polls              int
+	// Refresh, when set, makes sign-in behave like a GitHub App's: the token
+	// comes with this refresh token and an 8-hour expiry, and trading the
+	// refresh token in replaces both (the old ones stop working).
+	Refresh   string
+	Refreshes int
+	// AppSlug names the app's bot account (<slug>[bot]) served under /users.
+	AppSlug string
+	// Installations is what /user/installations reports.
+	Installations int
+	// Commits records each commit's author and committer, in order; read it
+	// with Signatures while the server is running.
+	Commits []Signature
 }
+
+// Signature is who a commit names, as the API received it.
+type Signature struct {
+	Author, Committer string // "name <email>", or "" when left to GitHub
+}
+
+// UserID and BotID are the account ids the fake hands out.
+const (
+	UserID = 1001
+	BotID  = 2002
+)
 
 type repo struct {
 	private bool
@@ -77,6 +100,13 @@ func (s *Server) AddEmptyRepo(full string, private bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.repos[full] = &repo{private: private, refs: map[string]string{}}
+}
+
+// Signatures returns who each commit so far named, oldest first.
+func (s *Server) Signatures() []Signature {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Signature(nil), s.Commits...)
 }
 
 // File returns a file's content at the tip of a branch, for assertions.
@@ -175,12 +205,24 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			"verification_uri": s.URL + "/login/device", "expires_in": 900, "interval": 1})
 		return
 	case "/login/oauth/access_token":
+		_ = r.ParseForm()
+		if r.PostForm.Get("grant_type") == "refresh_token" {
+			if s.Refresh == "" || r.PostForm.Get("refresh_token") != s.Refresh {
+				writeJSON(w, 200, map[string]string{"error": "bad_refresh_token"})
+				return
+			}
+			s.Refreshes++
+			s.Token = fmt.Sprintf("%s-renewed%d", strings.Split(s.Token, "-renewed")[0], s.Refreshes)
+			s.Refresh = fmt.Sprintf("%s-renewed%d", strings.Split(s.Refresh, "-renewed")[0], s.Refreshes)
+			writeJSON(w, 200, s.tokenReply())
+			return
+		}
 		s.polls++
 		if s.polls <= s.DeviceApproveAfter {
 			writeJSON(w, 200, map[string]string{"error": "authorization_pending"})
 			return
 		}
-		writeJSON(w, 200, map[string]string{"access_token": s.Token, "token_type": "bearer"})
+		writeJSON(w, 200, s.tokenReply())
 		return
 	}
 
@@ -192,7 +234,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case r.URL.Path == "/user":
-		writeJSON(w, 200, map[string]string{"login": s.Login})
+		writeJSON(w, 200, map[string]any{"login": s.Login, "id": UserID})
+	case r.URL.Path == "/user/installations":
+		writeJSON(w, 200, map[string]any{"total_count": s.Installations, "installations": []any{}})
+	case s.AppSlug != "" && r.URL.Path == "/users/"+s.AppSlug+"[bot]":
+		writeJSON(w, 200, map[string]any{"login": s.AppSlug + "[bot]", "id": BotID, "type": "Bot"})
 	case r.URL.Path == "/user/repos" && r.Method == http.MethodPost:
 		var req struct {
 			Name    string `json:"name"`
@@ -219,6 +265,23 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type person struct{ Name, Email string }
+
+func (p *person) String() string {
+	if p == nil {
+		return ""
+	}
+	return p.Name + " <" + p.Email + ">"
+}
+
+func (s *Server) tokenReply() map[string]any {
+	m := map[string]any{"access_token": s.Token, "token_type": "bearer"}
+	if s.Refresh != "" {
+		m["refresh_token"], m["expires_in"], m["refresh_token_expires_in"] = s.Refresh, 28800, 15897600
+	}
+	return m
+}
+
 func (s *Server) repoJSON(full string) map[string]any {
 	return map[string]any{"full_name": full, "private": s.repos[full].private, "default_branch": "main",
 		"html_url": "https://github.com/" + full}
@@ -236,8 +299,12 @@ func (s *Server) repoRoute(w http.ResponseWriter, r *http.Request, full string, 
 	case len(rest) == 0:
 		writeJSON(w, 200, s.repoJSON(full))
 	case strings.HasPrefix(join, "contents/") && r.Method == http.MethodPut:
-		var req struct{ Message, Content, Branch string }
+		var req struct {
+			Message, Content, Branch string
+			Author, Committer        *person
+		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		s.Commits = append(s.Commits, Signature{req.Author.String(), req.Committer.String()})
 		b, err := base64.StdEncoding.DecodeString(req.Content)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"message": "bad base64"})
@@ -314,11 +381,13 @@ func (s *Server) repoRoute(w http.ResponseWriter, r *http.Request, full string, 
 		writeJSON(w, 201, map[string]string{"sha": t})
 	case join == "git/commits" && r.Method == http.MethodPost:
 		var req struct {
-			Message string
-			Tree    string
-			Parents []string
+			Message           string
+			Tree              string
+			Parents           []string
+			Author, Committer *person
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		s.Commits = append(s.Commits, Signature{req.Author.String(), req.Committer.String()})
 		writeJSON(w, 201, map[string]string{"sha": s.putCommit(commit{req.Tree, req.Parents, req.Message})})
 	case strings.HasPrefix(join, "git/refs/heads/") && r.Method == http.MethodPatch:
 		var req struct{ SHA string }

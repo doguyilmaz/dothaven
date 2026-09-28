@@ -114,7 +114,7 @@ func (c *Client) commitOnce(ctx context.Context, repo, branch, prefix, sub strin
 		return "", nil // byte-for-byte what is already there
 	}
 
-	cb := map[string]any{"message": message, "tree": rootTree}
+	cb := c.signed(map[string]any{"message": message, "tree": rootTree})
 	if parent != "" {
 		cb["parents"] = []string{parent}
 	}
@@ -150,15 +150,26 @@ func (c *Client) seedIfEmpty(ctx context.Context, repo, branch string, root map[
 	if !ok {
 		readme = "# dothaven backup\n"
 	}
-	b, err := jsonBody(map[string]string{
+	b, err := jsonBody(c.signed(map[string]any{
 		"message": "Start the dothaven backup repository",
 		"content": base64.StdEncoding.EncodeToString([]byte(readme)),
 		"branch":  branch,
-	})
+	}))
 	if err != nil {
 		return err
 	}
 	return c.do(ctx, http.MethodPut, "/repos/"+repo+"/contents/README.md", b, "", nil)
+}
+
+// signed adds the client's author and committer to a commit request.
+func (c *Client) signed(m map[string]any) map[string]any {
+	if c.Author != nil {
+		m["author"] = c.Author
+	}
+	if c.Committer != nil {
+		m["committer"] = c.Committer
+	}
+	return m
 }
 
 func isEmptyRepo(err error) bool {

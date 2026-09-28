@@ -468,7 +468,7 @@ Sign in to GitHub (browser, gh CLI, or a token on stdin).
 dothaven github login [flags]
 ```
 
-Opens github.com in your browser with a one-time code when your build includes a GitHub app; approve it and the terminal carries on by itself. The token is kept in your system keychain. If you are signed in to the GitHub CLI (`gh`), dothaven uses that login and stores nothing of its own. Most locked down: a fine-grained token limited to the one repository (Contents: read & write, Administration: read & write to create it).
+Opens github.com in your browser with a one-time code when your build includes the dothaven GitHub App; approve it and the terminal carries on by itself. The token is kept in your system keychain, and renewed by itself when its 8 hours are up. If you are signed in to the GitHub CLI (`gh`), dothaven uses that login and stores nothing of its own. Most locked down: a fine-grained token limited to the one repository (Contents: read & write, Administration: read & write to create it).
 
 | Flag | Meaning |
 | --- | --- |
@@ -648,7 +648,8 @@ It requests one URL, `https://github.com/doguyilmaz/dothaven/releases/latest`, a
 | `DOTHAVEN_GITHUB_TOKEN` | GitHub token to use instead of the stored one or `gh` |
 | `DOTHAVEN_SECRET_STORE=file` | Keep secrets in an owner-only file instead of the keychain |
 | `DOTHAVEN_GITHUB_API`, `DOTHAVEN_GITHUB_WEB` | Another GitHub endpoint, such as GitHub Enterprise (`https` only) |
-| `DOTHAVEN_GITHUB_CLIENT_ID` | OAuth app for browser sign-in |
+| `DOTHAVEN_GITHUB_CLIENT_ID` | The GitHub App's client ID, for browser sign-in |
+| `DOTHAVEN_GITHUB_APP` | The GitHub App's URL name, whose bot commits each push |
 | `DOTHAVEN_NO_UPDATE_CHECK` | Turn off the daily update notice |
 | `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` | Move dothaven's data (`~/.local/share`), settings (`~/.config`) and cache (`~/.cache`) folders |
 

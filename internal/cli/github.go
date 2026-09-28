@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -79,38 +80,111 @@ func saveGitHubConfig(env *sys.OS, c githubConfig) error {
 // resolveToken finds a GitHub token without asking: the environment, then
 // dothaven's own stored one, then the GitHub CLI's login. It returns the token
 // and where it came from, for `status`.
-func resolveToken(ctx context.Context, env *sys.OS) (string, string) {
+//
+// A GitHub App sign-in lasts 8 hours. With renew set, a stale one is renewed
+// with its refresh token and the new pair saved; the read-only callers (the
+// dashboard, doctor) pass false and get errRenewDue instead, because a
+// refresh token works once and a renewed pair that is not kept is lost.
+func resolveToken(ctx context.Context, env *sys.OS, renew bool) (string, string, error) {
 	if t, _ := lookupSecretEnv(tokenEnv); strings.TrimSpace(t) != "" {
-		t = strings.TrimSpace(t)
-		return t, tokenEnv
+		return strings.TrimSpace(t), tokenEnv, nil
 	}
 	st := secrets(env)
-	if t, err := st.Get(accountToken); err == nil && t != "" {
-		return t, st.Name()
+	if s, err := st.Get(accountToken); err == nil && s != "" {
+		t := decodeToken(s)
+		switch {
+		case !t.Stale(time.Now()) || t.Refresh == "":
+			return t.Access, st.Name(), nil
+		case !renew:
+			return t.Access, st.Name(), errRenewDue
+		}
+		t, err = renewToken(ctx, st, t)
+		return t.Access, st.Name(), err
 	}
 	if _, err := exec.LookPath("gh"); err == nil {
 		if t, err := runShell(ctx, "gh", "auth", "token"); err == nil && strings.TrimSpace(t) != "" {
-			return strings.TrimSpace(t), "the GitHub CLI (gh)"
+			return strings.TrimSpace(t), "the GitHub CLI (gh)", nil
 		}
 	}
-	return "", ""
+	return "", "", nil
 }
 
-var errNotSignedIn = errors.New("not signed in to GitHub — run: dothaven github login")
+var (
+	errNotSignedIn = errors.New("not signed in to GitHub — run: dothaven github login")
+	errRenewDue    = errors.New("the GitHub sign-in is due for renewal — any dothaven github command renews it: dothaven github status")
+)
+
+// encodeToken is how a sign-in is kept: a bare token when it does not expire
+// (what --with-token and older versions store), JSON when it carries a
+// refresh token.
+func encodeToken(t github.Token) string {
+	if t.Refresh == "" {
+		return t.Access
+	}
+	b, _ := json.Marshal(t)
+	return string(b)
+}
+
+func decodeToken(s string) github.Token {
+	var t github.Token
+	if strings.HasPrefix(s, "{") && json.Unmarshal([]byte(s), &t) == nil && t.Access != "" {
+		return t
+	}
+	return github.Token{Access: s}
+}
+
+// renewToken trades a stale GitHub App token for a fresh pair and keeps it.
+// GitHub replaces the refresh token on every use, so when two runs renew at
+// once the second finds its refresh token spent — and the first one's new
+// pair already stored, which it then uses.
+func renewToken(ctx context.Context, st *secretstore.Store, t github.Token) (github.Token, error) {
+	clientID := github.ClientIDFromEnv()
+	if clientID == "" {
+		return t, github.ErrSignInExpired
+	}
+	c, err := github.New("")
+	if err != nil {
+		return t, err
+	}
+	nt, err := c.RefreshToken(ctx, clientID, t.Refresh)
+	if errors.Is(err, github.ErrSignInExpired) {
+		if s, gerr := st.Get(accountToken); gerr == nil {
+			if cur := decodeToken(s); cur.Refresh != t.Refresh && !cur.Stale(time.Now()) {
+				return cur, nil
+			}
+		}
+		return t, err
+	}
+	if err != nil {
+		return t, fmt.Errorf("could not renew the GitHub sign-in: %w", err)
+	}
+	if err := st.Set(accountToken, encodeToken(nt)); err != nil {
+		fmt.Fprintf(os.Stderr, "%s Renewed the GitHub sign-in but could not save it (%v); the next run will ask you to sign in again.\n", warn("⚠"), err)
+	}
+	return nt, nil
+}
 
 // githubClient returns a signed-in client, offering to sign in on a terminal.
 func githubClient(ctx context.Context, env *sys.OS) (*github.Client, github.User, error) {
-	tok, _ := resolveToken(ctx, env)
-	if tok == "" {
+	tok, _, err := resolveToken(ctx, env, true)
+	expired := errors.Is(err, github.ErrSignInExpired)
+	if err != nil && !expired {
+		return nil, github.User{}, err
+	}
+	if tok == "" || expired {
 		if !tui.Interactive() {
-			return nil, github.User{}, errNotSignedIn
+			return nil, github.User{}, cmp.Or(err, errNotSignedIn)
 		}
-		fmt.Println("You're not signed in to GitHub yet.")
+		if expired {
+			fmt.Println("Your GitHub sign-in has expired.")
+		} else {
+			fmt.Println("You're not signed in to GitHub yet.")
+		}
 		if err := githubLogin(ctx, env, false); err != nil {
 			return nil, github.User{}, err
 		}
-		if tok, _ = resolveToken(ctx, env); tok == "" {
-			return nil, github.User{}, errNotSignedIn
+		if tok, _, err = resolveToken(ctx, env, true); err != nil || tok == "" {
+			return nil, github.User{}, cmp.Or(err, errNotSignedIn)
 		}
 	}
 	c, err := github.New(tok)
@@ -188,8 +262,8 @@ func newGitHubLoginCmd(env *sys.OS) *cobra.Command {
 
 func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
 	st := secrets(env)
-	save := func(tok string) error {
-		c, err := github.New(tok)
+	save := func(tok github.Token) error {
+		c, err := github.New(tok.Access)
 		if err != nil {
 			return err
 		}
@@ -197,10 +271,17 @@ func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
 		if err != nil {
 			return fmt.Errorf("GitHub did not accept that token: %w", err)
 		}
-		if err := st.Set(accountToken, tok); err != nil {
+		if err := st.Set(accountToken, encodeToken(tok)); err != nil {
 			return fmt.Errorf("could not save the token: %w", err)
 		}
 		fmt.Printf("%s Signed in as %s. Token kept in %s.\n", good("✓"), bold(me.Login), st.Name())
+		if github.IsAppToken(tok.Access) {
+			if n, err := c.Installations(ctx); err == nil && n == 0 {
+				fmt.Printf("\n  %s the dothaven app can't reach any repository yet. Make a private repository\n"+
+					"  named %s (https://github.com/new), then install the app on it:\n  %s\n",
+					bold("One more step:"), defaultRepoName, kbd(appInstallURL()))
+			}
+		}
 		return nil
 	}
 
@@ -211,7 +292,7 @@ func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
 		if tok == "" {
 			return errors.New("no token on stdin")
 		}
-		return save(tok)
+		return save(github.Token{Access: tok})
 	}
 
 	clientID := github.ClientIDFromEnv()
@@ -294,7 +375,7 @@ func newGitHubLogoutCmd(env *sys.OS) *cobra.Command {
 			_ = st.Delete(accountToken)
 			_ = st.Delete(accountPassphrase)
 			fmt.Printf("%s Removed dothaven's GitHub token and remembered passphrase from %s.\n", good("✓"), st.Name())
-			if _, src := resolveToken(cmd.Context(), env); src != "" {
+			if _, src, _ := resolveToken(cmd.Context(), env, false); src != "" {
 				fmt.Printf("  %s still signed in through %s.\n", dim("•"), src)
 			}
 			return nil
@@ -329,9 +410,17 @@ type machineMeta struct {
 }
 
 func githubStatus(ctx context.Context, env *sys.OS) error {
-	tok, src := resolveToken(ctx, env)
-	if tok == "" {
-		fmt.Println("Not signed in to GitHub.")
+	tok, src, err := resolveToken(ctx, env, true)
+	expired := errors.Is(err, github.ErrSignInExpired)
+	if err != nil && !expired {
+		return err
+	}
+	if tok == "" || expired {
+		if expired {
+			fmt.Println("Your GitHub sign-in has expired.")
+		} else {
+			fmt.Println("Not signed in to GitHub.")
+		}
 		if !tui.Interactive() {
 			fmt.Printf("  %s\n", kbd("dothaven github login"))
 			return nil
@@ -342,8 +431,8 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 		if err := githubLogin(ctx, env, false); err != nil {
 			return err
 		}
-		if tok, src = resolveToken(ctx, env); tok == "" {
-			return nil
+		if tok, src, err = resolveToken(ctx, env, true); err != nil || tok == "" {
+			return err
 		}
 	}
 	c, me, err := githubClient(ctx, env)
@@ -358,6 +447,10 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 	fmt.Printf("%s %s %s\n", bold("Signed in as"), me.Login, dim("(via "+src+")"))
 	r, err := c.GetRepo(ctx, repo)
 	if errors.Is(err, github.ErrNotFound) {
+		if h := appAccessHint(tok, repo); h != "" {
+			fmt.Printf("%s %s %s\n%s\n", bold("Repository:"), repo, dim("— not created yet, or the dothaven app has no access to it."), dim(strings.TrimPrefix(h, "\n")))
+			return nil
+		}
 		fmt.Printf("%s %s %s\n", bold("Repository:"), repo, dim("— not created yet; `dothaven github push` creates it (private)"))
 		return nil
 	}
@@ -384,6 +477,52 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 		fmt.Printf("  %s %s%s\n", padTo(m, 24), dim(fmt.Sprintf("%s, %s, %s", meta.Mode, meta.OS, shortDate(meta.Created))), here)
 	}
 	return nil
+}
+
+// signCommits names the signed-in account as author, by its noreply address
+// so a push never publishes a real email, and the build's GitHub App bot as
+// committer: the history reads "you authored, dothaven[bot] committed".
+func signCommits(ctx context.Context, c *github.Client, me github.User) {
+	if me.ID != 0 {
+		a := github.NoReply(me.Login, me.ID)
+		c.Author = &a
+	}
+	if slug := github.AppSlugFromEnv(); slug != "" {
+		if bot, err := c.Bot(ctx, slug); err == nil {
+			c.Committer = &bot
+		}
+	}
+}
+
+// appAccessHint explains a repository a GitHub App sign-in cannot see: the
+// app reaches only the repositories it is installed on. Other sign-ins get
+// no hint.
+func appAccessHint(tok, repo string) string {
+	if !github.IsAppToken(tok) {
+		return ""
+	}
+	return fmt.Sprintf("\n  You signed in through the dothaven GitHub App, which reaches only the repositories\n  you installed it on. Give it access to %s at %s", repo, appInstallURL())
+}
+
+func appInstallURL() string {
+	if slug := github.AppSlugFromEnv(); slug != "" {
+		return "https://github.com/apps/" + slug + "/installations/new"
+	}
+	return "https://github.com/settings/installations"
+}
+
+func createRepoErr(tok, repo string, err error) error {
+	var apiErr *github.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.Status {
+		case 422:
+			return fmt.Errorf("%s already exists, but this sign-in cannot see it%s", repo, appAccessHint(tok, repo))
+		case 403:
+			_, name, _ := strings.Cut(repo, "/")
+			return fmt.Errorf("this sign-in may not create repositories. Create a private one named %s at https://github.com/new, then push again%s", name, appAccessHint(tok, repo))
+		}
+	}
+	return fmt.Errorf("could not create %s: %w", repo, err)
 }
 
 func readMachineMeta(ctx context.Context, c *github.Client, repo, m string) machineMeta {
@@ -462,18 +601,20 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		return fmt.Errorf("machine name %q: use lowercase letters, digits, '.', '-' or '_'", machine)
 	}
 
+	signCommits(ctx, c, me)
+
 	r, err := c.GetRepo(ctx, repo)
 	switch {
 	case errors.Is(err, github.ErrNotFound):
 		owner, name, _ := strings.Cut(repo, "/")
 		if owner != me.Login {
-			return fmt.Errorf("%s does not exist (dothaven only creates repositories on your own account)", repo)
+			return fmt.Errorf("%s does not exist, or this sign-in cannot see it (dothaven only creates repositories on your own account)%s", repo, appAccessHint(c.Token, repo))
 		}
 		if err := confirmWrite(os.Stderr, fmt.Sprintf("Create the private repository %s?", repo), o.yes); err != nil {
 			return err
 		}
 		if r, err = c.CreatePrivateRepo(ctx, name, "Private backup of my dev setup, made by dothaven — keep this private."); err != nil {
-			return fmt.Errorf("could not create %s: %w", repo, err)
+			return createRepoErr(c.Token, repo, err)
 		}
 		fmt.Printf("%s Created %s (private)\n", good("✓"), r.HTMLURL)
 	case err != nil:
@@ -582,6 +723,9 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	if err != nil {
 		if ctx.Err() != nil {
 			return ExitError{Code: 130}
+		}
+		if errors.Is(err, github.ErrNotFound) {
+			return fmt.Errorf("GitHub would not let this sign-in write to %s%s", r.FullName, appAccessHint(c.Token, r.FullName))
 		}
 		return err
 	}
@@ -867,7 +1011,7 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string, dirs ...str
 	r, err := c.GetRepo(ctx, repo)
 	if err != nil {
 		if errors.Is(err, github.ErrNotFound) {
-			return "", noop, fmt.Errorf("no repository %s (or this login cannot see it) — push from the old machine first: dothaven github push", repo)
+			return "", noop, fmt.Errorf("no repository %s (or this login cannot see it) — push from the old machine first: dothaven github push%s", repo, appAccessHint(c.Token, repo))
 		}
 		return "", noop, err
 	}

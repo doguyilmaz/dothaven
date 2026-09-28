@@ -225,6 +225,8 @@ func TestScripts(t *testing.T) {
 			// no test may reach github.com or the real keychain.
 			gh := githubtest.New("test-token", "tester")
 			gh.AddRepo("tester/public-one", false)
+			gh.AppSlug = "dothaven"
+			e.Values["github"] = gh
 			e.Defer(gh.Close)
 			e.Setenv("DOTHAVEN_GITHUB_API", gh.URL)
 			e.Setenv("DOTHAVEN_GITHUB_WEB", gh.URL)
@@ -237,6 +239,28 @@ func TestScripts(t *testing.T) {
 			return nil
 		},
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			// signedby asserts the newest commit on the fake GitHub names this
+			// author and committer ("-" for one left to GitHub).
+			"signedby": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: signedby <author> <committer>")
+				}
+				sigs := ts.Value("github").(*githubtest.Server).Signatures()
+				if len(sigs) == 0 {
+					ts.Fatalf("no commits yet")
+				}
+				last := sigs[len(sigs)-1]
+				want := func(s string) string {
+					if s == "-" {
+						return ""
+					}
+					return s
+				}
+				ok := last.Author == want(args[0]) && last.Committer == want(args[1])
+				if ok == neg {
+					ts.Fatalf("newest commit: author %q, committer %q", last.Author, last.Committer)
+				}
+			},
 			// filemode asserts a file's permission bits. `stat` spells this
 			// differently on macOS and Linux, and the assertion has to hold on
 			// both — a permission test that only runs in CI is not a

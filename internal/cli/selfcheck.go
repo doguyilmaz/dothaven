@@ -381,7 +381,10 @@ func sortRows(rows []checkRow, order map[string]int) {
 }
 
 func checkGitHub(ctx context.Context, env *sys.OS) []checkRow {
-	tok, src := resolveToken(ctx, env)
+	tok, src, err := resolveToken(ctx, env, false)
+	if errors.Is(err, errRenewDue) {
+		return []checkRow{{Name: "sign-in", Status: statusWarn, Detail: "GitHub App sign-ins last 8 hours; this one is due for renewal", Fix: "dothaven github status"}}
+	}
 	if tok == "" {
 		return []checkRow{{Name: "sign-in", Status: statusInfo, Detail: "not signed in (optional)", Fix: "dothaven github login"}}
 	}

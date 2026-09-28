@@ -24,10 +24,12 @@ builds:
     # Trim paths and embed the release version into main.version.
     flags:
       - -trimpath
-    # DOTHAVEN_GITHUB_CLIENT_ID (optional) is the OAuth app for browser sign-in
-    # in `dothaven github login`; without it, login falls back to gh / a token.
+    # DOTHAVEN_GITHUB_CLIENT_ID (optional) is the GitHub App's client ID for
+    # browser sign-in in `dothaven github login`; without it, login falls back
+    # to gh / a token. DOTHAVEN_GITHUB_APP (optional) is the app's URL name; its
+    # bot account is named as the committer of every push.
     ldflags:
-      - -s -w -X main.version={{ .Version }} -X github.com/doguyilmaz/dothaven/internal/github.ClientID={{ envOrDefault "DOTHAVEN_GITHUB_CLIENT_ID" "" }}
+      - -s -w -X main.version={{ .Version }} -X github.com/doguyilmaz/dothaven/internal/github.ClientID={{ envOrDefault "DOTHAVEN_GITHUB_CLIENT_ID" "" }} -X github.com/doguyilmaz/dothaven/internal/github.AppSlug={{ envOrDefault "DOTHAVEN_GITHUB_APP" "" }}
 
 archives:
   - id: dothaven

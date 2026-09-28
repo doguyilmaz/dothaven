@@ -202,6 +202,10 @@ function renderGitHub(g) {
     root.replaceChildren(el("p", null, "Not signed in. ", el("code", { text: "dothaven github login" })));
     return;
   }
+  if (g.renewDue) {
+    root.replaceChildren(el("p", null, "Your GitHub sign-in is due for renewal (they last 8 hours). Any GitHub command renews it: ", el("code", { text: "dothaven github status" })));
+    return;
+  }
   const items = [el("li", null, status("good", "Signed in"), el("span", { class: "path", text: g.login }), el("span", { class: "meta", text: "via " + g.source }))];
   if (!g.repo) {
     items.push(el("li", null, el("span", { class: "path", text: "No backup repository yet" }), el("span", { class: "meta", text: "dothaven github push" })));

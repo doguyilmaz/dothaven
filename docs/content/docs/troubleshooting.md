@@ -157,6 +157,14 @@ Make the repository private in its GitHub settings, or push somewhere else with 
 
 Run `dothaven github login`. A token can expire or be revoked; `doctor` shows which source the rejected token came from. If `DOTHAVEN_GITHUB_TOKEN` is set, it is used before anything else.
 
+### GitHub: "… this sign-in cannot see it" or "the dothaven app can't reach any repository yet"
+
+You signed in through the GitHub App, which reaches only the repositories it is installed on. Make the private repository (`dothaven-backup`) if it does not exist yet, then add it to the app at `https://github.com/apps/dothaven/installations/new` (or **Settings → Applications → Installed GitHub Apps → dothaven → Configure**). Choose **Only select repositories** and pick that one.
+
+### GitHub: "your GitHub sign-in has expired"
+
+The six-month refresh token ran out, or the app's access was revoked. Run `dothaven github login` again. The 8-hour renewals in between happen by themselves; the dashboard and `doctor` only report that one is due.
+
 ### GitHub: "This build has no GitHub app configured for browser sign-in"
 
 Either install the GitHub CLI and sign in (`gh auth login`, which dothaven then uses), or create a fine-grained token for one repository (Contents and Administration: read & write) and run `dothaven github login --with-token < token.txt`.

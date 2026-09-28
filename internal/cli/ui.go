@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -351,13 +352,19 @@ func dashGitHub(ctx context.Context, env *sys.OS) any {
 	}
 	out := struct {
 		SignedIn bool      `json:"signedIn"`
+		RenewDue bool      `json:"renewDue,omitempty"`
 		Login    string    `json:"login,omitempty"`
 		Source   string    `json:"source,omitempty"`
 		Repo     string    `json:"repo,omitempty"`
 		Private  bool      `json:"private"`
 		Machines []machine `json:"machines"`
 	}{Machines: []machine{}}
-	tok, src := resolveToken(ctx, env)
+	// Read-only: a sign-in due for renewal is reported, never renewed here.
+	tok, src, err := resolveToken(ctx, env, false)
+	if errors.Is(err, errRenewDue) {
+		out.SignedIn, out.RenewDue, out.Source = true, true, src
+		return out
+	}
 	if tok == "" {
 		return out
 	}

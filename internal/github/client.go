@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -37,12 +38,39 @@ func ClientIDFromEnv() string {
 	return ClientID
 }
 
+// AppSlug is the GitHub App behind browser sign-in, by its URL name (the
+// "dothaven" in github.com/apps/dothaven). Set with ClientID at release time,
+// or with DOTHAVEN_GITHUB_APP. Its bot account commits every push.
+var AppSlug = ""
+
+var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+// AppSlugFromEnv returns the app in effect, or "" when none is configured
+// (or the name is not one GitHub could have issued).
+func AppSlugFromEnv() string {
+	v := AppSlug
+	if e := os.Getenv("DOTHAVEN_GITHUB_APP"); e != "" {
+		v = e
+	}
+	if !slugRe.MatchString(v) {
+		return ""
+	}
+	return v
+}
+
+// IsAppToken reports a GitHub App user token, which reaches only the
+// repositories the app is installed on.
+func IsAppToken(tok string) bool { return strings.HasPrefix(tok, "ghu_") }
+
 // Client is an authenticated GitHub API client.
 type Client struct {
 	API   string // https://api.github.com
 	Web   string // https://github.com
 	Token string
 	HTTP  *http.Client
+	// Author and Committer, when set, sign the commits this client makes;
+	// otherwise GitHub signs them as the signed-in account.
+	Author, Committer *Identity
 }
 
 // ErrNotFound is a 404: missing, or not visible to this token (GitHub does
@@ -238,6 +266,42 @@ func readError(resp *http.Response) *APIError {
 // User is the signed-in account.
 type User struct {
 	Login string `json:"login"`
+	ID    int64  `json:"id"`
+}
+
+// Identity is a commit's author or committer.
+type Identity struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// NoReply is how an account signs a commit without its real email address:
+// the noreply address GitHub keeps for it, which links back to the profile.
+func NoReply(login string, id int64) Identity {
+	return Identity{Name: login, Email: fmt.Sprintf("%d+%s@users.noreply.github.com", id, login)}
+}
+
+// Bot returns the identity of a GitHub App's bot account, <slug>[bot], which
+// GitHub creates along with the app.
+func (c *Client) Bot(ctx context.Context, slug string) (Identity, error) {
+	var u User
+	if err := c.do(ctx, http.MethodGet, "/users/"+url.PathEscape(slug+"[bot]"), nil, "", &u); err != nil {
+		return Identity{}, err
+	}
+	if u.Login == "" || u.ID == 0 {
+		return Identity{}, errors.New("GitHub returned no bot account")
+	}
+	return NoReply(u.Login, u.ID), nil
+}
+
+// Installations counts the app installations this sign-in can use. Zero
+// after a GitHub App sign-in means the app can reach no repository yet.
+func (c *Client) Installations(ctx context.Context) (int, error) {
+	var r struct {
+		TotalCount int `json:"total_count"`
+	}
+	err := c.do(ctx, http.MethodGet, "/user/installations", nil, "", &r)
+	return r.TotalCount, err
 }
 
 // Me returns who the token belongs to.
