@@ -53,7 +53,52 @@ func allEntries(env *sys.OS) []registry.Entry {
 			}
 		}
 	}
-	return append(entries, registry.IncludeEntries(loadIncludes(env).Paths, isDir, env.Home())...)
+	entries = append(entries, registry.IncludeEntries(loadIncludes(env).Paths, isDir, env.Home())...)
+	for _, e := range registry.IncludeEntries(gitReferenced(env), isDir, env.Home()) {
+		e.Name += " (from your git config)"
+		entries = append(entries, e)
+	}
+	return entries
+}
+
+// gitReferenced is what this machine's git config points at in the home
+// folder (hooks, the ignore file, included configs) that no registry entry
+// already carries. Those files travel with the config automatically — they
+// are carried like includes, and restored to the same place.
+func gitReferenced(env *sys.OS) []string {
+	home := env.Home()
+	var out []string
+	seen := map[string]bool{}
+	for _, cfg := range []string{filepath.Join(home, ".gitconfig"), filepath.Join(home, ".config", "git", "config")} {
+		b, err := os.ReadFile(cfg)
+		if err != nil {
+			continue
+		}
+		for _, p := range registry.GitReferences(string(b), filepath.Dir(cfg), home) {
+			if seen[p] || registryCovers(p) {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(home, p[2:])); err != nil {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// registryCovers reports whether a registry entry already carries p (the
+// path, or a folder holding it).
+func registryCovers(p string) bool {
+	for _, e := range registry.Entries {
+		for _, q := range e.Paths {
+			if q == p || strings.HasPrefix(p, strings.TrimSuffix(q, "/")+"/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // uncovered lists what looks like config and nothing covers yet (declined

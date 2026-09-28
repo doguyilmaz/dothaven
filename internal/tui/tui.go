@@ -142,6 +142,18 @@ const headingValue = "\x00heading"
 // Menu shows a list of actions under headings and returns the chosen value.
 // Esc or Ctrl-C returns "quit".
 func Menu(title, description string, items []MenuItem) (string, error) {
+	// A heading in the first row would take the cursor, and Enter on it does
+	// nothing, so the first keypress of the session looks ignored. It goes
+	// above the list instead; the cursor starts on a real choice. (Starting
+	// the cursor further down is not an option: huh then hides the rows above
+	// it until a key is pressed — huh#679.)
+	if len(items) > 0 && items[0].Heading {
+		if description != "" {
+			description += "\n\n"
+		}
+		description += headingStyle.Render(items[0].Label)
+		items = items[1:]
+	}
 	opts := make([]huh.Option[string], 0, len(items))
 	for i, it := range items {
 		if it.Heading {

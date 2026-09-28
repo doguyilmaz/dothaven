@@ -43,3 +43,28 @@ func TestIncludeEntries(t *testing.T) {
 		t.Errorf("foorc entry = %+v", es[1])
 	}
 }
+
+func TestGitReferences(t *testing.T) {
+	cfg := `[user]
+	name = Me
+[core]
+	hooksPath = ~/.git-hooks
+	excludesFile = ~/.gitignore_global
+	editor = vim
+[commit]
+	template = $HOME/.gitmessage
+[include]
+	path = .gitconfig.local
+[includeIf "gitdir:~/work/"]
+	path = "~/work/.gitconfig-work"
+[init]
+	templateDir = /usr/share/git-core/templates
+[alias]
+	path = not-a-path
+`
+	got := GitReferences(cfg, "/h", "/h")
+	want := "~/.git-hooks,~/.gitignore_global,~/.gitmessage,~/.gitconfig.local,~/work/.gitconfig-work"
+	if strings.Join(got, ",") != want {
+		t.Errorf("GitReferences = %v\nwant %s", got, want)
+	}
+}

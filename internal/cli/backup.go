@@ -248,6 +248,8 @@ func reviewUncovered(env *sys.OS, force bool) (int, error) {
 }
 
 func collectUncovered(env *sys.OS, inc registry.Includes) []string {
+	// What the git config points at is carried already; not offered again.
+	inc.Paths = append(append([]string(nil), inc.Paths...), gitReferenced(env)...)
 	return collect.Uncovered(env.ListDir, env.Home(), registry.Entries, inc)
 }
 

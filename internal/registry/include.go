@@ -124,3 +124,60 @@ func IncludeEntries(paths []string, isDir func(string) bool, home string) []Entr
 	}
 	return out
 }
+
+// GitReferences lists the files and folders a git config points at inside
+// home: hooks (core.hooksPath), ignore and attributes files, the commit
+// template, the init template folder, and — the ones people forget — the
+// files pulled in by [include] and [includeIf] (a work identity, a signing
+// key's config). Restoring a .gitconfig without them silently disables hooks
+// or signs commits as the wrong person. dir is the config file's folder, which
+// a relative include path is relative to. Returns "~/"-relative paths.
+func GitReferences(config, dir, home string) []string {
+	keys := map[string]map[string]bool{
+		"core":      {"hookspath": true, "excludesfile": true, "attributesfile": true},
+		"commit":    {"template": true},
+		"init":      {"templatedir": true},
+		"include":   {"path": true},
+		"includeif": {"path": true},
+	}
+	section := ""
+	seen := map[string]bool{}
+	var out []string
+	for _, line := range strings.Split(config, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] == '#' || line[0] == ';' {
+			continue
+		}
+		if line[0] == '[' {
+			name := strings.Trim(line, "[]")
+			if i := strings.IndexAny(name, " \t\""); i >= 0 {
+				name = name[:i] // [includeIf "gitdir:~/work/"] → includeif
+			}
+			section = strings.ToLower(name)
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok || !keys[section][strings.ToLower(strings.TrimSpace(k))] {
+			continue
+		}
+		v = strings.Trim(strings.TrimSpace(v), `"`)
+		switch {
+		case strings.HasPrefix(v, "~/"):
+			v = filepath.Join(home, v[2:])
+		case strings.HasPrefix(v, "$HOME/"):
+			v = filepath.Join(home, v[6:])
+		case v != "" && !filepath.IsAbs(v):
+			v = filepath.Join(dir, v)
+		}
+		rel, err := filepath.Rel(home, filepath.Clean(v))
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			continue // outside home: not something a restore can put back
+		}
+		p := "~/" + filepath.ToSlash(rel)
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}

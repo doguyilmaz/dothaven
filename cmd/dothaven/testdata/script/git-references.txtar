@@ -1,0 +1,39 @@
+# What the git config points at travels with it, without being asked for:
+# hooks outside ~/.config/git, and the files [include]/[includeIf] pull in —
+# a restored .gitconfig without them disables hooks or signs as the wrong person.
+chmod 755 .githooks/pre-commit
+exec dothaven include --list
+! stdout '.githooks'
+! stdout '.gitconfig-work'
+
+exec dothaven backup -o out --only git,extra
+globpath DIR out/backup-*
+exists $DIR/git/.gitconfig
+exists $DIR/extra/.githooks/pre-commit
+exists $DIR/extra/work/.gitconfig-work
+! exists $DIR/extra/usr
+
+# A new machine gets them back in the same place, hook still executable.
+rm .gitconfig .githooks work
+exec dothaven restore $DIR
+stdout 'Restored 3 files'
+exists .githooks/pre-commit
+exec test -x .githooks/pre-commit
+grep 'signingkey' work/.gitconfig-work
+
+-- .gitconfig --
+[user]
+	name = Me
+[core]
+	hooksPath = ~/.githooks
+[includeIf "gitdir:~/work/"]
+	path = ~/work/.gitconfig-work
+[init]
+	templateDir = /usr/share/git-core/templates
+-- .githooks/pre-commit --
+#!/bin/sh
+exit 0
+-- work/.gitconfig-work --
+[user]
+	email = me@work.example
+	signingkey = ABCDEF
