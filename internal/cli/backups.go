@@ -221,6 +221,14 @@ func pickBackup(env *sys.OS, title string) (string, error) {
 // The temporary directory is created 0700: an encrypted backup's contents are
 // SSH keys and tokens, and /tmp is shared.
 func openBackup(ctx context.Context, env *sys.OS, path string) (dir string, cleanup func(), err error) {
+	return openBackupOnly(ctx, env, path)
+}
+
+// openBackupOnly is openBackup for a command that reads only some of a
+// backup: an archive is still read end to end, but only the named folders
+// (inventory, macos-defaults) are written out — decrypted credentials never
+// touch the disk for a command that does not need them.
+func openBackupOnly(ctx context.Context, env *sys.OS, path string, dirs ...string) (dir string, cleanup func(), err error) {
 	if isGitHubSpec(path) {
 		return openGitHubBackup(ctx, env, path)
 	}
@@ -242,17 +250,17 @@ func openBackup(ctx context.Context, env *sys.OS, path string) (dir string, clea
 		}
 		fmt.Fprintln(os.Stderr, dim("This backup is encrypted."))
 	}
+	var keep func(string) bool
+	if len(dirs) > 0 {
+		keep = backup.Only(dirs...)
+	}
 	for i := range attempts {
-		tmp, err := os.MkdirTemp("", "dothaven-restore-")
+		tmp, done, err := sys.PrivateTempDir("restore")
 		if err != nil {
 			return "", cleanup, err
 		}
-		cleanup = func() { _ = os.RemoveAll(tmp) }
-		if err := os.Chmod(tmp, 0o700); err != nil {
-			cleanup()
-			return "", func() {}, err
-		}
-		root, err := backup.ExtractArchive(path, tmp, askPassphrase())
+		cleanup = done
+		root, err := backup.ExtractArchiveOnly(path, tmp, askPassphrase(), keep)
 		if err == nil {
 			return root, cleanup, nil
 		}

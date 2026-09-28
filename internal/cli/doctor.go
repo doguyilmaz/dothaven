@@ -126,7 +126,7 @@ func loadSnapshotArg(ctx context.Context, env *sys.OS, path string) (snapshot.Sn
 	if strings.HasSuffix(path, ".json") && !isGitHubSpec(path) {
 		return parseSnapshotFile(env, path)
 	}
-	dir, cleanup, err := openBackup(ctx, env, path)
+	dir, cleanup, err := openBackupOnly(ctx, env, path, "inventory")
 	defer cleanup()
 	if err != nil {
 		return nil, err

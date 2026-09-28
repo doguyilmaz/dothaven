@@ -173,7 +173,7 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 		if err != nil || p == "" {
 			return err
 		}
-		dir, cleanup, err := openBackup(ctx, env, p)
+		dir, cleanup, err := openBackupOnly(ctx, env, p, "inventory")
 		defer cleanup()
 		if err != nil {
 			return err

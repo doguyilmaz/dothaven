@@ -285,6 +285,11 @@ func Detect(path string) Format {
 // the backup directory inside it. passphrase is asked only when the archive is
 // encrypted.
 func ExtractArchive(src, dst string, passphrase func() (string, error)) (string, error) {
+	return ExtractArchiveOnly(src, dst, passphrase, nil)
+}
+
+// ExtractArchiveOnly is ExtractArchive writing only the entries keep accepts.
+func ExtractArchiveOnly(src, dst string, passphrase func() (string, error), keep func(string) bool) (string, error) {
 	f, err := os.Open(src)
 	if err != nil {
 		return "", err
@@ -315,7 +320,7 @@ func ExtractArchive(src, dst string, passphrase func() (string, error)) (string,
 		}
 		r = dec
 	}
-	return ExtractReader(r, dst)
+	return ExtractReaderOnly(r, dst, keep)
 }
 
 // Verify reads an archive end to end — decrypting, decompressing and walking

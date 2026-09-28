@@ -463,11 +463,11 @@ func chooseInstall(groups []installGroup, missing int) ([]installGroup, bool, er
 // half-installed. Ctrl-C still stops it — the context kills the script. The
 // script is written to a private temporary directory and removed afterwards.
 func runScript(ctx context.Context, script string) error {
-	tmp, err := os.MkdirTemp("", "dothaven-install-")
+	tmp, done, err := sys.PrivateTempDir("install")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
+	defer done()
 	path := filepath.Join(tmp, "install.sh")
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		return err

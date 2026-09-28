@@ -41,6 +41,31 @@ func Extract(src, dst string) (string, error) {
 // ExtractReader is Extract over any gzip stream — a file, or the plaintext
 // coming out of age.
 func ExtractReader(r io.Reader, dst string) (string, error) {
+	return ExtractReaderOnly(r, dst, nil)
+}
+
+// Only returns a filter for ExtractReaderOnly that keeps the named top-level
+// folders of a backup (inventory, macos-defaults), with or without the
+// backup's own root folder in front.
+func Only(dirs ...string) func(name string) bool {
+	return func(name string) bool {
+		name = strings.TrimPrefix(filepath.ToSlash(name), "./")
+		_, rest, _ := strings.Cut(name, "/")
+		for _, d := range dirs {
+			for _, n := range []string{name, rest} {
+				if n == d || strings.HasPrefix(n, d+"/") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+}
+
+// ExtractReaderOnly is ExtractReader writing only the entries keep accepts
+// (nil keeps all). A command that needs the inventory reads the whole stream
+// but puts only the inventory on disk — not every decrypted key with it.
+func ExtractReaderOnly(r io.Reader, dst string, keep func(name string) bool) (string, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return "", fmt.Errorf("not a gzip archive: %w", err)
@@ -68,6 +93,9 @@ func ExtractReader(r io.Reader, dst string) (string, error) {
 		target, err := safeJoin(dst, hdr.Name)
 		if err != nil {
 			return "", err
+		}
+		if keep != nil && hdr.Typeflag != tar.TypeDir && !keep(hdr.Name) {
+			continue
 		}
 
 		switch hdr.Typeflag {

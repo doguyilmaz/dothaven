@@ -432,3 +432,31 @@ func TestAgeHeaderChecksPassphrase(t *testing.T) {
 		t.Error("a plain archive has an age header")
 	}
 }
+
+// A command that needs only the inventory puts only the inventory on disk:
+// the decrypted SSH key in the same archive is read past, never written.
+func TestExtractOnlyWritesWhatWasAskedFor(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "b.tar.gz.age")
+	files := map[string]string{"ssh/id_ed25519": "-----BEGIN OPENSSH PRIVATE KEY-----\n", "inventory/snapshot.json": "{}\n", "MANIFEST.txt": "#\n"}
+	if err := WriteEncryptedArchive(src, "backup-box-1", "correct horse battery", fill(files, nil)); err != nil {
+		t.Fatal(err)
+	}
+	dst := t.TempDir()
+	root, err := ExtractArchiveOnly(src, dst, pass("correct horse battery"), Only("inventory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "inventory", "snapshot.json")); err != nil {
+		t.Errorf("inventory not extracted: %v", err)
+	}
+	var written []string
+	filepath.WalkDir(dst, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			written = append(written, p)
+		}
+		return nil
+	})
+	if len(written) != 1 {
+		t.Errorf("wrote %v, want only the inventory", written)
+	}
+}

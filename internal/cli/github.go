@@ -505,14 +505,11 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		}
 	}
 
-	tmp, err := os.MkdirTemp("", "dothaven-push-")
+	tmp, done, err := sys.PrivateTempDir("push")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
-	if err := os.Chmod(tmp, 0o700); err != nil {
-		return err
-	}
+	defer done()
 
 	digest := &backup.DigestSink{}
 	files, out, err := buildPushFiles(ctx, cmd, env, tmp, mode, pass, o.only, o.skip, digest)
@@ -862,15 +859,11 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string) (string, fu
 		return "", noop, fmt.Errorf("no machine %q in %s (have: %s)", machine, repo, strings.Join(machines, ", "))
 	}
 
-	tmp, err := os.MkdirTemp("", "dothaven-github-")
+	tmp, cleanup, err := sys.PrivateTempDir("github")
 	if err != nil {
 		return "", noop, err
 	}
-	cleanup := func() { _ = os.RemoveAll(tmp) }
 	fail := func(err error) (string, func(), error) { cleanup(); return "", noop, err }
-	if err := os.Chmod(tmp, 0o700); err != nil {
-		return fail(err)
-	}
 
 	fmt.Printf("Downloading %s from %s …\n", machine, repo)
 	tarPath := filepath.Join(tmp, "repo.tar.gz")

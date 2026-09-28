@@ -111,6 +111,8 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 // where the reader already is.
 func Execute(ctx context.Context, env *sys.OS, version string) error {
 	takeSecretEnv()
+	// Decrypted files a crashed or killed run left in a temporary folder.
+	sys.SweepTempDirs()
 	root := NewRoot(env, version)
 	var probe *updateProbe
 	if !suppressNotice(root, os.Args[1:]) {
