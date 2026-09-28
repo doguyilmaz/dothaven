@@ -89,3 +89,16 @@ env FAKE_READTYPE=string
 exec dothaven defaults import --yes $WORK/lang
 stdout '1 preference could not be written'
 grep 'write NSGlobalDomain AppleLanguages <array><string>en-US</string></array>' $WORK/defaults.log
+
+# The live list is set but could not be captured (here: not in the export):
+# writing it could not be undone, so it is left as it is and said so.
+env FAKE_READTYPE=
+env FAKE_LANG=
+exec dothaven defaults import --yes $WORK/lang
+stdout '1 list setting left as it is'
+! stdout 'Set 1 preference'
+
+# Not set at all: nothing to lose, so it is written.
+env FAKE_NOKEY=$WORK/nokey.state
+exec dothaven defaults import --yes $WORK/lang
+stdout 'Set 1 preference'

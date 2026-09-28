@@ -183,13 +183,20 @@ func summarisePrefs(entries []macprefs.Entry) []string {
 	return out
 }
 
+// livePrefs is this Mac's current value of every key in some domains, and
+// which domains could be read at all.
+type livePrefs struct {
+	entries map[string]macprefs.Entry // by "domain\x00key"
+	read    map[string]bool
+}
+
 // currentPrefs reads this Mac's live value of every key in the given domains,
-// as "type\x00value" by "domain\x00key", so settings already in place can be
-// shown as done instead of offered again.
-func currentPrefs(ctx context.Context, domains []string) map[string]string {
+// so settings already in place can be shown as done instead of offered again,
+// and a nested value can be put back if writing it goes wrong.
+func currentPrefs(ctx context.Context, domains []string) livePrefs {
 	var (
 		mu  sync.Mutex
-		out = map[string]string{}
+		out = livePrefs{entries: map[string]macprefs.Entry{}, read: map[string]bool{}}
 		ch  = make(chan string)
 		wg  sync.WaitGroup
 	)
@@ -205,8 +212,9 @@ func currentPrefs(ctx context.Context, domains []string) map[string]string {
 					continue
 				}
 				mu.Lock()
+				out.read[d] = true
 				for _, e := range entries {
-					out[e.Domain+"\x00"+e.Key] = e.Type + "\x00" + e.Value
+					out.entries[e.Domain+"\x00"+e.Key] = e
 				}
 				mu.Unlock()
 			}
@@ -252,7 +260,7 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	var todo []macprefs.Entry
 	already := 0
 	for _, e := range selected {
-		if live[e.Domain+"\x00"+e.Key] == e.Type+"\x00"+e.Value {
+		if l, ok := live.entries[e.Domain+"\x00"+e.Key]; ok && l.Type == e.Type && l.Value == e.Value {
 			already++
 			continue
 		}
@@ -318,9 +326,17 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 		return err
 	}
 
-	var failed int
+	var failed, uncopied int
 	touched := map[string]bool{}
 	for _, e := range todo {
+		prev, had := live.entries[e.Domain+"\x00"+e.Key]
+		// A nested value is only written when the one it replaces can be put
+		// back exactly: captured whole, or known not to exist. Otherwise a
+		// failed write could only be undone by deleting the setting.
+		if e.Type == "plist" && !(had && prev.Action == "apply") && (!live.read[e.Domain] || keyExists(ctx, e)) {
+			uncopied++
+			continue
+		}
 		args := macprefs.WriteArgs(e)
 		if _, err := runShell(ctx, args[0], args[1:]...); err != nil {
 			failed++
@@ -330,7 +346,7 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 			// `defaults` treats a value it cannot parse as a plain string.
 			// A language list or shortcut table stored as text is worse than
 			// the old value, so the old value goes back.
-			undoPref(ctx, e, live[e.Domain+"\x00"+e.Key])
+			undoPref(ctx, e, prev, had)
 			failed++
 			continue
 		}
@@ -341,7 +357,11 @@ func applyPrefs(ctx context.Context, entries []macprefs.Entry, dryRun, assumeYes
 	if len(restarted) == 0 {
 		note = "Log out and back in for everything to take effect."
 	}
-	fmt.Printf("\n%s Set %s. %s\n", good("✔"), plural(len(todo)-failed, "preference"), dim(note))
+	fmt.Printf("\n%s Set %s. %s\n", good("✔"), plural(len(todo)-failed-uncopied, "preference"), dim(note))
+	if uncopied > 0 {
+		fmt.Printf("  %s %s left as %s: the current value could not be read whole, so it could not be put back if writing failed.\n",
+			warn("⚠"), plural(uncopied, "list setting"), pick(uncopied, "it is", "they are"))
+	}
 	if failed > 0 {
 		fmt.Printf("  %s %s could not be written (the app may own the key).\n",
 			warn("⚠"), plural(failed, "preference"))
@@ -359,17 +379,27 @@ func storedNested(ctx context.Context, e macprefs.Entry) bool {
 	return strings.Contains(out, "array") || strings.Contains(out, "dictionary")
 }
 
-// undoPref puts back the value a key had before this run — prev is the
-// "type\x00value" currentPrefs read — or removes the key if it had none.
-func undoPref(ctx context.Context, e macprefs.Entry, prev string) {
-	typ, val, ok := strings.Cut(prev, "\x00")
-	if !ok {
+// undoPref puts back the value a key had before this run — prev, when it was
+// captured (had) — or removes the key if it had none. Only a value captured
+// exactly (action apply) is ever written back: a redacted or review-only one
+// would put a mask where a setting was.
+func undoPref(ctx context.Context, e macprefs.Entry, prev macprefs.Entry, had bool) {
+	if !had {
 		_, _ = runShell(ctx, "defaults", "delete", e.Domain, e.Key)
 		return
 	}
-	if args := macprefs.WriteArgs(macprefs.Entry{Domain: e.Domain, Key: e.Key, Type: typ, Value: val}); args != nil {
+	if prev.Action != "apply" {
+		return
+	}
+	if args := macprefs.WriteArgs(prev); args != nil {
 		_, _ = runShell(ctx, args[0], args[1:]...)
 	}
+}
+
+// keyExists reports whether a key is set in a domain right now.
+func keyExists(ctx context.Context, e macprefs.Entry) bool {
+	_, err := runShell(ctx, "defaults", "read-type", e.Domain, e.Key)
+	return err == nil
 }
 
 // notablePrefs names the nested settings about to be written, which a

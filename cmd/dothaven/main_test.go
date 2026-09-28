@@ -76,6 +76,11 @@ func fakeDefaults() {
 			fmt.Println(`( { "tile-data" = { "file-data" = { "_CFURLString" = "file://` + os.Getenv("DOCK_APP") + `/"; }; }; } )`)
 		}
 	case "write", "delete":
+		if state := os.Getenv("FAKE_NOKEY"); state != "" && args[0] == "write" && len(args) >= 3 {
+			f, _ := os.OpenFile(state, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			fmt.Fprintf(f, "%s %s\n", args[1], args[2])
+			f.Close()
+		}
 		// DEFAULTS_LOG records what would have changed on a real Mac.
 		if log := os.Getenv("DEFAULTS_LOG"); log != "" {
 			f, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -84,6 +89,15 @@ func fakeDefaults() {
 		}
 		fmt.Println("wrote")
 	case "read-type":
+		// FAKE_NOKEY names a state file: a key is set on this Mac only once
+		// a write has recorded it there.
+		if state := os.Getenv("FAKE_NOKEY"); state != "" && len(args) >= 3 {
+			b, _ := os.ReadFile(state)
+			if !strings.Contains(string(b), args[1]+" "+args[2]+"\n") {
+				fmt.Fprintln(os.Stderr, "The domain/default pair does not exist")
+				os.Exit(1)
+			}
+		}
 		// FAKE_READTYPE simulates `defaults` storing a value as a string.
 		if t := os.Getenv("FAKE_READTYPE"); t != "" {
 			fmt.Println("Type is " + t)
