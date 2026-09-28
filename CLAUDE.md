@@ -15,10 +15,12 @@ A single-binary Go CLI that moves a developer's setup to a new machine: it finds
 ## Conventions
 
 - **Pure core, thin shell.** Parsers, planners, classifiers are pure functions, table-tested against measured real output. Side effects (running commands, FS) go through the `sys.Env` seam (`sys.Fake` for tests). Commands in `internal/cli` stay thin.
-- **Single source of truth.** `internal/registry` declares every config source once; both `collect` and `backup` project from it.
+- **Single source of truth.** `internal/registry` declares every config source once; `collect`, `backup`, `restore` and the docs all project from it. The docs' full list (`docs/content/docs/registry.md`) is generated: after changing `Entries`, run `go test ./internal/registry -run TestDocsList -update-docs` (the test fails otherwise). `cli.allEntries` adds the user's includes and what their git config references.
 - **Collectors** are failure-isolated: goroutine fan-out + panic recovery; a missing CLI tool yields an empty section, never an abort.
 - **Snapshots** are `map[string]Section` serialized with deterministic (alphabetical) JSON, 2-space indent, HTML escaping off.
 - Regexes are RE2 (no catastrophic backtracking). Secret scanning has three severities (HIGH/MEDIUM/LOW) and three actions (skip > redact > include).
+- Temporary folders for decrypted or in-progress data come from `sys.PrivateTempDir` (owner-only, tracked, removed on forced exit, swept after a crash) — never `os.MkdirTemp` directly.
+- `DOTHAVEN_PASSPHRASE` / `DOTHAVEN_GITHUB_TOKEN` are taken out of the environment at startup; read them with `lookupSecretEnv`, never `os.Getenv`.
 - Match surrounding code; keep comments for non-obvious logic only.
 
 ## Commands & cadence
@@ -43,8 +45,9 @@ Each logical slice lands as its own commit with **gofmt + vet + test green**. CI
 
 - Secrets are redacted by default; a `skip`-action file (private key) or a High-sensitivity entry is **never** written to a plaintext backup/snapshot — reached through any entry or include. `--encrypt` carries them, streamed straight into age.
 - Scan output shows previews (`scan.Preview`), never secret values; the dashboard shows file names and kinds only.
-- GitHub: never write to a public repo; tokens only via keychain/env/gh, never argv.
-- The age private key (`~/.config/chezmoi/key.txt`) must never enter any repo — loss means encrypted files are unrecoverable.
+- GitHub: never write to a public repo; tokens only via keychain/env/gh, never argv. Encrypted parts go through `WriteEncryptedArchive` (refuses an empty passphrase) and are checked for the age header before upload.
+- The age private key (`~/.config/chezmoi/key.txt`) must never enter any repo — loss means encrypted files are unrecoverable. Registry entries marked `LocalOnly`, and any file containing `AGE-SECRET-KEY-1`, are left out of every GitHub push (`backup.Options.Remote`); local encrypted backups carry them.
+- Anything from a backup that reaches a shell (package names, Brewfile lines) passes `chezmoi.SafeName` / `SafeBrewLine` — a readable GitHub copy can be edited by anyone with write access.
 - The user's real dotfiles live in a **separate private** chezmoi-source repo; this public repo is code only.
 - Don't push to remotes without explicit confirmation.
 
