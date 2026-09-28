@@ -3,7 +3,9 @@ package backup
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
+	"github.com/doguyilmaz/dothaven/internal/sys"
 	"io"
 	"os"
 	"path/filepath"
@@ -90,6 +92,9 @@ func ExtractReaderOnly(r io.Reader, dst string, keep func(name string) bool) (st
 			continue
 		}
 
+		if sys.Aborting() {
+			return "", errors.New("interrupted")
+		}
 		target, err := safeJoin(dst, hdr.Name)
 		if err != nil {
 			return "", err

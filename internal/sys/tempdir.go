@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -60,13 +61,26 @@ func PrivateTempDir(kind string) (string, func(), error) {
 	}, nil
 }
 
+var aborting atomic.Bool
+
+// Aborting reports that the process is on its way out (RemoveTempDirs ran).
+// Long writes into a temporary folder — unpacking an archive — check it, so
+// they do not recreate what was just removed.
+func Aborting() bool { return aborting.Load() }
+
 // RemoveTempDirs removes every folder PrivateTempDir made that is still there.
 // It is for the forced exit on a second Ctrl-C, where no defer runs.
 func RemoveTempDirs() {
+	aborting.Store(true)
 	tempMu.Lock()
 	defer tempMu.Unlock()
 	for dir := range temps {
 		_ = os.RemoveAll(dir)
+		// A file being written at that moment can outlive the first pass.
+		if _, err := os.Lstat(dir); err == nil {
+			time.Sleep(50 * time.Millisecond)
+			_ = os.RemoveAll(dir)
+		}
 		delete(temps, dir)
 	}
 }
