@@ -9,13 +9,13 @@ import (
 
 // confirmWrite decides whether a command that changes this machine may run.
 //
-// One rule in one place, because the commands that write used to answer this
-// question five different ways — and `migrate`, which overwrites $HOME and runs
-// your install script, was the one that assumed yes. Off a terminal it skipped
-// its own prompt and applied.
+// One rule in one place: the commands that write used to answer this question
+// five different ways, and `migrate`, which overwrites $HOME and runs your
+// install script, assumed yes. Off a terminal it skipped its own prompt and
+// applied.
 //
-// The rule: on a terminal, ask. Off a terminal, refuse unless --yes was passed.
-// A pipe cannot answer a question, and silence is not consent.
+// The rule: on a terminal, ask. Off a terminal, refuse unless --yes was passed,
+// because a pipe cannot answer a question.
 //
 // Callers that already got explicit intent from a flag (restore --force) pass
 // assumeYes and are let straight through.

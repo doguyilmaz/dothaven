@@ -2,7 +2,7 @@
 # itself, so no AppleDouble sidecars and no dependence on the tar binary.
 
 exec dothaven backup --archive -o out --only shell
-stdout 'Backup saved — 2 files'
+stdout 'Backup saved: 2 files'
 stdout 'dothaven restore backup-'
 
 globpath ARCHIVE out/*.tar.gz

@@ -21,7 +21,7 @@ import (
 // "" if none. Sorting by mtime (not name) is correct when a dir holds backups
 // from several machines: a name sort orders by host before timestamp, so it
 // would pick the alphabetically-last host's backup rather than the newest.
-// Archives are ignored — status and diff compare a readable tree.
+// Archives are ignored: status and diff compare a readable tree.
 func latestBackup(dir string) string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -47,8 +47,8 @@ func latestBackup(dir string) string {
 	return filepath.Join(dir, newest)
 }
 
-// newestBackup is the most recent backup of any kind — folder, archive or
-// encrypted file — in any place findBackups looks.
+// newestBackup is the most recent backup of any kind (folder, archive or
+// encrypted file) in any place findBackups looks.
 func newestBackup(env *sys.OS) string {
 	if found := findBackups(env); len(found) > 0 {
 		return found[0].Path
@@ -102,10 +102,10 @@ func readDirTimeout(dir string, d time.Duration) []os.DirEntry {
 	}
 }
 
-// stalled remembers folders that did not answer in time — a network share
-// that went away, a disk spinning up. The goroutine stuck on one cannot be
-// stopped, so the next few minutes do not start another: the dashboard asks
-// every 20 seconds, and they would pile up.
+// stalled remembers folders that did not answer in time, such as a network
+// share that went away or a disk spinning up. The goroutine stuck on one
+// cannot be stopped, so the next few minutes do not start another: the
+// dashboard asks every 20 seconds, and they would pile up.
 var stalled sync.Map // dir → time.Time
 
 func markStalled(dir string) { stalled.Store(dir, time.Now()) }
@@ -305,7 +305,7 @@ func openBackup(ctx context.Context, env *sys.OS, path string) (dir string, clea
 
 // openBackupOnly is openBackup for a command that reads only some of a
 // backup: an archive is still read end to end, but only the named folders
-// (inventory, macos-defaults) are written out — decrypted credentials never
+// (inventory, macos-defaults) are written out, so decrypted credentials never
 // touch the disk for a command that does not need them.
 func openBackupOnly(ctx context.Context, env *sys.OS, path string, dirs ...string) (dir string, cleanup func(), err error) {
 	if isGitHubSpec(path) {

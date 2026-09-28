@@ -16,15 +16,14 @@ const passphraseEnv = "DOTHAVEN_PASSPHRASE"
 
 // minPassphrase is the shortest passphrase accepted for a new archive. The
 // archive can hold SSH keys and cloud credentials; scrypt slows guessing but
-// cannot rescue a four-letter word.
+// cannot make a short passphrase safe.
 const minPassphrase = 10
 
-var errNoTerminal = errors.New("no terminal to ask for a passphrase on — set " + passphraseEnv)
+var errNoTerminal = errors.New("no terminal to ask for a passphrase on. Set " + passphraseEnv)
 
 // secretEnv holds DOTHAVEN_PASSPHRASE and DOTHAVEN_GITHUB_TOKEN once Execute
-// has taken them out of the environment. Every process dothaven starts —
-// brew, npm and pipx install hooks, chezmoi, git — would otherwise inherit
-// them.
+// has taken them out of the environment. Every process dothaven starts (brew,
+// npm and pipx install hooks, chezmoi, git) would otherwise inherit them.
 var secretEnv = map[string]string{}
 
 // takeSecretEnv moves the secret variables from the environment into
@@ -84,14 +83,14 @@ func newPassphrase() (string, error) {
 		return p, err
 	}
 	fmt.Fprintln(os.Stderr, dim("Choose a passphrase for this backup. You will need it on the new machine,"))
-	fmt.Fprintln(os.Stderr, dim("and nothing can recover the backup without it — store it in a password manager."))
+	fmt.Fprintln(os.Stderr, dim("and nothing can recover the backup without it. Store it in a password manager."))
 	for range 3 {
 		p, err := readSecret("  Passphrase: ")
 		if err != nil {
 			return "", err
 		}
 		if len([]rune(p)) < minPassphrase {
-			fmt.Fprintf(os.Stderr, "  %s at least %d characters, please — this file can hold your SSH keys.\n", warn("⚠"), minPassphrase)
+			fmt.Fprintf(os.Stderr, "  %s at least %d characters, please. This file can hold your SSH keys.\n", warn("⚠"), minPassphrase)
 			continue
 		}
 		again, err := readSecret("  Again:      ")
@@ -108,7 +107,7 @@ func newPassphrase() (string, error) {
 }
 
 // askPassphrase returns a function that asks for an existing archive's
-// passphrase — once, when it is first needed, so a plain archive never asks.
+// passphrase once, when it is first needed, so a plain archive never asks.
 func askPassphrase() func() (string, error) {
 	return func() (string, error) {
 		if p, ok := lookupSecretEnv(passphraseEnv); ok {

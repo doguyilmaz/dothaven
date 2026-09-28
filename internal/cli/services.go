@@ -71,7 +71,7 @@ func newServicesExportCmd(env *sys.OS) *cobra.Command {
 			ctx := cmd.Context()
 			prefix := brewPrefix(ctx)
 			if prefix == "" {
-				fmt.Println("Homebrew not found — nothing to export (this captures $(brew --prefix)/etc service config).")
+				fmt.Println("Homebrew not found, so there is nothing to export (this captures $(brew --prefix)/etc service config).")
 				return nil
 			}
 			dir := filepath.Join(outputDir(env, output), servicesSubdir)
@@ -85,7 +85,7 @@ func newServicesExportCmd(env *sys.OS) *cobra.Command {
 				// Captured verbatim so it round-trips; warn (don't redact) if it
 				// looks secret-bearing, e.g. a password in my.cnf.
 				if scan.ScanContent(rel, content).Action != scan.Include {
-					fmt.Printf("  ⚠ %s may contain secrets — captured verbatim; keep this export safe.\n", rel)
+					fmt.Printf("  ⚠ %s may contain secrets. It was captured verbatim; keep this export safe.\n", rel)
 				}
 				if err := sys.WriteFileSecure(filepath.Join(dir, rel), content); err != nil {
 					return err
@@ -119,7 +119,7 @@ func newServicesImportCmd(env *sys.OS) *cobra.Command {
 			ctx := cmd.Context()
 			newPrefix := brewPrefix(ctx)
 			if newPrefix == "" {
-				return fmt.Errorf("Homebrew not found — can't resolve $(brew --prefix) to import into")
+				return fmt.Errorf("Homebrew not found: can't resolve $(brew --prefix) to import into")
 			}
 			dir := args[0]
 			if _, err := env.ListDir(filepath.Join(dir, servicesSubdir)); err == nil {
@@ -133,8 +133,8 @@ func newServicesImportCmd(env *sys.OS) *cobra.Command {
 			// Walked first, so --dry-run lists the same files the write pass
 			// would touch, and so an overwrite is visible before it happens
 			// rather than reported after. These land outside $HOME, in
-			// Homebrew's own tree — nginx and mysql configs are not something
-			// to replace silently.
+			// Homebrew's own tree, and nginx and mysql configs should not be
+			// replaced silently.
 			type item struct {
 				rel, dest string
 				content   string
@@ -167,7 +167,7 @@ func newServicesImportCmd(env *sys.OS) *cobra.Command {
 				return walkErr
 			}
 			if len(plan) == 0 {
-				fmt.Printf("No service config found in %s — nothing to import.\n", dir)
+				fmt.Printf("No service config found in %s. Nothing to import.\n", dir)
 				return nil
 			}
 

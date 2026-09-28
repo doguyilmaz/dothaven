@@ -43,7 +43,7 @@ func allEntries(env *sys.OS) []registry.Entry {
 	}
 	entries := append([]registry.Entry(nil), registry.Entries...)
 	// The include list follows XDG_CONFIG_HOME; the registry names the
-	// default place. Point its entry at wherever the list really is, so a
+	// default place. Point its entry at wherever the list is, so a
 	// relocated list is still carried (a copy: the registry is shared).
 	if rel, err := filepath.Rel(env.Home(), includePath(env)); err == nil && !strings.HasPrefix(rel, "..") {
 		for i := range entries {
@@ -63,8 +63,8 @@ func allEntries(env *sys.OS) []registry.Entry {
 
 // gitReferenced is what this machine's git config points at in the home
 // folder (hooks, the ignore file, included configs) that no registry entry
-// already carries. Those files travel with the config automatically — they
-// are carried like includes, and restored to the same place.
+// already carries. Those files travel with the config without being added:
+// they are carried like includes and restored to the same place.
 func gitReferenced(env *sys.OS) []string {
 	home := env.Home()
 	var out []string
@@ -102,7 +102,7 @@ func registryCovers(p string) bool {
 }
 
 // uncovered lists what looks like config and nothing covers yet (declined
-// paths included — the user said no, which is not the same as covered).
+// paths included: the user said no, which is not the same as covered).
 func uncovered(env *sys.OS) []string {
 	inc := loadIncludes(env)
 	inc.Declined = nil
@@ -114,8 +114,8 @@ func newIncludeCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "include [path...]",
 		Short: "Add your own files and folders to every backup",
-		Long: "dothaven knows a few hundred config locations. Everything else you care about —\n" +
-			"a tool nobody else uses, a scripts folder, an app's config dir — goes here.\n\n" +
+		Long: "dothaven knows a few hundred config locations. Add everything else you care\n" +
+			"about here: a tool nobody else uses, a scripts folder, an app's config dir.\n\n" +
 			"  dothaven include ~/.config/raycast ~/bin   add paths (kept for every backup)\n" +
 			"  dothaven include --remove ~/bin            stop carrying one\n" +
 			"  dothaven include --list                    what you added, and what isn't covered\n\n" +
@@ -136,7 +136,7 @@ func newIncludeCmd(env *sys.OS) *cobra.Command {
 			for _, a := range args {
 				p, ok := registry.NormalizeInclude(expandArg(a), home)
 				if !ok {
-					fmt.Fprintf(os.Stderr, "  %s %s is not inside your home folder — skipped\n", warn("⚠"), a)
+					fmt.Fprintf(os.Stderr, "  %s %s is not inside your home folder (skipped)\n", warn("⚠"), a)
 					continue
 				}
 				if remove {
@@ -148,7 +148,7 @@ func newIncludeCmd(env *sys.OS) *cobra.Command {
 					continue
 				}
 				if !env.Exists(filepath.Join(home, p[2:])) {
-					fmt.Fprintf(os.Stderr, "  %s %s does not exist (added anyway — it will be picked up once it does)\n", warn("⚠"), p)
+					fmt.Fprintf(os.Stderr, "  %s %s does not exist (added anyway; it will be picked up once it does)\n", warn("⚠"), p)
 				}
 				if i := slices.Index(inc.Declined, p); i >= 0 {
 					inc.Declined = slices.Delete(inc.Declined, i, i+1)
@@ -198,7 +198,7 @@ func printIncludes(env *sys.OS, inc registry.Includes) {
 		}
 	}
 	if u := uncovered(env); len(u) > 0 {
-		fmt.Printf("\n%s\n", bold(fmt.Sprintf("Not covered by anything (%d) — not in your backups:", len(u))))
+		fmt.Printf("\n%s\n", bold(fmt.Sprintf("Not covered by anything (%d), so not in your backups:", len(u))))
 		for _, p := range u {
 			fmt.Printf("  %s %s\n", warn("?"), p)
 		}

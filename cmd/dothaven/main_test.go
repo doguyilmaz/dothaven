@@ -12,7 +12,7 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
-// TestMain lets the test binary re-exec itself as the `dothaven` command — and
+// TestMain lets the test binary re-exec itself as the `dothaven` command and
 // as a fake `chezmoi`, so the destructive --apply path can be driven end-to-end
 // without depending on a real chezmoi/age toolchain in CI.
 func TestMain(m *testing.M) {
@@ -109,7 +109,7 @@ func fakeDefaults() {
 		case "com.googlecode.iterm2":
 			fmt.Println(`<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Theme</key><string>Dark</string></dict></plist>`)
 		// A core domain, so the per-key pass has something it would apply by
-		// default — iTerm2's is held back as application state.
+		// default (iTerm2's is held back as application state).
 		case "NSGlobalDomain":
 			// FAKE_SCROLL flips the live value, so an import can be tested
 			// both against a Mac that already has the setting and one that
@@ -215,7 +215,8 @@ func chezmoiTmplPath(target string) string {
 
 // TestScripts runs every .txtar in testdata/script against the real binary in a
 // hermetic temp dir with HOME isolated. Scripts cover the FS/render commands
-// (scan, security, compare, list, help/version) — no external tools are invoked.
+// (scan, security, compare, list, help/version), and no external tools are
+// invoked.
 func TestScripts(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/script",
@@ -275,8 +276,7 @@ func TestScripts(t *testing.T) {
 			},
 			// filemode asserts a file's permission bits. `stat` spells this
 			// differently on macOS and Linux, and the assertion has to hold on
-			// both — a permission test that only runs in CI is not a
-			// permission test.
+			// both, not only on the CI runner.
 			// globpath resolves a single-match glob into an env var. Backups
 			// are named for the host and the minute they were taken, so a
 			// script cannot spell the path it just created.

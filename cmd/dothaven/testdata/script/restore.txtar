@@ -14,7 +14,7 @@ stdout 'mystery/thing.conf'
 
 
 # Off a terminal: new files are written, a differing one is kept. Nobody was
-# asked, so it is not "declined" — it is still on offer next time.
+# asked, so it is not "declined" and is still on offer next time.
 exec dothaven restore Downloads/backup-box-20240101000000
 stdout 'Restored 1 file'
 stdout '1 file that differs from this machine left as it is'

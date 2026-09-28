@@ -1,5 +1,5 @@
 # Paths dothaven has never heard of still travel: `include` adds them, backup
-# carries them under extra/, and restore puts them back in the same place —
+# carries them under extra/, and restore puts them back in the same place,
 # even on a machine whose own include list is empty.
 
 # A config nothing covers is reported as such.

@@ -264,8 +264,8 @@ type dashSecretFile struct {
 	Count    int    `json:"count"`
 }
 
-// dashSecrets names the files holding secrets and what kind — never the
-// values, which is also why this panel exists rather than a file browser.
+// dashSecrets names the files holding secrets and what kind, never the values.
+// That is also why this panel exists rather than a file browser.
 func dashSecrets(ctx context.Context, env *sys.OS) (any, error) {
 	results, err := scanTracked(ctx, env, false)
 	if err != nil {

@@ -51,7 +51,7 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 		Short: "Put a backup's files back into your home folder",
 		Long: "Accepts a backup folder, a .tar.gz, or an encrypted .tar.gz.age (asks for the\n" +
 			"passphrase; no other tools needed). With no path on a terminal, it lists the\n" +
-			"backups it can find — dothaven's folder, Downloads, Desktop, USB drives.\n\n" +
+			"backups it can find in dothaven's folder, Downloads, Desktop and USB drives.\n\n" +
 			"New files are written. A file that already exists and differs is a conflict:\n" +
 			"on a terminal you choose per file (with a diff); otherwise it is kept, unless\n" +
 			"--force. Anything overwritten is saved to a pre-restore snapshot first.\n\n" +
@@ -166,7 +166,7 @@ func statusMark(s restore.Status) (string, string) {
 	case restore.StatusSame:
 		return good("✓"), "applied"
 	case restore.StatusRedacted:
-		return dim("⊘"), "redacted — can't restore"
+		return dim("⊘"), "redacted, can't restore"
 	}
 	return " ", string(s)
 }
@@ -216,7 +216,7 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	interactive := !o.force && !o.yes && tui.Interactive()
 	opts := restore.ExecuteOptions{Force: o.force}
 	if pending := t.New + t.Update + t.Conflict + t.Changed; pending == 0 && (t.Skipped == 0 || !o.force) {
-		fmt.Println(good("✓ Nothing new to restore — everything here is applied or was left out on purpose."))
+		fmt.Println(good("✓ Nothing new to restore. Everything here is applied or was left out on purpose."))
 		printRedacted(plan)
 		if t.Skipped == 0 || !interactive {
 			return offerExtras(cmd, env, path, dir, extras)
@@ -252,14 +252,14 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	res, err := restore.Execute(plan, opts)
 	lg.Record(plan.BackupID, res.Outcomes, time.Now())
 	if serr := lg.Save(ledgerPath(env)); serr != nil {
-		fmt.Fprintf(os.Stderr, "  %s could not save what was applied (%v) — the next run will ask again\n", warn("⚠"), serr)
+		fmt.Fprintf(os.Stderr, "  %s could not save what was applied (%v). The next run will ask again.\n", warn("⚠"), serr)
 	}
 	if err != nil {
 		return err
 	}
 
 	if res.Restored > 0 {
-		fmt.Printf("\n%s %s %s\n", good("✓"), bold(fmt.Sprintf("Restored %s", plural(res.Restored, "file"))), dim("— "+formatCategories(res.PerCategory)))
+		fmt.Printf("\n%s %s %s\n", good("✓"), bold(fmt.Sprintf("Restored %s:", plural(res.Restored, "file"))), dim(formatCategories(res.PerCategory)))
 	} else {
 		fmt.Println("\nNo files restored.")
 	}
@@ -275,11 +275,11 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 		}
 	}
 	if declined > 0 {
-		fmt.Printf("  %s %s left as %s — remembered, so the next restore won't offer %s again\n",
+		fmt.Printf("  %s %s left as %s and remembered, so the next restore won't offer %s again\n",
 			dim("○"), plural(declined, "file"), pick(declined, "it is", "they are"), pick(declined, "it", "them"))
 	}
 	if kept > 0 {
-		fmt.Printf("  %s %s that %s from this machine left as %s — off a terminal nothing is replaced without asking.\n",
+		fmt.Printf("  %s %s that %s from this machine left as %s. Off a terminal, nothing is replaced without asking.\n",
 			warn("≠"), plural(kept, "file"), pick(kept, "differs", "differ"), pick(kept, "it is", "they are"))
 		fmt.Printf("    %s\n", dim("Run dothaven restore in a terminal to decide, or pass --force to overwrite (the old copies are kept)."))
 	}
@@ -305,7 +305,7 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 // Linux, a tool this version does not know, a file that could not be read.
 func printUnplaced(plan restore.Plan, src string) {
 	if n := len(plan.Unmatched); n > 0 {
-		fmt.Printf("  %s %s %s no place on this machine — its tool keeps config elsewhere on %s, or not at all:\n",
+		fmt.Printf("  %s %s %s no place on this machine (its tool keeps config elsewhere on %s, or not at all):\n",
 			warn("?"), plural(n, "file"), pick(n, "has", "have"), runtime.GOOS)
 		printList(plan.Unmatched, 6)
 		hint := "They stay in the backup; copy any you need by hand from " + src
@@ -510,7 +510,7 @@ func manifestLine(dir string) string {
 	}
 	if contents != "" {
 		if line != "" {
-			line += " — "
+			line += "; "
 		}
 		line += contents
 	}
@@ -602,7 +602,7 @@ func offerExtras(cmd *cobra.Command, env *sys.OS, path, dir string, x extras) er
 
 func printRestorePlan(env *sys.OS, plan restore.Plan, actionableOnly bool) {
 	if !actionableOnly {
-		fmt.Print("\nDry run — nothing will be changed:\n")
+		fmt.Print("\nDry run (nothing will be changed):\n")
 	}
 	byCat := map[string][]restore.Entry{}
 	var cats []string
@@ -631,14 +631,14 @@ func printRestorePlan(env *sys.OS, plan restore.Plan, actionableOnly bool) {
 func newStatusCmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Latest backup vs this machine — one-screen summary",
+		Short: "One-screen summary: latest backup vs this machine",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupDir := latestBackup(env.DataDir())
 			if backupDir == "" {
 				// An encrypted backup is the recommended kind, and comparing
-				// against it needs its passphrase — so say where it is rather
-				// than claiming there is no backup at all.
+				// against it needs its passphrase, so say where it is rather
+				// than claim there is no backup.
 				for _, b := range findBackups(env) {
 					if b.Kind != "folder" {
 						fmt.Printf("%s %s %s\n", bold("Newest backup:"), shortHome(env, b.Path), dim("("+b.Kind+", "+humanAge(time.Since(b.Mod))+" old)"))
@@ -706,7 +706,7 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 	var section string
 	c := &cobra.Command{
 		Use:   "diff [backup-path]",
-		Short: "Backup vs this machine — file by file",
+		Short: "Backup vs this machine, file by file",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backupDir := ""
@@ -766,7 +766,7 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 				ents := byCat[cat]
 				sort.Slice(ents, func(i, j int) bool { return ents[i].BackupPath < ents[j].BackupPath })
 				for _, e := range ents {
-					fmt.Println(colorize(e.Status, fmt.Sprintf("  %s — %s", e.BackupPath, diffStatusLabel[e.Status])))
+					fmt.Println(colorize(e.Status, fmt.Sprintf("  %s: %s", e.BackupPath, diffStatusLabel[e.Status])))
 				}
 			}
 

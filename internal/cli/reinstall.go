@@ -26,11 +26,11 @@ func newReinstallCmd(env *sys.OS) *cobra.Command {
 	var dryRun, assumeYes bool
 	c := &cobra.Command{
 		Use:   "reinstall [backup]",
-		Short: "Install the apps & packages a backup recorded — only what's missing",
+		Short: "Install the apps & packages a backup recorded (only what's missing)",
 		Long: "Every backup records what was installed: Homebrew formulae, casks and App Store\n" +
 			"apps, global npm/pnpm/bun/pipx/uv/cargo packages, editor extensions, Linux\n" +
 			"packages. This compares that list with this machine, shows what is already\n" +
-			"installed, and installs the rest — all of it, or the groups and packages you\n" +
+			"installed, and installs the rest: all of it, or the groups and packages you\n" +
 			"pick. It runs on the terminal so Homebrew and sudo can ask for your password.\n" +
 			"Each step skips itself if its tool is missing, so it is safe to run again.",
 		Args:          cobra.MaximumNArgs(1),
@@ -463,7 +463,7 @@ func chooseInstall(groups []installGroup, missing int) ([]installGroup, bool, er
 //
 // No timeout, deliberately: `brew bundle` on a fresh machine is tens of
 // minutes of downloads, and a kill at some arbitrary deadline would leave it
-// half-installed. Ctrl-C still stops it — the context kills the script. The
+// half-installed. Ctrl-C still stops it: the context kills the script. The
 // script is written to a private temporary directory and removed afterwards.
 func runScript(ctx context.Context, script string) error {
 	tmp, done, err := sys.PrivateTempDir("install")

@@ -54,7 +54,7 @@ func TestShortenPathFallsBackToACharacterCut(t *testing.T) {
 }
 
 // Piped output has to stay parseable, so the helpers must be inert off a
-// terminal — the tests themselves are the proof, since `go test` is not a TTY.
+// terminal. `go test` is not a TTY, so the test run itself checks this.
 func TestStylesAreInertWhenNotATerminal(t *testing.T) {
 	for name, got := range map[string]string{
 		"bold": bold("x"), "dim": dim("x"), "good": good("x"),
@@ -73,9 +73,10 @@ func TestHeaderNamesTheAction(t *testing.T) {
 	}
 }
 
-// TestMenuActionsResolve keeps the menu honest. An action string that does not
-// resolve falls through to Help() at runtime and looks like a broken menu
-// entry, which nothing else would catch — the strings are only read by cobra.
+// TestMenuActionsResolve checks that every menu action resolves to a command.
+// One that does not falls through to Help() at runtime and looks like a broken
+// menu entry, which nothing else would catch: the strings are only read by
+// cobra.
 func TestMenuActionsResolve(t *testing.T) {
 	root := NewRoot(sys.Real(), "0.0.0")
 	for action := range actionTitles {

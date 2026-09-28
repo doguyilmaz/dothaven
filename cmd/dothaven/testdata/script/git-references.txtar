@@ -1,6 +1,6 @@
 # What the git config points at travels with it, without being asked for:
-# hooks outside ~/.config/git, and the files [include]/[includeIf] pull in —
-# a restored .gitconfig without them disables hooks or signs as the wrong person.
+# hooks outside ~/.config/git, and the files [include]/[includeIf] pull in.
+# A restored .gitconfig without them disables hooks or signs as the wrong person.
 chmod 755 .githooks/pre-commit
 exec dothaven include --list
 ! stdout '.githooks'

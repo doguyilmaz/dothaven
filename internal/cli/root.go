@@ -19,14 +19,14 @@ import (
 
 // NewRoot builds the root command with every subcommand wired in.
 func NewRoot(env *sys.OS, version string) *cobra.Command {
-	// Commands list in the order they are added below — the order of the job —
-	// not alphabetically, which put "tui" after "ready".
+	// Commands are listed in the order they are added below (the order of the
+	// job), not alphabetically, which put "tui" after "ready".
 	cobra.EnableCommandSorting = false
 	root := &cobra.Command{
 		Use:   "dothaven",
 		Short: "Keep your dev setup when you change machines",
-		Long: "dothaven finds your dev config — dotfiles, editor and terminal settings, AI tool\n" +
-			"skills, agents, plugins and MCP servers, cloud logins, SSH keys — plus the apps\n" +
+		Long: "dothaven finds your dev config (dotfiles, editor and terminal settings, AI tool\n" +
+			"skills, agents, plugins and MCP servers, cloud logins, SSH keys) and the apps\n" +
 			"and packages you have installed, and moves them to another machine.\n\n" +
 			"Moving to a new machine:\n" +
 			"  dothaven ready               1. anything only on this machine? (unpushed work, .env)\n" +
@@ -48,12 +48,11 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		Args:          cobra.NoArgs,
 	}
 	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
-		return fmt.Errorf("%w — see `%s --help`", err, c.CommandPath())
+		return fmt.Errorf("%w (see `%s --help`)", err, c.CommandPath())
 	})
-	// Bare `dothaven` on a terminal opens the menu instead of printing help.
-	// Someone who cannot remember which of the verbs they want is exactly the
-	// person the menu is for, and help is what they get today. Off a terminal
-	// it still prints help, because a pipe cannot drive a menu.
+	// Bare `dothaven` on a terminal opens the menu instead of printing help:
+	// someone who cannot remember which verb they want is who the menu is for.
+	// Off a terminal it still prints help, because a pipe cannot drive a menu.
 	root.RunE = func(cmd *cobra.Command, _ []string) error {
 		if !tui.Interactive() {
 			return cmd.Help()
@@ -65,11 +64,10 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 		sub.SetContext(cmd.Context())
 		return sub.RunE(sub, nil)
 	}
-	// Grouped, because a flat list of eighteen verbs is the reason this tool
-	// reads as complicated. The groups are the jobs someone actually has —
-	// set up a machine, save a config, put one back — not the internal shape
-	// of the code. Registration lives here so the grouping stays in one place
-	// rather than being spread across eighteen constructors.
+	// Grouped, because a flat list of eighteen verbs reads as complicated. The
+	// groups are the jobs someone has (set up a machine, save a config, put one
+	// back), not the internal shape of the code. Registration lives here so the
+	// grouping stays in one place rather than across eighteen constructors.
 	root.AddGroup(
 		&cobra.Group{ID: "start", Title: "Start here:"},
 		&cobra.Group{ID: "save", Title: "Save this machine:"},
@@ -106,9 +104,8 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 // Execute builds the command tree, runs it, and prints a pending update notice
 // afterwards.
 //
-// The check runs alongside the command rather than before it, so on anything
-// that does real work it costs nothing at all. The notice prints after the
-// output, not ahead of it: "here is what to do about this" belongs at the end,
+// The check runs alongside the command rather than before it, so it adds no
+// time to anything that does real work. The notice prints after the output,
 // where the reader already is.
 func Execute(ctx context.Context, env *sys.OS, version string) error {
 	takeSecretEnv()
@@ -140,7 +137,7 @@ func Execute(ctx context.Context, env *sys.OS, version string) error {
 }
 
 // ExitError carries a desired process exit code without a printed message. A
-// drift/parity failure is a normal CI outcome, not an error to surface — main
+// drift/parity failure is a normal CI outcome, not an error to print; main
 // maps it straight to os.Exit.
 type ExitError struct{ Code int }
 
@@ -159,8 +156,8 @@ func stdoutIsTTY() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// stderrIsTTY reports whether stderr is a terminal — gates progress output so a
-// piped/CI run never gets carriage-return spam.
+// stderrIsTTY reports whether stderr is a terminal. It gates progress output so
+// a piped or CI run gets no carriage-return spam.
 func stderrIsTTY() bool {
 	fi, err := os.Stderr.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
@@ -169,8 +166,8 @@ func stderrIsTTY() bool {
 // outputDir is where a command writes when not told otherwise: always
 // dothaven's data directory. It used to be ./reports whenever the current
 // directory was a git repository, which put a snapshot of your machine inside
-// whatever project you happened to be in — one `git add .` from being pushed —
-// and let the commands that read snapshots look somewhere else.
+// whatever project you were in (one `git add .` from being pushed) and let the
+// commands that read snapshots look somewhere else.
 func outputDir(env *sys.OS, explicit string) string {
 	if explicit != "" {
 		return explicit

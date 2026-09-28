@@ -52,12 +52,12 @@ func warn(s string) string   { return paint(styWarn, s) }
 func danger(s string) string { return paint(styDanger, s) }
 
 // kbd renders something the reader can type. Commands buried in prose are hard
-// to pick out precisely when they matter most — at the end of output, when the
-// question is "so what do I run now".
+// to pick out, especially at the end of output, when the question is "so what
+// do I run now".
 //
 // Named kbd, not cmd: `cmd` is the cobra command in every RunE in this package,
-// and `ok` is the most common variable name in Go. A helper worth using
-// everywhere must not shadow the names everywhere already uses.
+// and `ok` is the most common variable name in Go. A helper used everywhere
+// must not shadow either.
 func kbd(s string) string { return paint(styCmd, s) }
 
 // header separates one command's output from the next.
@@ -72,7 +72,7 @@ func header(title string) string {
 }
 
 // ellipsize shortens a path from the middle so a column stays aligned. The two
-// ends of a path carry the meaning — which project, which file — and a plain
+// ends of a path carry the meaning (which project, which file), and a plain
 // truncation drops the half that identifies it.
 func ellipsize(s string, width int) string {
 	r := []rune(s)

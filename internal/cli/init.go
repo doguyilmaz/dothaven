@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runShown runs a command, echoing it and its output — used by the guided init.
+// runShown runs a command and echoes it and its output, for the guided init.
 func runShown(ctx context.Context, name string, args ...string) {
 	fmt.Printf("  $ %s %s\n", name, strings.Join(args, " "))
 	out, err := runShell(ctx, name, args...)
@@ -73,7 +73,7 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 			state := probeInitState(ctx, env)
 			steps := chezmoi.PlanInit(state)
 
-			fmt.Print("dothaven init — chezmoi + age bootstrap\n\n")
+			fmt.Print("dothaven init: chezmoi + age bootstrap\n\n")
 			for _, s := range steps {
 				mark, title := warn("→"), s.Title
 				if s.Done {
@@ -89,18 +89,19 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if chezmoi.IsReady(steps) {
-				fmt.Print("\n✓ Setup complete. Next:\n  dothaven chezmoi-export          # dry-run — review the plan\n  dothaven chezmoi-export --apply  # execute\n")
+				fmt.Print("\n✓ Setup complete. Next:\n  dothaven chezmoi-export          # dry-run: review the plan\n  dothaven chezmoi-export --apply  # execute\n")
 				return nil
 			}
 
-			// Non-interactive (piped/CI): just print guidance.
+			// Non-interactive (piped/CI): print guidance only.
 			if !tui.Interactive() {
 				fmt.Printf("\nRun the commands above, then re-run %s.\n", kbd("dothaven init"))
 				return nil
 			}
 
-			// Guided: offer to run the safe steps. The age key is guided-only —
-			// generating/placing key material is the user's responsibility.
+			// Guided: offer to run the safe steps. The age key step only prints
+			// instructions: generating and placing key material is the user's
+			// responsibility.
 			fmt.Println()
 			for _, s := range steps {
 				if s.Done {
@@ -116,7 +117,7 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 				case "age-key":
 					fmt.Println("  → Generate your age key yourself, then re-run init:")
 					fmt.Printf("      %s\n", s.Command)
-					fmt.Println(warn("    ⚠ Back it up offline — losing it means encrypted files can't be decrypted."))
+					fmt.Println(warn("    ⚠ Back it up offline. Without it, encrypted files can't be decrypted."))
 				case "source":
 					fallback := chezmoi.RepoURL(state.User)
 					url, err := tui.Input("Private repo URL", fallback)

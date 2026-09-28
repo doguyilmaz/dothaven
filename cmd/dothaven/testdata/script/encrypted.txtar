@@ -1,6 +1,6 @@
 # The migration path end to end: an encrypted backup carries what a plaintext
 # one must not (SSH keys, tokens, credential files), keeps executable bits, and
-# restores on a machine that has none of it — with no age binary involved.
+# restores on a machine that has none of it, with no age binary involved.
 env DOTHAVEN_PASSPHRASE='correct horse battery staple'
 
 chmod 755 .config/git/hooks/pre-commit

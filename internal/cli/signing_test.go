@@ -51,9 +51,9 @@ func run(t *testing.T, dir, stdin string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// verifyWithGit stores payload+signature as a real commit object — gpgsig
-// right after the committer line, continuation lines indented, which is what
-// GitHub builds from the API fields — and has git itself check it.
+// verifyWithGit stores payload+signature as a real commit object and has git
+// check it. The layout is what GitHub builds from the API fields: gpgsig right
+// after the committer line, continuation lines indented.
 func verifyWithGit(t *testing.T, repo string, payload []byte, sig string, verify ...string) {
 	t.Helper()
 	head, body, _ := strings.Cut(string(payload), "\n\n")
@@ -78,7 +78,7 @@ func signPayload(t *testing.T, env *sys.OS, repo string) ([]byte, string) {
 	tree := run(t, repo, "", "git", "hash-object", "-t", "tree", "-w", "--stdin")
 	bot := github.Identity{Name: "dothaven[bot]", Email: "2002+dothaven[bot]@users.noreply.github.com"}
 	you := github.NoReply("tester", 1001)
-	payload := github.CommitPayload(tree, "", bot, you, time.Now(), "dothaven: box — encrypted backup, 1 file\n")
+	payload := github.CommitPayload(tree, "", bot, you, time.Now(), "dothaven: box (encrypted backup, 1 file)\n")
 	sig, err := g.signer(env)(context.Background(), payload)
 	if err != nil {
 		t.Fatal(err)

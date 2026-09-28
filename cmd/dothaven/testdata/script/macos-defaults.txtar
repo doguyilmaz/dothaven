@@ -55,15 +55,15 @@ stdout 'Your Dock already has the same 1 app'
 stdout 'com.googlecode.iterm2'
 stdout 'Imported 1 domain'
 
-# A new Mac with a different Dock gets the old one rebuilt — from the apps it
-# actually has.
+# A new Mac with a different Dock gets the old one rebuilt, using only the
+# apps it has.
 env DOCK_APP=/System/Applications/Mail.app
 exec dothaven defaults import --yes $WORK/out
 stdout 'Dock rebuilt with 1 app'
 exec dothaven defaults import --dry-run $WORK/out
-stdout 'Dry run — the Dock was not changed'
+stdout 'Dry run: the Dock was not changed'
 
-# Nested settings — here the language order — are carried whole, as the XML
+# Nested settings (here the language order) are carried whole, as the XML
 # fragment `defaults write` stores with its types intact.
 env DOCK_APP=$WORK/Applications/Editor.app
 env FAKE_LANG=tr-TR

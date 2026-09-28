@@ -131,14 +131,14 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 	var o backupOpts
 	c := &cobra.Command{
 		Use:   "backup",
-		Short: "Save your config — a folder here, or one encrypted file to carry",
+		Short: "Save your config as a folder here, or as one encrypted file to carry",
 		Long: "Copies every config dothaven tracks (plus anything you added with `include`),\n" +
 			"a list of your installed apps and packages, and your macOS settings.\n\n" +
 			"  dothaven backup             a folder on this machine. Secrets are redacted and\n" +
 			"                              credential files (SSH keys, cloud logins) left out.\n" +
 			"  dothaven backup --encrypt   ONE age-encrypted file with everything, keys and\n" +
 			"                              tokens included. This is the one for a new machine.\n\n" +
-			"Nothing is written in plaintext when encrypting — not even temporarily.\n" +
+			"When encrypting, nothing is written in plaintext, not even temporarily.\n" +
 			"Restore either kind with `dothaven restore <path>`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -181,7 +181,7 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 // pickBackupCategories shows the category picker. A nil result with no error
 // means the user backed out or picked nothing.
 func pickBackupCategories(env *sys.OS, encrypt bool) ([]string, error) {
-	note := "🔑 credentials — left out unless --encrypt"
+	note := "🔑 credentials (left out unless --encrypt)"
 	if encrypt {
 		note = "🔑 credentials"
 	}
@@ -223,7 +223,7 @@ func reviewUncovered(env *sys.OS, force bool) (int, error) {
 		return 0, nil
 	}
 	picked, err := tui.PickSome(
-		fmt.Sprintf("%d things in your home folder aren't in any backup yet — include some?", len(pending)),
+		fmt.Sprintf("%d things in your home folder aren't in any backup yet. Include some?", len(pending)),
 		"space picks · enter continues. Whatever you leave unpicked won't be asked about again\n"+
 			"(change your mind any time: dothaven include <path>).",
 		pending)
@@ -244,7 +244,7 @@ func reviewUncovered(env *sys.OS, force bool) (int, error) {
 		return 0, err
 	}
 	if len(picked) > 0 {
-		fmt.Printf("%s %s added — they will be in this and every later backup.\n", good("+"), plural(len(picked), "path"))
+		fmt.Printf("%s %s added. They will be in this and every later backup.\n", good("+"), plural(len(picked), "path"))
 	}
 	return len(picked), nil
 }
@@ -278,7 +278,7 @@ func validateCategories(targets []registry.BackupTarget, only, skip []string, ex
 				names = append(names, k)
 			}
 			sort.Strings(names)
-			return fmt.Errorf("unknown category %q — choose from: %s", c, strings.Join(names, ", "))
+			return fmt.Errorf("unknown category %q (choose from: %s)", c, strings.Join(names, ", "))
 		}
 	}
 	return nil
@@ -347,9 +347,9 @@ func runBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpt
 	}
 	switch {
 	case errors.Is(err, backup.ErrNothingToWrite):
-		return out, fmt.Errorf("nothing to back up — no tracked files found for this selection")
+		return out, fmt.Errorf("nothing to back up: no tracked files found for this selection")
 	case errors.Is(err, context.Canceled):
-		fmt.Fprintln(os.Stderr, "Backup cancelled — nothing was kept.")
+		fmt.Fprintln(os.Stderr, "Backup cancelled. Nothing was kept.")
 		return out, ExitError{Code: 130}
 	case err != nil:
 		return out, err
@@ -363,7 +363,7 @@ func runBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpt
 }
 
 // fillBackup writes one backup's contents into sink: the tracked files, the
-// inventory, macOS settings and the MANIFEST. Shared by every kind of backup —
+// inventory, macOS settings and the MANIFEST. Shared by every kind of backup:
 // folder, archive, encrypted, and the split form a GitHub push uses.
 func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpts, targets []registry.BackupTarget, sink backup.Sink, host string, out *backupOutcome) error {
 	if o.remote {
@@ -409,10 +409,9 @@ func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOp
 		}
 		out.inventory = ok
 	}
-	// The Mac's own settings — scroll direction, key repeat, Dock size,
-	// Finder options — are held by cfprefsd, not by any file the walk
-	// above reads. A backup without them restores a machine that has all
-	// your config and still feels wrong.
+	// The Mac's own settings (scroll direction, key repeat, Dock size,
+	// Finder options) are held by cfprefsd, not by any file the walk above
+	// reads, so they are captured separately.
 	if runtime.GOOS == "darwin" && registry.Selected(catMacOS, o.only, o.skip) {
 		n, err := writePrefsTo(ctx, sink)
 		if err != nil {
@@ -433,9 +432,9 @@ func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOp
 	return sink.Add("MANIFEST.txt", []byte(manifest), false)
 }
 
-// writeInventory records what is installed — the half of a machine no config
-// file describes — together with a script that reinstalls it. Without this a
-// restored machine has every dotfile and none of the programs they configure.
+// writeInventory records what is installed, which no config file describes,
+// together with a script that reinstalls it. Without it a restored machine has
+// every dotfile and none of the programs they configure.
 func writeInventory(ctx context.Context, env *sys.OS, sink backup.Sink, redact bool) (bool, error) {
 	snap := gatherInventory(ctx, env)
 	if ctx.Err() != nil {
@@ -524,7 +523,7 @@ func printBackupOutcome(env *sys.OS, o backupOutcome) {
 	case !o.redacted:
 		kind = "Backup saved (raw values, NOT encrypted)"
 	}
-	fmt.Printf("\n%s %s\n", good("✓"), bold(fmt.Sprintf("%s — %s, %s", kind, plural(res.TotalFiles, "file"), humanBytes(o.size))))
+	fmt.Printf("\n%s %s\n", good("✓"), bold(fmt.Sprintf("%s: %s, %s", kind, plural(res.TotalFiles, "file"), humanBytes(o.size))))
 	fmt.Printf("  %s\n", o.path)
 	if len(res.PerCategory) > 0 {
 		fmt.Printf("  %s\n", dim(formatCategories(res.PerCategory)))
@@ -548,12 +547,12 @@ func printBackupOutcome(env *sys.OS, o backupOutcome) {
 		}
 	}
 	if u := uncovered(env); len(u) > 0 {
-		fmt.Printf("\n%s %s — %s\n", dim("?"), dim(plural(len(u), "path")+" nothing covers yet"), kbd("dothaven include --list"))
+		fmt.Printf("\n%s %s (see %s)\n", dim("?"), dim(plural(len(u), "path")+" nothing covers yet"), kbd("dothaven include --list"))
 	}
 
 	fmt.Println("\n" + bold("Next:"))
 	if o.encrypted || strings.HasSuffix(o.path, ".tar.gz") {
-		fmt.Println("  Copy this file off this machine — a USB drive, cloud storage, another computer.")
+		fmt.Println("  Copy this file off this machine: to a USB drive, cloud storage, or another computer.")
 		fmt.Println("  It lives on the disk you are about to replace.")
 		fmt.Printf("  On the new machine: %s\n", kbd("dothaven restore "+filepath.Base(o.path)))
 		if o.encrypted {
@@ -565,9 +564,9 @@ func printBackupOutcome(env *sys.OS, o backupOutcome) {
 	fmt.Printf("  %s   %s\n", kbd("dothaven backup --encrypt"), dim("one complete encrypted file for a new machine"))
 }
 
-// printLeftOut lists everything that exists and did not go in, loudest first.
-// A backup is judged by what it is missing, and nobody reads a MANIFEST until
-// too late. complete is the command that would carry the credentials.
+// printLeftOut lists everything that exists and did not go in, most serious
+// first, so it is seen without opening the MANIFEST. complete is the command
+// that would carry the credentials.
 func printLeftOut(res backup.Result, encrypted bool, complete string) {
 	if len(res.SkippedSensitive)+len(res.Withheld) > 0 {
 		fmt.Printf("\n%s %s\n", warn("⚠"), bold(fmt.Sprintf("%s with credentials left out of this plaintext backup:",

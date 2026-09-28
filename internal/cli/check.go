@@ -17,22 +17,22 @@ import (
 
 // newCheckCmd validates that the config files on this machine still parse.
 //
-// A broken config fails quietly — a shell abandons the rest of a .zshrc after a
-// syntax error, an editor ignores settings it cannot read — so it is usually
-// found weeks later, by which time it has been copied into every backup and
-// carried to every machine. This is the cheap version of finding out.
+// A broken config fails quietly (a shell abandons the rest of a .zshrc after a
+// syntax error, an editor ignores settings it cannot read), so it is usually
+// found weeks later, after it has been copied into every backup and carried to
+// every machine.
 //
 // Exits 2 when something is broken, so it can gate a backup or a commit.
 func newCheckCmd(env *sys.OS) *cobra.Command {
 	var showAll bool
 	c := &cobra.Command{
 		Use:   "check",
-		Short: "Are my config files still valid? — parses each one",
+		Short: "Are my config files still valid? (parses each one)",
 		Long: "Checks the config files dothaven tracks with the parser that owns each\n" +
 			"format: encoding/json for JSON, zsh -n and bash -n for shell files, git\n" +
 			"and ssh for their own configs.\n\n" +
-			"A config is correct when the program that reads it accepts it, so asking\n" +
-			"that program beats re-implementing its parser — and adds nothing to trust.\n" +
+			"A config is correct when the program that reads it accepts it, so dothaven\n" +
+			"asks that program instead of re-implementing its parser.\n" +
 			"Formats with no parser to hand are reported as unchecked rather than\n" +
 			"assumed fine. Exits 2 if anything is broken.",
 		Args:          cobra.NoArgs,
@@ -87,7 +87,7 @@ func newCheckCmd(env *sys.OS) *cobra.Command {
 					fmt.Printf("  %s %s  %s\n", good("✓"), padTo(short(r.Path), pathCol), dim(r.Format))
 				}
 				for _, r := range unchecked {
-					fmt.Printf("  %s %s  %s\n", dim("–"), padTo(short(r.Path), pathCol), dim(r.Detail))
+					fmt.Printf("  %s %s  %s\n", dim("·"), padTo(short(r.Path), pathCol), dim(r.Detail))
 				}
 			}
 
@@ -101,7 +101,7 @@ func newCheckCmd(env *sys.OS) *cobra.Command {
 			fmt.Println(".")
 
 			if len(broken) == 0 {
-				fmt.Println(good("✅ Every config that could be parsed, parsed."))
+				fmt.Println(good("✅ Every config that could be parsed is valid."))
 				return nil
 			}
 			fmt.Println(danger(fmt.Sprintf("❌ %s broken. Fix these before they reach another machine.", plural(len(broken), "file"))))

@@ -70,8 +70,8 @@ func menuTree() []tui.Node {
 	}
 }
 
-// actionTitles name each menu choice in the output it produces, so two
-// actions run in a row don't read as one undifferentiated wall.
+// actionTitles head the output of each menu choice, so two actions run in a
+// row are easy to tell apart.
 var actionTitles = map[string]string{
 	"ready":           "Would anything be lost?",
 	"pack":            "Pack everything for a new machine",
@@ -97,9 +97,9 @@ var actionTitles = map[string]string{
 	"ui":              "Dashboard",
 }
 
-// newTUICmd is the interactive front door: a full-screen menu that runs an
-// action in the normal terminal, shows its output, and comes back to where
-// it was, until Quit, Esc or q.
+// newTUICmd is the interactive menu: a full-screen list that runs an action
+// in the normal terminal, shows its output, and opens again where it was,
+// until Quit, Esc or q.
 func newTUICmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:           "tui",
@@ -247,11 +247,11 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 
 // runPack is the whole "before I wipe this machine" job in one pass: check for
 // work that exists nowhere else, offer anything nothing covers, write one
-// encrypted file somewhere it can be carried, and prove it opens.
+// encrypted file somewhere it can be carried, and check that it opens.
 func runPack(cmd *cobra.Command, env *sys.OS) error {
 	ctx := cmd.Context()
 
-	fmt.Println(bold("Step 1 of 4 — anything that exists only here?"))
+	fmt.Println(bold("Step 1 of 4: anything that exists only here?"))
 	r := checkReady(ctx, env, nil, 5)
 	if r.cancelled {
 		return ExitError{Code: 130}
@@ -264,7 +264,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 		}
 	}
 
-	fmt.Println("\n" + bold("Step 2 of 4 — anything else to take?"))
+	fmt.Println("\n" + bold("Step 2 of 4: anything else to take?"))
 	if _, err := reviewUncovered(env, false); err != nil {
 		return err
 	}
@@ -272,7 +272,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 		fmt.Println(dim("  Everything that looks like config is covered."))
 	}
 
-	fmt.Println("\n" + bold("Step 3 of 4 — where should the file go?"))
+	fmt.Println("\n" + bold("Step 3 of 4: where should the file go?"))
 	dest, err := pickDestination(env)
 	if err != nil || dest == "" {
 		return ignoreAbort(err)
@@ -282,7 +282,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 		return err
 	}
 
-	fmt.Println("\n" + bold("Step 4 of 4 — packing"))
+	fmt.Println("\n" + bold("Step 4 of 4: packing"))
 	out, err := runBackup(ctx, cmd, env, backupOpts{output: dest, archive: true, encrypt: true, passphrase: pass})
 	if err != nil {
 		return err
@@ -290,7 +290,7 @@ func runPack(cmd *cobra.Command, env *sys.OS) error {
 	n, verr := backup.Verify(out.path, func() (string, error) { return pass, nil })
 	printBackupOutcome(env, out)
 	if verr != nil {
-		fmt.Fprintf(os.Stderr, "\n%s the file did not read back cleanly: %v — do not rely on it; pack again.\n", danger("✗"), verr)
+		fmt.Fprintf(os.Stderr, "\n%s the file did not read back cleanly: %v. Do not rely on it; pack again.\n", danger("✗"), verr)
 		return ExitError{Code: 1}
 	}
 	fmt.Printf("\n%s %s\n", good("✓"), fmt.Sprintf("Checked: the file opens with your passphrase and holds all %d entries.", n))
@@ -308,7 +308,7 @@ func pickDestination(env *sys.OS) (string, error) {
 			}
 			p := filepath.Join("/Volumes", e.Name())
 			if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-				choices = append(choices, tui.Choice{Label: "Drive: " + e.Name(), Value: p, Hint: "straight onto the drive — best"})
+				choices = append(choices, tui.Choice{Label: "Drive: " + e.Name(), Value: p, Hint: "straight onto the drive (best)"})
 			}
 		}
 	}

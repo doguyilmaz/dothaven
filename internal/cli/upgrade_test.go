@@ -19,14 +19,13 @@ func TestUpdateCheckAllowed(t *testing.T) {
 		want      bool
 	}{
 		{"released binary on a terminal", "0.4.0", false, false, true, true},
-		// A `go build` binary has no version to compare; nagging someone
-		// working on dothaven itself is pure noise.
+		// A `go build` binary has no version to compare, and someone working
+		// on dothaven itself does not need the notice.
 		{"dev build", "dev", false, false, true, false},
 		{"opted out", "0.4.0", true, false, true, false},
 		{"running in CI", "0.4.0", false, true, true, false},
-		// The decisive one. dothaven's output is parsed — snapshots are
-		// deterministic JSON — so a run whose stderr is not a terminal is a
-		// run that must produce no banner at all.
+		// dothaven's output is parsed (snapshots are deterministic JSON), so
+		// a run whose stderr is not a terminal must produce no banner.
 		{"not a terminal", "0.4.0", false, false, false, false},
 		{"opted out beats everything", "0.4.0", true, false, false, false},
 	}
@@ -47,8 +46,7 @@ func TestUpdateNotice(t *testing.T) {
 	got := buf.String()
 
 	// Both versions, so the reader can see the size of the jump, and the exact
-	// thing to type next — the whole point is that they do not have to go and
-	// find out how this was installed.
+	// command to type next, so they need not work out how this was installed.
 	for _, want := range []string{"0.4.0", "0.5.0", "dothaven upgrade"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("notice %q does not mention %q", got, want)
@@ -57,8 +55,8 @@ func TestUpdateNotice(t *testing.T) {
 	if !strings.HasSuffix(got, "\n") {
 		t.Errorf("notice %q does not end in a newline", got)
 	}
-	// One line. A boxed multi-line banner after every command is the thing
-	// people disable, and a disabled notice tells nobody anything.
+	// One line: a boxed multi-line banner after every command is what people
+	// disable.
 	if n := strings.Count(strings.TrimSuffix(got, "\n"), "\n"); n != 0 {
 		t.Errorf("notice spans %d extra lines, want a single line:\n%s", n, got)
 	}
@@ -68,8 +66,8 @@ func TestUpdateCacheIsNotInTheDataDir(t *testing.T) {
 	// Two things live in the data dir that a file written on every single
 	// command must stay away from:
 	//
-	//   doctor, given no snapshot, falls back to the newest .json there — and
-	//   an update cache rewritten on every run is always the newest .json, so
+	//   doctor, given no snapshot, falls back to the newest .json there. An
+	//   update cache rewritten on every run is always the newest .json, so
 	//   doctor would try to parse it as a snapshot and fail.
 	//
 	//   backups are written owner-only (0700 dirs). MkdirAll does not tighten
@@ -90,7 +88,7 @@ func TestUpdateCacheIsNotInTheDataDir(t *testing.T) {
 
 func TestNoticeIsSuppressedForUpgradeItself(t *testing.T) {
 	// Running `upgrade` and being told at the end that an upgrade is available
-	// reads as a failure — especially straight after one succeeded, since the
+	// reads as a failure, especially straight after one succeeded, since the
 	// running process still reports the version it was built as.
 	root := NewRoot(sys.Real(), "0.4.0")
 

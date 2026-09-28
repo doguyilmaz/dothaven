@@ -59,7 +59,7 @@ This entry is the whole old-machine job in one pass:
 
 1. **Anything that exists only here?** Runs the `ready` check. If some work exists only on this machine, it asks whether to continue anyway.
 2. **Anything else to take?** Offers the config-looking paths nothing covers yet.
-3. **Where should the file go?** Mounted drives come first ("straight onto the drive — best"), then Desktop, dothaven's own folder, or a folder you type. Then it asks for a passphrase, twice.
+3. **Where should the file go?** Mounted drives come first (the best place), then Desktop, dothaven's own folder, or a folder you type. Then it asks for a passphrase, twice.
 4. **Packing.** Writes one encrypted backup with everything, then reads it back end to end with your passphrase, without writing anything, to prove it opens:
 
 ```text

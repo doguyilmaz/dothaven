@@ -107,7 +107,7 @@ func newCollectCmd(env *sys.OS) *cobra.Command {
 			snap := gatherSnapshot(cmd.Context(), env, redact)
 			if cerr := cmd.Context().Err(); cerr != nil {
 				fmt.Fprintln(os.Stderr, "collect cancelled.")
-				return ExitError{Code: 130} // cancelled mid-collect — don't write a truncated snapshot as success
+				return ExitError{Code: 130} // cancelled mid-collect: don't write a truncated snapshot as success
 			}
 
 			var scanResults []scan.Result

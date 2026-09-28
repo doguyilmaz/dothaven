@@ -20,7 +20,7 @@ var shellStartupFiles = []string{".zprofile", ".zshrc", ".zshenv", ".bash_profil
 type brewRef struct{ File, Wrong, Right string }
 
 // staleBrewRefs finds startup files that call brew under a prefix this
-// machine does not have, while it does have Homebrew elsewhere — the classic
+// machine does not have, while it does have Homebrew elsewhere. This is common
 // after moving from an Intel Mac to Apple Silicon (or back): every new shell
 // starts with "no such file or directory: /usr/local/bin/brew". Pure: files
 // maps a name to its content, and exists says whether a path is here.
