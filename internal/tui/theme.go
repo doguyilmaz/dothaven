@@ -62,6 +62,16 @@ func run(fields ...huh.Field) error {
 	return huh.NewForm(huh.NewGroup(fields...)).WithTheme(theme()).Run()
 }
 
+// runList shows a list prompt. Typing / to search it is offered only on a
+// list taller than the window: on one that fits, a search box is one more
+// thing that looks like another program taking over.
+func runList(search bool, field huh.Field) error {
+	km := huh.NewDefaultKeyMap()
+	km.Select.Filter.SetEnabled(search)
+	km.MultiSelect.Filter.SetEnabled(search)
+	return huh.NewForm(huh.NewGroup(field)).WithTheme(theme()).WithKeyMap(km).Run()
+}
+
 // listHeight is the height to give a list prompt with n choices under its
 // title and description (huh counts both), or 0 when the whole list fits the
 // window. 0 matters: with any height set, huh scrolls the list as the cursor

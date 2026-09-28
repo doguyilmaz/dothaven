@@ -70,36 +70,9 @@ func menuTree() []tui.Node {
 	}
 }
 
-// actionTitles head the output of each menu choice, so two actions run in a
-// row are easy to tell apart.
-var actionTitles = map[string]string{
-	"ready":           "Would anything be lost?",
-	"pack":            "Pack everything for a new machine",
-	"restore":         "Restore a backup",
-	"reinstall":       "Reinstall apps & packages",
-	"missing":         "What's still missing here?",
-	"backup":          "Quick backup",
-	"status":          "What changed since the last backup?",
-	"include":         "Choose what else to back up",
-	"scan":            "Scan config for secrets",
-	"check":           "Are my config files valid?",
-	"collect":         "Everything installed",
-	"defaults import": "Put macOS settings back",
-	"init":            "Check chezmoi + age setup",
-	"chezmoi-export":  "Export to chezmoi",
-	"migrate":         "Apply chezmoi repo",
-	"guide":           "What should I do?",
-	"github push":     "Save to GitHub",
-	"github pull":     "Restore from GitHub",
-	"github status":   "GitHub",
-	"github logout":   "Sign out of GitHub",
-	"doctor":          "Check dothaven itself",
-	"ui":              "Dashboard",
-}
-
-// newTUICmd is the interactive menu: a full-screen list that runs an action
-// in the normal terminal, shows its output, and opens again where it was,
-// until Quit, Esc or q.
+// newTUICmd is the interactive menu. The menu and each action it runs share
+// one page (see tui.RunMenu): an action starts at the top under the menu's
+// header, and the menu opens again where it was, until Quit, Esc or q.
 func newTUICmd(env *sys.OS) *cobra.Command {
 	return &cobra.Command{
 		Use:           "tui",
@@ -113,16 +86,21 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 			}
 			root := cmd.Context()
 			var at tui.Place
+			status := ""
 			for {
-				action, place, err := tui.RunMenu("dothaven", func() string { return menuStatus(env) }, menuTree(), at)
+				pick, err := tui.RunMenu("dothaven", func() string { return menuStatus(env) }, menuTree(), at)
 				if err != nil {
 					return err
 				}
+				action := pick.Value
 				if action == "" || action == "quit" {
 					return nil
 				}
-				at = place
+				at = pick.At
+				status = firstNonEmpty(pick.Status, status)
 				runlog.stepf("menu: %s", action)
+				// The action's page: the menu's header, and where it was picked.
+				fmt.Print(tui.PageTop("dothaven", status, pick.Crumb, termWidth()))
 
 				// Ctrl-C during an action cancels that action only, and the
 				// menu comes back (see CancelAction).
@@ -138,6 +116,8 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 				switch {
 				case action == "ui" && rerr == nil:
 					// Ctrl-C is how the dashboard is stopped; it says so itself.
+				case errors.As(rerr, &ee) && ee.Code == 130:
+					// The command said it stopped.
 				case cancelled || errors.Is(rerr, context.Canceled):
 					fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
 				case rerr == nil:
@@ -184,11 +164,6 @@ func pause(ctx context.Context) {
 // name with its defaults, so the menu and the CLI behave the same; the flows
 // that need more than one command are written out here.
 func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
-	title := actionTitles[action]
-	if title == "" {
-		title = action
-	}
-	printHeader(title)
 	ctx := cmd.Context()
 
 	switch action {

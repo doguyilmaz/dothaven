@@ -107,13 +107,15 @@ func SelectCategories(title, description string, groups []Group) ([]string, erro
 		opts[i] = huh.NewOption(label, groups[i].Name).Selected(true)
 	}
 	selected := make([]string, 0, len(groups))
+	h := listHeight(len(groups), title, description)
 	field := huh.NewMultiSelect[string]().
 		Title(title).
 		Description(description).
 		Options(opts...).
-		Height(listHeight(len(groups), title, description)).
+		Filterable(h > 0).
+		Height(h).
 		Value(&selected)
-	if err := run(field); err != nil {
+	if err := runList(h > 0, field); err != nil {
 		return nil, err
 	}
 	return selected, nil
@@ -140,14 +142,15 @@ func MultiPick(title, description string, items []PickItem) ([]string, error) {
 		opts[i] = huh.NewOption(label, items[i].Value).Selected(items[i].Selected)
 	}
 	var picked []string
+	h := listHeight(len(items), title, description)
 	field := huh.NewMultiSelect[string]().
 		Title(title).
 		Description(description).
 		Options(opts...).
-		Filterable(len(items) > 12).
-		Height(listHeight(len(items), title, description)).
+		Filterable(h > 0).
+		Height(h).
 		Value(&picked)
-	if err := run(field); err != nil {
+	if err := runList(h > 0, field); err != nil {
 		return nil, err
 	}
 	return picked, nil
@@ -163,13 +166,15 @@ func PickSome(title, description string, items []string) ([]string, error) {
 		opts[i] = huh.NewOption(label, items[i])
 	}
 	var picked []string
+	h := listHeight(len(items), title, description)
 	field := huh.NewMultiSelect[string]().
 		Title(title).
 		Description(description).
 		Options(opts...).
-		Height(listHeight(len(items), title, description)).
+		Filterable(h > 0).
+		Height(h).
 		Value(&picked)
-	if err := run(field); err != nil {
+	if err := runList(h > 0, field); err != nil {
 		return nil, err
 	}
 	return picked, nil
@@ -196,9 +201,10 @@ func Ask(title, description string, choices []Choice) (string, error) {
 	// The bound value must not match any option, or huh skips rendering the
 	// options before the matched one until a keypress (huh#679).
 	var choice string
+	h := listHeight(len(opts), title, description)
 	sel := huh.NewSelect[string]().Title(title).Description(description).Options(opts...).
-		Height(listHeight(len(opts), title, description)).Value(&choice)
-	if err := run(sel); err != nil {
+		Height(h).Value(&choice)
+	if err := runList(h > 0, sel); err != nil {
 		return "", err
 	}
 	return choice, nil

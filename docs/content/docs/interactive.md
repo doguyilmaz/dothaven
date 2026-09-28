@@ -12,7 +12,7 @@ dothaven         # with no arguments, on a terminal
 dothaven tui     # the same menu, by name
 ```
 
-The menu fills the terminal and shows one short list at a time, so it fits any window and nothing scrolls. The home screen has five groups; each opens a list of three to six entries. The line at the bottom says what the selected entry does, and entries that change something say so.
+The menu opens at the top of the window and shows one short list at a time, so it fits any window and nothing scrolls. The home screen has five groups; each opens a list of three to six entries. The line at the bottom says what the selected entry does, and entries that change something say so.
 
 ```text
  dothaven                                        MacBook-Pro · GitHub: signed in
@@ -37,7 +37,11 @@ The menu fills the terminal and shows one short list at a time, so it fits any w
 | Esc (or ← h) | Back to the group above; on the home screen, leave |
 | q | Leave |
 
-An action runs in the normal terminal, so its output and questions read as they would from the command line. Press Enter afterwards and the menu comes back where you left it. Ctrl-C during an action stops that action and brings the menu back; a second Ctrl-C quits dothaven at once.
+The menu and its actions are one page. Picking an entry starts it at the top of the window, under the same header and path (`Home › GitHub backup › Save this Mac to GitHub`); its questions and output follow from there. Press Enter afterwards and the menu comes back at the top, where you left it. The action's output moves up into your terminal's scrollback, so a long result can still be scrolled back to, and leaving the menu clears the window.
+
+Lists that fit the window are picked with the arrow keys; a list taller than the window can also be searched by typing `/`.
+
+Ctrl-C during an action stops that action and brings the menu back; a second Ctrl-C quits dothaven at once.
 
 | Group | Entries |
 | --- | --- |

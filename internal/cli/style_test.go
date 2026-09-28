@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/doguyilmaz/dothaven/internal/sys"
+	"github.com/doguyilmaz/dothaven/internal/tui"
 )
 
 // A long path used to push the detail column out of line, which is what made a
@@ -79,9 +80,23 @@ func TestHeaderNamesTheAction(t *testing.T) {
 // cobra.
 func TestMenuActionsResolve(t *testing.T) {
 	root := NewRoot(sys.Real(), "0.0.0")
-	for action := range actionTitles {
-		if action == "pack" {
-			continue // a menu-only flow, written out in runPack
+	var actions []string
+	var walk func([]tui.Node)
+	walk = func(nodes []tui.Node) {
+		for _, n := range nodes {
+			if n.Value != "" {
+				actions = append(actions, n.Value)
+			}
+			walk(n.Children)
+		}
+	}
+	walk(menuTree())
+	if len(actions) < 15 {
+		t.Fatalf("only %d menu actions found", len(actions))
+	}
+	for _, action := range actions {
+		if action == "pack" || action == "quit" {
+			continue // menu-only: pack is written out in runPack
 		}
 		fields := strings.Fields(action)
 		sub, _, err := root.Find(fields)
