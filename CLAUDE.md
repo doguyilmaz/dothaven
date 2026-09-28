@@ -33,7 +33,7 @@ gofmt -l ./cmd ./internal  # must be empty (CI gate); also: go vet ./...
 cd docs && hugo server     # docs preview
 ```
 
-Each logical slice lands as its own commit with **gofmt + vet + test green**. CI (`.github/workflows/ci.yml`) runs the same three checks; releases fire on `v*` tags.
+Each logical slice lands as its own commit with **gofmt + vet + test green**. CI (`.github/workflows/ci.yml`) runs the same three checks on Linux and macOS, plus `goreleaser check`; binaries are built only by the release on a `v*` tag.
 
 ## Testing
 

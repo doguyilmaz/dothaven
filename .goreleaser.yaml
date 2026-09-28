@@ -96,3 +96,7 @@ homebrew_casks:
 release:
   draft: false
   prerelease: auto
+  # A release that failed part way (the Homebrew step, say) has already
+  # uploaded its archives; without this, running it again stops at the first
+  # one with 422 already_exists.
+  replace_existing_artifacts: true
