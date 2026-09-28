@@ -45,7 +45,7 @@ Config can be rebuilt. Uncommitted changes, unpushed commits and stashes cannot,
 1 repository with gitignored files a fresh clone won't bring back:
   ⚠ ~/code/api                                    .env
 
-❌ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
+✗ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
 ```
 
 Fix what it lists: add a remote and push, commit and push (a stash is not pushed by pushing a branch), and copy ignored files you need. For a gitignored file you want in your backup, `dothaven include ~/code/api/.env` carries it in the encrypted backup.
@@ -249,7 +249,7 @@ On the old machine:
 
 ```bash
 dothaven init                      # checks chezmoi, the age key and the source repo; prints what to fix
-dothaven chezmoi-export            # dry run: shows what would be added, and what encrypted
+dothaven chezmoi-export            # shows what would be added and encrypted, then asks
 dothaven chezmoi-export --apply    # adds the files to your chezmoi source
 chezmoi cd                         # then commit and push the source repo (keep it private)
 ```

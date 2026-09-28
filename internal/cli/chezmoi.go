@@ -302,8 +302,11 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "chezmoi-export",
 		Short: "Plan (or apply) adding configs to chezmoi, encrypting secrets",
-		Long:  "Builds a chezmoi-add plan (plain for configs, --encrypt for secrets) plus a\nrun_onchange install script. Dry-run by default; --apply executes (needs chezmoi + age).",
-		Args:  cobra.NoArgs,
+		Long: "Builds a chezmoi-add plan (plain for configs, --encrypt for secrets) plus a\n" +
+			"run_onchange install script, and shows it. On a terminal it then asks whether\n" +
+			"to carry it out; off one it changes nothing unless you pass --apply (needs\n" +
+			"chezmoi, and age for the encrypted files).",
+		Args: cobra.NoArgs,
 		// A partial-apply failure returns a message-less ExitError after printing
 		// its own diagnostics; don't let cobra also print an "Error:" line.
 		SilenceErrors: true,
@@ -318,7 +321,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				groups = append(groups,
 					tui.Group{Name: "brew", About: "Homebrew formulae & casks, reinstalled on apply"},
 					tui.Group{Name: "packages", About: "global npm/pnpm/bun/pipx/cargo… packages"})
-				chosen, err := tui.SelectCategories("What to export to chezmoi", groups)
+				chosen, err := tui.SelectCategories("What to export to chezmoi", "Everything is selected. 🔒 marks what chezmoi stores encrypted.", groups)
 				if err != nil {
 					return err
 				}
@@ -423,12 +426,24 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			}
 
 			if hasEncrypt {
-				fmt.Printf("\n🔒 Encrypted paths are recoverable only with your age key (%s/.config/chezmoi/key.txt).\n   Back it up offline before you rely on this. Without the key, those files cannot be recovered.\n", home)
+				fmt.Printf("\n%s Encrypted files open only with your age key (%s).\n  Back it up offline before you rely on this. Without it, those files cannot be recovered.\n", warn("⚠"), shortHome(env, home+"/.config/chezmoi/key.txt"))
 			}
 
 			if !apply {
-				fmt.Printf("\n%s Re-run with %s to execute.\n", dim("Dry-run."), kbd("--apply"))
-				return nil
+				// On a terminal, the plan is the question; off one it stays a
+				// dry run, as scripts expect.
+				ok := false
+				if tui.Interactive() {
+					fmt.Println()
+					var err error
+					if ok, err = tui.Confirm("Carry out this plan now? It adds these files to your chezmoi source."); err != nil {
+						return ignoreAbort(err)
+					}
+				}
+				if !ok {
+					fmt.Printf("\n%s Run it with %s to carry it out.\n", dim("Dry run, nothing changed."), kbd("dothaven chezmoi-export --apply"))
+					return nil
+				}
 			}
 
 			if v, err := runShell(ctx, "chezmoi", "--version"); err != nil || v == "" {
@@ -447,7 +462,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 				}
 				if !configured {
 					fmt.Fprintln(os.Stderr, danger("\n✗ This plan encrypts secrets, but age encryption is not configured in chezmoi.toml."))
-					fmt.Fprintln(os.Stderr, "  Run `dothaven init`, configure your age key, then re-run with --apply.")
+					fmt.Fprintln(os.Stderr, "  Run `dothaven init` to set up your age key, then export again.")
 					return ExitError{Code: 1}
 				}
 
@@ -461,7 +476,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 						return err
 					}
 					if !ok {
-						fmt.Fprintln(os.Stderr, "\nAborted. Back up your age key first, then re-run with --apply.")
+						fmt.Fprintln(os.Stderr, "\nStopped. Back up your age key first, then export again.")
 						return ExitError{Code: 1}
 					}
 				}
@@ -549,7 +564,7 @@ func newChezmoiExportCmd(env *sys.OS) *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&apply, "apply", false, "execute the plan (default: dry-run)")
+	c.Flags().BoolVar(&apply, "apply", false, "carry out the plan without asking (off a terminal the default is a dry run)")
 	c.Flags().BoolVar(&pin, "pin", false, "pin global packages to their captured version")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories/groups (comma-separated)")
 	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories/groups (comma-separated)")

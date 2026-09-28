@@ -721,7 +721,7 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		if owner != me.Login {
 			return fmt.Errorf("%s does not exist, or this sign-in cannot see it (dothaven only creates repositories on your own account)%s", repo, appAccessHint(c.Token, repo))
 		}
-		if err := confirmWrite(os.Stderr, fmt.Sprintf("Create the private repository %s?", repo), o.yes); err != nil {
+		if err := confirmWith(os.Stderr, fmt.Sprintf("Create the private repository %s?", repo), o.yes, true); err != nil {
 			return err
 		}
 		if r, err = c.CreatePrivateRepo(ctx, name, "Private backup of my dev setup, made by dothaven. Keep this private."); err != nil {
@@ -920,9 +920,9 @@ func firstNonEmpty(vals ...string) string {
 
 func askPushMode() (string, error) {
 	return tui.Ask("How should it be stored?", "You can change this on any later push with --mode.", []tui.Choice{
-		{Label: "Encrypted: everything, keys included", Value: modeEncrypted, Hint: "one file only your passphrase opens (recommended)"},
-		{Label: "Readable, with secrets encrypted", Value: modeSplit, Hint: "browse and diff config on GitHub; credentials in an encrypted bundle"},
-		{Label: "Readable, secrets redacted", Value: modePlain, Hint: "no passphrase; SSH keys and logins are NOT included"},
+		{Label: "Encrypted, keys included", Value: modeEncrypted, Hint: "one file, opened by your passphrase (recommended)"},
+		{Label: "Readable, secrets encrypted", Value: modeSplit, Hint: "browse config on GitHub; keys stay encrypted"},
+		{Label: "Readable, secrets redacted", Value: modePlain, Hint: "no passphrase; SSH keys and logins left out"},
 	})
 }
 
@@ -950,7 +950,7 @@ func pushPassphrase(env *sys.OS) (string, error) {
 		return "", err
 	}
 	if tui.Interactive() {
-		if ok, _ := tui.Confirm("Remember this passphrase on this machine (in " + st.Name() + ") so later pushes don't ask?"); ok {
+		if ok, _ := tui.Confirm("Remember this passphrase in " + st.Name() + ", so later pushes don't ask?"); ok {
 			if err := st.Set(accountPassphrase, p); err != nil {
 				fmt.Fprintf(os.Stderr, "  %s could not remember it: %v\n", warn("⚠"), err)
 			}

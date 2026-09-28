@@ -17,7 +17,7 @@ grep 'gitdir:' .gitconfig
 
 # Idempotent: the rewritten files read as applied, not as conflicts.
 exec dothaven restore backup-old-20240101000000
-stdout '2 already applied'
+stdout '2 already the same here'
 
 # --keep-paths leaves them as they were.
 rm .zshrc

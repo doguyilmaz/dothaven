@@ -216,7 +216,7 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	interactive := !o.force && !o.yes && tui.Interactive()
 	opts := restore.ExecuteOptions{Force: o.force}
 	if pending := t.New + t.Update + t.Conflict + t.Changed; pending == 0 && (t.Skipped == 0 || !o.force) {
-		fmt.Println(good("✓ Nothing new to restore. Everything here is applied or was left out on purpose."))
+		fmt.Println(good("✓ Nothing new to restore. Everything in the backup is already here, or was left out on purpose."))
 		printRedacted(plan)
 		if t.Skipped == 0 || !interactive {
 			return offerExtras(cmd, env, path, dir, extras)
@@ -442,7 +442,7 @@ func restoreBreakdownPlain(t restore.Counts) string {
 		what string
 	}{
 		{t.New, "new"}, {t.Update, "updated"}, {t.Conflict, pick(t.Conflict, "differs", "differ")}, {t.Changed, "changed by you"},
-		{t.Skipped, "skipped before"}, {t.Same, "applied"}, {t.Redacted, "redacted"},
+		{t.Skipped, "skipped before"}, {t.Same, "same here"}, {t.Redacted, "redacted"},
 	} {
 		if p.n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.what))
@@ -464,7 +464,7 @@ func restoreBreakdown(t restore.Counts) string {
 	add(t.Conflict, pick(t.Conflict, "differs", "differ")+" from this machine", warn)
 	add(t.Changed, "changed by you since restoring", warn)
 	add(t.Skipped, "skipped last time", dim)
-	add(t.Same, "already applied", dim)
+	add(t.Same, "already the same here", dim)
 	add(t.Redacted, "redacted", dim)
 	if len(parts) == 0 {
 		return "nothing to do"

@@ -226,8 +226,8 @@ For each file that differs you choose: *Overwrite with backup*, *Skip (keep live
 Restore keeps a ledger at `~/.local/share/dothaven/state/applied.json` of what it wrote and what you declined. Running it again shows what is done, instead of offering every file as new work:
 
 ```text
-  9 files: 1 skipped last time, 5 already applied, 3 redacted
-✓ Nothing new to restore. Everything here is applied or was left out on purpose.
+  9 files: 1 skipped last time, 5 already the same here, 3 redacted
+✓ Nothing new to restore. Everything in the backup is already here, or was left out on purpose.
 ```
 
 The ledger holds file hashes, never file contents. Only a decision is remembered: a file you were shown and said no to. A category you did not pick, or a file kept off a terminal because nobody was there to ask, is still on offer next time. What you declined is remembered per backup: restoring a different (for example, newer) backup asks about those files again.

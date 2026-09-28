@@ -156,11 +156,11 @@ func checkReady(ctx context.Context, env *sys.OS, roots []string, depth int) rea
 	fmt.Println(backupNote)
 
 	if out.atRisk == 0 && !stale {
-		fmt.Println("\n" + good("✅ Safe to wipe. Everything here exists somewhere else."))
+		fmt.Println("\n" + good("✓ Safe to wipe. Everything here exists somewhere else."))
 		return out
 	}
 	if out.atRisk > 0 {
-		fmt.Printf("\n%s\n", danger(fmt.Sprintf("❌ Not safe to wipe yet: %s %s work that exists nowhere else.", plural(out.atRisk, "repository"), pick(out.atRisk, "holds", "hold"))))
+		fmt.Printf("\n%s\n", danger(fmt.Sprintf("✗ Not safe to wipe yet: %s %s work that exists nowhere else.", plural(out.atRisk, "repository"), pick(out.atRisk, "holds", "hold"))))
 		if len(orphans) > 0 {
 			fmt.Printf("   %s no remote: add one and push, or copy the folder off this machine.\n", danger("✗"))
 		}

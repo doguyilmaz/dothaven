@@ -181,16 +181,16 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 // pickBackupCategories shows the category picker. A nil result with no error
 // means the user backed out or picked nothing.
 func pickBackupCategories(env *sys.OS, encrypt bool) ([]string, error) {
-	note := "🔑 credentials (left out unless --encrypt)"
+	desc := "Everything is selected. 🔑 marks credentials, which only an encrypted backup carries."
 	if encrypt {
-		note = "🔑 credentials"
+		desc = "Everything is selected, credentials (🔑) included."
 	}
-	groups := backupGroups(registry.BackupTargets(env.Home(), allEntries(env)), note)
+	groups := backupGroups(registry.BackupTargets(env.Home(), allEntries(env)), "🔑 credentials")
 	groups = append(groups, tui.Group{Name: catInventory, About: categoryAbout[catInventory]})
 	if runtime.GOOS == "darwin" {
 		groups = append(groups, tui.Group{Name: catMacOS, About: categoryAbout[catMacOS]})
 	}
-	chosen, err := tui.SelectCategories("What to back up", groups)
+	chosen, err := tui.SelectCategories("What to back up", desc, groups)
 	if errors.Is(err, tui.ErrAborted) {
 		return nil, nil
 	}
@@ -223,12 +223,13 @@ func reviewUncovered(env *sys.OS, force bool) (int, error) {
 		return 0, nil
 	}
 	picked, err := tui.PickSome(
-		fmt.Sprintf("%d things in your home folder aren't in any backup yet. Include some?", len(pending)),
-		"space picks · enter continues. Whatever you leave unpicked won't be asked about again\n"+
-			"(change your mind any time: dothaven include <path>).",
+		fmt.Sprintf("%s in your home folder %s in no backup yet. Include some?", plural(len(pending), "path"), pick(len(pending), "is", "are")),
+		"space picks, enter continues. What you leave unpicked is not offered again\n"+
+			"(add it later with: dothaven include <path>).",
 		pending)
 	if errors.Is(err, tui.ErrAborted) {
-		return 0, nil // skip the question this time; ask again next backup
+		fmt.Println("Skipped for now. dothaven will ask again next time.")
+		return 0, nil
 	}
 	if err != nil {
 		return 0, err
@@ -245,6 +246,8 @@ func reviewUncovered(env *sys.OS, force bool) (int, error) {
 	}
 	if len(picked) > 0 {
 		fmt.Printf("%s %s added. They will be in this and every later backup.\n", good("+"), plural(len(picked), "path"))
+	} else {
+		fmt.Printf("Nothing added, and %s not offered again. Add one any time with %s.\n", pick(len(pending), "it is", "these are"), kbd("dothaven include <path>"))
 	}
 	return len(picked), nil
 }
@@ -524,7 +527,7 @@ func printBackupOutcome(env *sys.OS, o backupOutcome) {
 		kind = "Backup saved (raw values, NOT encrypted)"
 	}
 	fmt.Printf("\n%s %s\n", good("✓"), bold(fmt.Sprintf("%s: %s, %s", kind, plural(res.TotalFiles, "file"), humanBytes(o.size))))
-	fmt.Printf("  %s\n", o.path)
+	fmt.Printf("  %s\n", shortHome(env, o.path))
 	if len(res.PerCategory) > 0 {
 		fmt.Printf("  %s\n", dim(formatCategories(res.PerCategory)))
 	}

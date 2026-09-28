@@ -4,23 +4,72 @@
 package tui
 
 import (
-	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/term"
 )
 
 // menuHintStyle renders the muted one-line explanation beside each menu action.
 var menuHintStyle = lipgloss.NewStyle().Faint(true)
 
-// menuOption builds a menu entry whose label is followed by a muted hint,
-// aligned in a column: the action on the left, what it does on the right.
-func menuOption(label, value, hint string) huh.Option[string] {
-	if hint == "" {
-		return huh.NewOption(label, value)
+// Columns used on each line of a list before the label: huh's left border
+// and padding, the cursor, and for a multi-select the [x] box.
+const (
+	selectIndent = 4
+	multiIndent  = 8
+)
+
+// columns lays out each label with its hint beside it, fitted to the
+// terminal: labels padded to a common width, hints cut short with "…" instead
+// of wrapped, and dropped when the window has no room for them. A line that
+// wraps moves the whole list under the cursor. note, when set, is kept whole
+// after the hint (it says something that must not be cut, like "credentials").
+func columns(labels, hints, notes []string, indent int) []string {
+	room := termWidth() - indent - 1
+	lw := 0
+	for _, l := range labels {
+		lw = max(lw, ansi.StringWidth(l))
 	}
-	return huh.NewOption(fmt.Sprintf("%-40s %s", label, menuHintStyle.Render(hint)), value)
+	lw = min(lw, room*3/5)
+	out := make([]string, len(labels))
+	for i, l := range labels {
+		l = ansi.Truncate(l, room, "…")
+		hint, note := at(hints, i), at(notes, i)
+		left := room - max(lw, ansi.StringWidth(l)) - 2
+		if hint == "" && note == "" || left < 12 {
+			out[i] = l
+			continue
+		}
+		pad := strings.Repeat(" ", max(lw-ansi.StringWidth(l), 0))
+		tail := ""
+		if note != "" {
+			tail = "  " + note
+			left -= ansi.StringWidth(tail)
+		}
+		if left < 8 {
+			hint = ""
+		}
+		out[i] = l + pad + "  " + menuHintStyle.Render(ansi.Truncate(hint, max(left, 0), "…")) + tail
+	}
+	return out
+}
+
+func at(xs []string, i int) string {
+	if i < len(xs) {
+		return xs[i]
+	}
+	return ""
+}
+
+func termWidth() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
+	}
+	return 80
 }
 
 // Interactive reports whether both stdin and stdout are terminals, i.e. a prompt
@@ -45,24 +94,24 @@ type Group struct {
 // SelectCategories presents a multi-select of category groups (all pre-selected)
 // and returns the chosen names. An empty selection with no error means the user
 // deselected everything.
-func SelectCategories(title string, groups []Group) ([]string, error) {
+func SelectCategories(title, description string, groups []Group) ([]string, error) {
 	if len(groups) == 0 {
 		return nil, nil
 	}
-	opts := make([]huh.Option[string], len(groups))
+	names, abouts, notes := make([]string, len(groups)), make([]string, len(groups)), make([]string, len(groups))
 	for i, g := range groups {
-		label := fmt.Sprintf("%-10s %s", g.Name, menuHintStyle.Render(g.About))
-		if g.Note != "" {
-			label += "  " + g.Note
-		}
-		opts[i] = huh.NewOption(label, g.Name).Selected(true)
+		names[i], abouts[i], notes[i] = g.Name, g.About, g.Note
+	}
+	opts := make([]huh.Option[string], len(groups))
+	for i, label := range columns(names, abouts, notes, multiIndent) {
+		opts[i] = huh.NewOption(label, groups[i].Name).Selected(true)
 	}
 	selected := make([]string, 0, len(groups))
 	field := huh.NewMultiSelect[string]().
 		Title(title).
-		Description("Everything is selected. space toggles · a toggles all · enter continues").
+		Description(description).
 		Options(opts...).
-		Height(listHeight(len(groups))).
+		Height(listHeight(len(groups), title, description)).
 		Value(&selected)
 	if err := run(field); err != nil {
 		return nil, err
@@ -82,13 +131,13 @@ func MultiPick(title, description string, items []PickItem) ([]string, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
-	opts := make([]huh.Option[string], len(items))
+	labels, hints := make([]string, len(items)), make([]string, len(items))
 	for i, it := range items {
-		label := it.Label
-		if it.Hint != "" {
-			label = fmt.Sprintf("%-46s %s", it.Label, menuHintStyle.Render(it.Hint))
-		}
-		opts[i] = huh.NewOption(label, it.Value).Selected(it.Selected)
+		labels[i], hints[i] = it.Label, it.Hint
+	}
+	opts := make([]huh.Option[string], len(items))
+	for i, label := range columns(labels, hints, nil, multiIndent) {
+		opts[i] = huh.NewOption(label, items[i].Value).Selected(items[i].Selected)
 	}
 	var picked []string
 	field := huh.NewMultiSelect[string]().
@@ -96,7 +145,7 @@ func MultiPick(title, description string, items []PickItem) ([]string, error) {
 		Description(description).
 		Options(opts...).
 		Filterable(len(items) > 12).
-		Height(listHeight(len(items))).
+		Height(listHeight(len(items), title, description)).
 		Value(&picked)
 	if err := run(field); err != nil {
 		return nil, err
@@ -110,15 +159,15 @@ func PickSome(title, description string, items []string) ([]string, error) {
 		return nil, nil
 	}
 	opts := make([]huh.Option[string], len(items))
-	for i, it := range items {
-		opts[i] = huh.NewOption(it, it)
+	for i, label := range columns(items, nil, nil, multiIndent) {
+		opts[i] = huh.NewOption(label, items[i])
 	}
 	var picked []string
 	field := huh.NewMultiSelect[string]().
 		Title(title).
 		Description(description).
 		Options(opts...).
-		Height(listHeight(len(items))).
+		Height(listHeight(len(items), title, description)).
 		Value(&picked)
 	if err := run(field); err != nil {
 		return nil, err
@@ -136,23 +185,31 @@ var ErrAborted = huh.ErrUserAborted
 
 // Ask presents one question and returns the chosen value.
 func Ask(title, description string, choices []Choice) (string, error) {
-	opts := make([]huh.Option[string], 0, len(choices))
-	for _, c := range choices {
-		opts = append(opts, menuOption(c.Label, c.Value, c.Hint))
+	labels, hints := make([]string, len(choices)), make([]string, len(choices))
+	for i, c := range choices {
+		labels[i], hints[i] = c.Label, c.Hint
+	}
+	opts := make([]huh.Option[string], len(choices))
+	for i, label := range columns(labels, hints, nil, selectIndent) {
+		opts[i] = huh.NewOption(label, choices[i].Value)
 	}
 	// The bound value must not match any option, or huh skips rendering the
 	// options before the matched one until a keypress (huh#679).
 	var choice string
-	sel := huh.NewSelect[string]().Title(title).Description(description).Options(opts...).Value(&choice)
+	sel := huh.NewSelect[string]().Title(title).Description(description).Options(opts...).
+		Height(listHeight(len(opts), title, description)).Value(&choice)
 	if err := run(sel); err != nil {
 		return "", err
 	}
 	return choice, nil
 }
 
-// Confirm asks a yes/no question.
-func Confirm(prompt string) (bool, error) {
-	var v bool
+// Confirm asks a yes/no question, with No preselected.
+func Confirm(prompt string) (bool, error) { return ConfirmDefault(prompt, false) }
+
+// ConfirmDefault asks a yes/no question with def preselected.
+func ConfirmDefault(prompt string, def bool) (bool, error) {
+	v := def
 	if err := run(huh.NewConfirm().Title(prompt).Value(&v)); err != nil {
 		return false, err
 	}

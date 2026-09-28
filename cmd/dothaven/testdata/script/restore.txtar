@@ -26,7 +26,7 @@ exists .local/share/dothaven/state/applied.json
 # Running it again shows the applied file as done, not as work; the one that
 # differs is still offered.
 exec dothaven restore Downloads/backup-box-20240101000000
-stdout '1 already applied'
+stdout '1 already the same here'
 stdout '1 differs'
 ! stdout 'Restored'
 

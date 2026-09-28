@@ -402,24 +402,25 @@ func guideSee(ask asker) (*plan, error) {
 
 func printPlan(p plan) {
 	fmt.Println()
-	fmt.Println(bold("Here's what I'd do:"))
+	fmt.Println(bold("What to do:"))
 	fmt.Println()
 	n := 0
+	plain := func(s string) string { return s }
 	for _, s := range p.steps {
 		if s.warn {
-			fmt.Printf("  %s  %s\n     %s\n\n", warn("⚠"), warn(s.cmd), dim(s.why))
+			fmt.Printf("  %s  %s\n     %s\n\n", warn("⚠"), warn(s.cmd), paragraph(s.why, "     ", dim))
 			continue
 		}
 		n++
-		fmt.Printf("  %s %s\n     %s\n\n", dim(fmt.Sprintf("%d.", n)), kbd(s.cmd), dim(s.why))
+		fmt.Printf("  %s %s\n     %s\n\n", dim(fmt.Sprintf("%d.", n)), kbd(s.cmd), paragraph(s.why, "     ", dim))
 	}
 	if p.reason != "" {
-		fmt.Printf("%s %s\n", bold("Why:"), p.reason)
+		fmt.Printf("%s %s\n", bold("Why:"), paragraph(p.reason, "     ", plain))
 	}
 	if len(p.notes) > 0 {
 		fmt.Println("\n" + bold("Worth knowing:"))
 		for _, note := range p.notes {
-			fmt.Printf("  %s %s\n", dim("•"), note)
+			fmt.Printf("  %s %s\n", dim("•"), paragraph(note, "    ", plain))
 		}
 	}
 }

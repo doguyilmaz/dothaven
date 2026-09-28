@@ -116,3 +116,37 @@ func padTo(s string, width int) string {
 
 // printHeader writes a section separator for an action run from the menu.
 func printHeader(title string) { fmt.Println(header(title)) }
+
+// wrapLines breaks s at spaces into lines of at most w characters, so text
+// longer than the window does not wrap in the middle of a word.
+func wrapLines(s string, w int) []string {
+	var lines []string
+	cur := ""
+	for _, word := range strings.Fields(s) {
+		if cur != "" && len([]rune(cur))+1+len([]rune(word)) > w {
+			lines = append(lines, cur)
+			cur = word
+			continue
+		}
+		if cur != "" {
+			cur += " "
+		}
+		cur += word
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return lines
+}
+
+// paragraph is s wrapped to the terminal (at most 100 columns, which is
+// easier to read), each line after the first starting with indent, and each
+// line styled by style.
+func paragraph(s, indent string, style func(string) string) string {
+	w := max(min(termWidth(), 100)-len(indent)-1, 30)
+	lines := wrapLines(s, w)
+	for i := range lines {
+		lines[i] = style(lines[i])
+	}
+	return strings.Join(lines, "\n"+indent)
+}

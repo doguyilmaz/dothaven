@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -61,13 +62,27 @@ func run(fields ...huh.Field) error {
 	return huh.NewForm(huh.NewGroup(fields...)).WithTheme(theme()).Run()
 }
 
-// listHeight is the height of a list prompt with n choices: all of them when
-// they fit, otherwise what the terminal has room for below the title. A list
-// taller than the window scrolls under its cursor in a confusing way.
-func listHeight(n int) int {
+// listHeight is the height to give a list prompt with n choices under its
+// title and description (huh counts both), or 0 when the whole list fits the
+// window. 0 matters: with any height set, huh scrolls the list as the cursor
+// nears the bottom, even when every choice would fit, and the list appears
+// to jump up under the cursor. Without one, it draws every choice and never
+// scrolls. Only a list taller than the window gets a height, and scrolls.
+func listHeight(n int, title, description string) int {
 	rows := 24
 	if _, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil && h > 0 {
 		rows = h
 	}
-	return max(min(n+4, rows-6), 5)
+	head := lines(title) + lines(description)
+	if n+head <= rows-4 {
+		return 0
+	}
+	return max(rows-4, head+3)
+}
+
+func lines(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
 }

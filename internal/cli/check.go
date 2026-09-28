@@ -101,10 +101,10 @@ func newCheckCmd(env *sys.OS) *cobra.Command {
 			fmt.Println(".")
 
 			if len(broken) == 0 {
-				fmt.Println(good("✅ Every config that could be parsed is valid."))
+				fmt.Println(good("✓ Every config that could be parsed is valid."))
 				return nil
 			}
-			fmt.Println(danger(fmt.Sprintf("❌ %s broken. Fix these before they reach another machine.", plural(len(broken), "file"))))
+			fmt.Println(danger(fmt.Sprintf("✗ %s broken. Fix these before they reach another machine.", plural(len(broken), "file"))))
 			return ExitError{Code: 2}
 		},
 	}

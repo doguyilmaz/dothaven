@@ -189,7 +189,7 @@ func newSecurityCmd(env *sys.OS) *cobra.Command {
 					withFindings++
 				}
 			}
-			fmt.Printf("Security report written to: %s\n  %d scanned, %d with findings.\n", out, len(results), withFindings)
+			fmt.Printf("Security report written to: %s\n  %d scanned, %d with findings.\n", shortHome(env, out), len(results), withFindings)
 			return nil
 		},
 	}

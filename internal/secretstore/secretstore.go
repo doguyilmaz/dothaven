@@ -57,8 +57,14 @@ func (s *Store) Name() string {
 	case "secret-service":
 		return "your login keyring"
 	}
-	return filepath.Join(s.dir, "…") + " (owner-only file; no keyring found)"
+	return "a file only you can read"
 }
+
+// IsFile reports the owner-only file fallback, which is weaker than a keyring.
+func (s *Store) IsFile() bool { return s.kind == "file" }
+
+// Dir is where the file fallback keeps its files.
+func (s *Store) Dir() string { return s.dir }
 
 // run bounds a credential-store call: a keyring that is locked can put up an
 // unlock prompt, and nothing here should wait on one forever.

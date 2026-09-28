@@ -136,6 +136,8 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 				cancel()
 				var ee ExitError
 				switch {
+				case action == "ui" && rerr == nil:
+					// Ctrl-C is how the dashboard is stopped; it says so itself.
 				case cancelled || errors.Is(rerr, context.Canceled):
 					fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
 				case rerr == nil:
@@ -145,7 +147,7 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 				if root.Err() != nil {
 					return nil
 				}
-				pause()
+				pause(root)
 				// Ctrl-C at the prompt leaves the menu.
 				if root.Err() != nil {
 					return nil
@@ -172,15 +174,9 @@ func menuStatus(env *sys.OS) string {
 
 // pause holds the output on screen until the reader is done with it. Without
 // it, the menu redraws straight over the result of the action just run.
-func pause() {
+func pause(ctx context.Context) {
 	fmt.Print(dim("\n  Press Enter to go back to the menu "))
-	buf := make([]byte, 1)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || n == 0 || buf[0] == '\n' || buf[0] == '\r' {
-			break
-		}
-	}
+	waitEnter(ctx)
 	fmt.Println()
 }
 
@@ -240,6 +236,11 @@ func runTUIAction(cmd *cobra.Command, env *sys.OS, action string) error {
 	// be a nil dereference rather than an error the menu could recover from.
 	if sub.RunE == nil {
 		return sub.Help()
+	}
+	if action == "scan" {
+		// The exit code is for hooks and CI; in the menu it only adds a line
+		// about flags nobody here passes.
+		_ = sub.Flags().Set("no-fail", "true")
 	}
 	sub.SetContext(ctx)
 	return sub.RunE(sub, nil)

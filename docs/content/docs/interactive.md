@@ -78,11 +78,11 @@ You do not need the menu for the questions: the commands ask them themselves whe
 | `restore` | Which backup (when you give none); then everything new or updated, some categories, or some files; then, for each file that differs, overwrite or keep, with a diff. Afterwards: put back macOS settings? reinstall apps now? |
 | `reinstall` | Which backup (when you give none); then everything missing, some groups, or some packages. |
 | `defaults import` | Which settings domains to apply (all selected), and whether to rebuild the Dock. |
-| `github push` | Whether to create the repository, how to store the backup (first time), the passphrase, and whether to remember it. |
+| `github push` | Whether to create the repository (Yes is preselected), how to store the backup (first time), the passphrase, and whether to remember it. |
 | `github status` | Whether to sign in, if you are not. |
 | `restore github` | Which machine, if the repository holds several. |
-| `chezmoi-export` | Which categories and install groups to export; with `--apply`, whether your age key is backed up. |
-| `init` | Whether to install chezmoi and run `chezmoi init` for you. |
+| `chezmoi-export` | Which categories and install groups to export; whether to carry out the plan; before writing encrypted files, whether your age key is backed up. |
+| `init` | Whether to install chezmoi, add your age key to `chezmoi.toml`, and run `chezmoi init` for you. |
 | `guide` | What you want to do and what kind of work you do, then offers to run step 1. |
 | `include --review` | Which uncovered paths to add. |
 
@@ -92,10 +92,10 @@ Encrypted backups ask for the passphrase on the terminal itself (`/dev/tty`), so
 
 ```text
 What to back up
-Everything is selected. space toggles · a toggles all · enter continues
-> [x] ai         Claude, Codex, Cursor, Gemini… skills, agents, MCP, plugins  🔑 credentials, left out unless --encrypt
+Everything is selected. 🔑 marks credentials, which only an encrypted backup carries.
+▸ [x] ai         Claude, Codex, Cursor, Gemini… skills, agents, MCP, plugins  🔑 credentials
   [x] apps       Karabiner, Hammerspoon, window managers…
-  [x] build      Maven and Gradle settings  🔑 credentials, left out unless --encrypt
+  [x] build      Maven and Gradle settings  🔑 credentials
   [x] bun        bun config
   …
 ```

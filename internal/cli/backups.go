@@ -271,20 +271,31 @@ func pickBackup(env *sys.OS, title string) (string, error) {
 		choices = append(choices, tui.Choice{Label: shortenPath(shortHome(env, b.Path), 48), Value: b.Path, Hint: hint})
 	}
 	choices = append(choices, tui.Choice{Label: "Type a path…", Value: "\x00type", Hint: "a folder, .tar.gz or .age file"})
-	desc := "Looked in ~/.local/share/dothaven, Downloads, Desktop, Documents and mounted drives."
+	desc := "Found in " + shortHome(env, env.DataDir()) + ", Downloads, Desktop, Documents and mounted drives."
 	if len(found) == 0 {
-		desc = "No backups found in the usual places (dothaven's folder, Downloads, Desktop, drives)."
+		fmt.Printf("No backups found in %s, Downloads, Desktop, Documents or on a mounted drive.\n", shortHome(env, env.DataDir()))
+		fmt.Printf("%s\n\n", dim("Make one on the old machine first: "+kbd("dothaven backup --encrypt")+" for a file, or "+kbd("dothaven github push")+"."))
+		desc = ""
+		choices = append(choices, tui.Choice{Label: "Go back", Value: "\x00back"})
 	}
 	choice, err := tui.Ask(title, desc, choices)
 	if err != nil {
 		return "", err
 	}
+	if choice == "\x00back" {
+		fmt.Println("No backup chosen.")
+		return "", nil
+	}
 	if choice != "\x00type" {
 		return choice, nil
 	}
 	p, err := tui.Input("Path to the backup", "")
-	if err != nil || p == "" {
+	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(p) == "" {
+		fmt.Println("No path given, so nothing was opened.")
+		return "", nil
 	}
 	if strings.HasPrefix(p, "~/") {
 		p = filepath.Join(env.Home(), p[2:])
