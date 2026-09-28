@@ -19,4 +19,4 @@
 <use href="#w" fill="#00d7a5"/>
 <use href="#w" clip-path="url(#k)" fill="#efe9df"/>
 <rect x="430" y="400" width="520" height="340" fill="url(#s)" mask="url(#m)"/>
-</svg>
+<path d="M846 418V372" stroke="#00d7a5" stroke-width="24" stroke-linecap="round"/><circle cx="846" cy="344" r="27" fill="#00d7a5"/><rect x="782" y="500" width="34" height="62" rx="17" fill="#00d7a5"/><rect x="843" y="500" width="34" height="62" rx="17" fill="#00d7a5"/></svg>

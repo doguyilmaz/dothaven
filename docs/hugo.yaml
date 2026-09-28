@@ -39,8 +39,8 @@ params:
     displayTitle: true
     displayLogo: true
     logo:
-      path: images/logo.svg
-      dark: images/logo.svg
+      path: images/logo-small.svg
+      dark: images/logo-small.svg
       width: 28
       height: 28
   footer:

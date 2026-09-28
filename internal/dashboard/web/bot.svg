@@ -15,5 +15,6 @@
 <use href="#w" clip-path="url(#c)" fill="url(#t)" stroke="url(#t)" stroke-width="56" stroke-linejoin="round"/>
 <use href="#w" fill="#00d7a5" stroke="#00d7a5" stroke-width="10" stroke-linejoin="round"/>
 <use href="#w" clip-path="url(#k)" fill="#efe9df" stroke="#efe9df" stroke-width="10" stroke-linejoin="round"/>
+<path d="M848 420V368" stroke="#00d7a5" stroke-width="34" stroke-linecap="round"/><circle cx="848" cy="340" r="36" fill="#00d7a5"/><rect x="776" y="506" width="44" height="70" rx="22" fill="#00d7a5"/><rect x="842" y="506" width="44" height="70" rx="22" fill="#00d7a5"/>
 </g>
 </svg>

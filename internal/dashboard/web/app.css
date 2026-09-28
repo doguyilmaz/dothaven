@@ -67,6 +67,7 @@ code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size:
 }
 .brand { font-weight: 650; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 .mark { width: 22px; height: 22px; display: block; }
+.mark.small { width: 18px; height: 18px; }
 .machine { color: var(--ink-2); flex: 1; min-width: 200px; }
 .actions { display: flex; gap: 8px; }
 button {
@@ -83,6 +84,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; display: grid
   min-width: 0;
 }
 .card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 650; }
+.card h2.titled { display: flex; align-items: center; gap: 7px; }
 .sub { margin: 0 0 14px; color: var(--ink-2); font-size: 13px; }
 
 .hero { display: grid; gap: 2px; }

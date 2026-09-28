@@ -1,12 +1,13 @@
-/* Brand colours, from the logo: sea teal for links and accents. */
+/* Brand colours, from the logo's green (#00d7a5). Light mode uses a darker
+   step of the same hue so links keep 4.5:1 contrast on white. */
 :root {
-  --primary-hue: 181deg;
-  --primary-saturation: 68%;
-  --primary-lightness: 31%;
+  --primary-hue: 166deg;
+  --primary-saturation: 100%;
+  --primary-lightness: 25%;
 }
 
 .dark {
-  --primary-hue: 175deg;
-  --primary-saturation: 58%;
-  --primary-lightness: 50%;
+  --primary-hue: 166deg;
+  --primary-saturation: 100%;
+  --primary-lightness: 42%;
 }
