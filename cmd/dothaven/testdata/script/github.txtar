@@ -87,6 +87,16 @@ stdout 'Encrypted backup saved — 2 files'
 exec dothaven backup --encrypt --only inventory -o $WORK/inv
 ! exists $WORK/leak.log
 
+# A user's own .age file (chezmoi keeps key.txt.age armored) is theirs: a
+# plain push carries it as a file and does not take it for its own bundle.
+exec dothaven include ~/notes
+exec dothaven github push --mode plain --only extra --machine plainbox
+stdout 'Pushed'
+! stderr 'not an age file'
+exec dothaven github push --mode plain --only extra --machine plainbox
+stdout 'Already up to date'
+! stdout 'different passphrase'
+
 # A public repository is never written to.
 ! exec dothaven github push --repo tester/public-one --only shell
 stderr 'PUBLIC'
@@ -105,3 +115,7 @@ machine example.com login me password hunter2hunter2
 -- .config/chezmoi/key.txt --
 # public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 AGE-SECRET-KEY-1QYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQY
+-- notes/key.txt.age --
+-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBmYWtl
+-----END AGE ENCRYPTED FILE-----

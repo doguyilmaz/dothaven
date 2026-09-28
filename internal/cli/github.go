@@ -529,7 +529,9 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	// not the flag that asked for them.
 	var header []byte
 	for _, f := range files {
-		if !strings.HasSuffix(f.Path, ".age") {
+		// Only what this push encrypted: a user's own .age file in the tree
+		// (chezmoi's armored key.txt.age) is theirs, not ours to vouch for.
+		if (f.Path != "backup.tar.gz.age" && f.Path != "secrets.tar.gz.age") || filepath.Dir(f.Src) != tmp {
 			continue
 		}
 		if backup.Detect(f.Src) != backup.FormatAge {
@@ -549,6 +551,7 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 			cfg.Repo, cfg.Mode = r.FullName, mode
 			_ = saveGitHubConfig(env, cfg)
 			fmt.Printf("%s Already up to date — nothing changed since the last push (%s).\n", good("✓"), shortDate(remote.Created))
+			printLeftOut(out.res, mode != modePlain, "dothaven github push --mode encrypted")
 			return nil
 		}
 		fmt.Println(dim("Nothing changed, but the copy on GitHub was made with a different passphrase — replacing it with one yours opens."))
@@ -588,6 +591,7 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	}
 	if sha == "" {
 		fmt.Printf("%s Already up to date — nothing changed since the last push.\n", good("✓"))
+		printLeftOut(out.res, mode != modePlain, "dothaven github push --mode encrypted")
 		return nil
 	}
 	fmt.Printf("%s Pushed %s as machines/%s %s\n", good("✓"), plural(out.res.TotalFiles, "file"), machine, dim("("+mode+", commit "+sha[:7]+")"))
