@@ -426,3 +426,22 @@ func (d *DigestSink) Sum() string {
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
 	return hex.EncodeToString(sum[:])
 }
+
+// AgeMaskSink masks age identities in everything it passes on. A remote run
+// wraps its sink in one: RunTo already keeps files holding an identity on
+// this machine, and this covers what dothaven writes itself — the inventory,
+// a crontab, preference values — where a key could sit in a line of text.
+type AgeMaskSink struct{ Inner Sink }
+
+func (m AgeMaskSink) Add(dest string, data []byte, exec bool) error {
+	return m.Inner.Add(dest, scan.MaskAgeIdentities(data), exec)
+}
+
+// AddClassified keeps the inner sink's classification.
+func (m AgeMaskSink) AddClassified(dest string, data []byte, exec, sensitive bool) error {
+	data = scan.MaskAgeIdentities(data)
+	if cs, ok := m.Inner.(ClassifyingSink); ok {
+		return cs.AddClassified(dest, data, exec, sensitive)
+	}
+	return m.Inner.Add(dest, data, exec)
+}

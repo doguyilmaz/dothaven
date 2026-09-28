@@ -365,6 +365,9 @@ func runBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpt
 // inventory, macOS settings and the MANIFEST. Shared by every kind of backup —
 // folder, archive, encrypted, and the split form a GitHub push uses.
 func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpts, targets []registry.BackupTarget, sink backup.Sink, host string, out *backupOutcome) error {
+	if o.remote {
+		sink = backup.AgeMaskSink{Inner: sink}
+	}
 	if o.digest != nil {
 		o.digest.Inner = sink
 		o.digest.Exclude = map[string]bool{"MANIFEST.txt": true}

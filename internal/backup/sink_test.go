@@ -484,3 +484,27 @@ func TestRegistryDirLinkIntoCredentialRoot(t *testing.T) {
 		t.Error("the folder's own config should still be carried")
 	}
 }
+
+// What a remote run writes itself (an inventory, a crontab) has any age
+// identity masked, and a split sink still sees how the file was classified.
+func TestAgeMaskSink(t *testing.T) {
+	key := "AGE-SECRET-KEY-1QYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQY"
+	plain, secret := memSink{}, memSink{}
+	m := AgeMaskSink{Inner: &SplitSink{Plain: plain, Secret: secret}}
+	if err := m.Add("inventory/crontab", []byte("0 * * * * SOPS_AGE_KEY="+key+" sync\n"), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.AddClassified("macos-defaults/prefs.json", []byte(`{"v":"`+key+`"}`), false, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []memSink{plain, secret} {
+		for d, b := range s {
+			if strings.Contains(b, "AGE-SECRET-KEY-1") {
+				t.Errorf("%s still holds the identity", d)
+			}
+		}
+	}
+	if _, ok := secret["macos-defaults/prefs.json"]; !ok {
+		t.Error("classification lost through the mask")
+	}
+}
