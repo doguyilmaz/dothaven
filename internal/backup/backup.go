@@ -54,6 +54,9 @@ type Result struct {
 	TotalFiles  int
 	TotalBytes  int64
 	PerCategory map[string]int
+	// SourceBytes is how much each entry's folder or file added, by its path
+	// on this machine, so a large backup can say what made it large.
+	SourceBytes map[string]int64
 	ScanResults []scan.Result
 	// SkippedSensitive lists dests excluded because they are high-sensitivity
 	// with no guaranteed redactor. They belong in an encrypted backup, not a
@@ -209,6 +212,10 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			res.PerCategory[t.Category]++
 			res.TotalFiles++
 			res.TotalBytes += int64(len(data))
+			if res.SourceBytes == nil {
+				res.SourceBytes = map[string]int64{}
+			}
+			res.SourceBytes[t.Src] += int64(len(data))
 		}
 	}
 	if !opts.Redact {

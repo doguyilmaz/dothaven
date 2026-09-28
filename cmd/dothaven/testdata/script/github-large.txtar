@@ -1,0 +1,20 @@
+# A backup larger than GitHub takes in one file goes up in parts, with no
+# flag, and a new machine gets it back whole.
+env DOTHAVEN_PASSPHRASE='correct horse battery staple'
+env DOTHAVEN_GITHUB_TOKEN=test-token
+randfile .claude/skills/models/weights.bin 50
+
+exec dothaven github push --yes --only ai --machine oldmac
+stdout 'The encrypted backup is .* so it goes up in 2 parts'
+stdout 'Most of it: ~/.claude/skills'
+stdout 'Pushed 2 files as machines/oldmac'
+
+# A new, empty machine restores it whole.
+cp .claude/skills/models/weights.bin weights.orig
+rm .claude
+exec dothaven restore github
+stdout 'Restored 2 files'
+cmp .claude/skills/models/weights.bin weights.orig
+
+-- .claude/skills/models/SKILL.md --
+# models

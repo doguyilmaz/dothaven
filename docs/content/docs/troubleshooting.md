@@ -177,9 +177,11 @@ Either install the GitHub CLI and sign in (`gh auth login`, which dothaven then 
 
 Name the machine: `dothaven github pull --machine laptop`. `dothaven github status` lists them.
 
-### GitHub: the encrypted backup is over 100 MB
+### GitHub: the backup is large
 
-GitHub takes at most 100 MB per file. Leave out something large with `--skip` (for example a category holding big plugin folders), or use `--mode split`, which uploads readable config as separate files.
+An encrypted backup over 48 MB goes up in parts, and `restore github` joins them back, so nothing needs doing. The push names the folders that make up most of it. Each push that changes the backup stores a new copy in the repository's history, so if one folder is most of it and you do not need it on the new machine, leave its category out with `--skip`.
+
+If a restore says the backup is incomplete (a part is missing), push again from the old machine.
 
 ### zsh: "no matches found: github#laptop"
 

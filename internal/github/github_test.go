@@ -339,3 +339,57 @@ func TestCommitIntoEmptyRepository(t *testing.T) {
 		t.Errorf("README = %q", b)
 	}
 }
+
+// A file over the part size goes up as parts read from its byte ranges and
+// comes back whole, byte for byte.
+func TestPartsRoundTrip(t *testing.T) {
+	s := githubtest.New("tok", "dev")
+	defer s.Close()
+	c := client(t, s)
+	ctx := context.Background()
+	if _, err := c.CreatePrivateRepo(ctx, "dothaven-backup", "x"); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "backup.tar.gz.age")
+	want := make([]byte, 1000)
+	for i := range want {
+		want[i] = byte(i * 7)
+	}
+	if err := os.WriteFile(src, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	parts := Parts(File{Path: "backup.tar.gz.age", Src: src, Size: int64(len(want))}, 300)
+	if len(parts) != 4 || parts[3].Path != "backup.tar.gz.age.004" || parts[3].Size != 100 || parts[3].Offset != 900 {
+		t.Fatalf("parts = %+v", parts)
+	}
+	if one := Parts(File{Path: "small", Src: src, Size: 10}, 300); len(one) != 1 || one[0].Path != "small" {
+		t.Fatalf("a file that fits was split: %+v", one)
+	}
+	if _, err := c.Commit(ctx, "dev/dothaven-backup", "main", "machines/m", parts, nil, "parts"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := t.TempDir()
+	for _, p := range parts {
+		b, err := c.Raw(ctx, "dev/dothaven-backup", "machines/m/"+p.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(got, p.Path), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := JoinParts(got, "backup.tar.gz.age")
+	if err != nil || n != 4 {
+		t.Fatalf("joined %d, %v", n, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(got, "backup.tar.gz.age")); !bytes.Equal(b, want) {
+		t.Error("the joined file differs from the original")
+	}
+	if left, _ := filepath.Glob(filepath.Join(got, "*.00*")); len(left) != 0 {
+		t.Errorf("parts left behind: %v", left)
+	}
+	if n, err := JoinParts(got, "backup.tar.gz.age"); n != 0 || err != nil {
+		t.Errorf("joining a whole file again: %d, %v", n, err)
+	}
+}

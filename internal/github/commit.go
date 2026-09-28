@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,10 +23,78 @@ type File struct {
 	Src  string
 	Exec bool
 	Size int64
+	// Offset is where the file starts in Src, for one part of a larger file
+	// (see Parts). The file is then Size bytes from there.
+	Offset int64
+	part   bool
 }
 
 // MaxFile is the largest file the API accepts in one blob, with headroom.
 const MaxFile = 95 << 20
+
+// PartSize is the most a part of a larger file holds. It stays under the
+// 50 MB at which GitHub starts warning about large files.
+const PartSize = 48 << 20
+
+// Parts splits f into files of at most size bytes, named f.Path plus ".001",
+// ".002" and on, each read from its own range of f.Src; JoinParts puts them
+// back together. A file that fits is returned as it is.
+func Parts(f File, size int64) []File {
+	if f.Size <= size {
+		return []File{f}
+	}
+	var out []File
+	for off, i := int64(0), 1; off < f.Size; off, i = off+size, i+1 {
+		out = append(out, File{Path: fmt.Sprintf("%s.%03d", f.Path, i), Src: f.Src, Exec: f.Exec,
+			Size: min(size, f.Size-off), Offset: f.Offset + off, part: true})
+	}
+	return out
+}
+
+// JoinParts rebuilds dir/name from the parts Parts made of it (name.001,
+// name.002…) and removes them. It returns how many parts it joined, 0 when
+// there were none (or name itself exists).
+func JoinParts(dir, name string) (int, error) {
+	target := filepath.Join(dir, name)
+	if _, err := os.Stat(target); err == nil {
+		return 0, nil
+	}
+	var parts []string
+	for i := 1; ; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("%s.%03d", name, i))
+		if _, err := os.Stat(p); err != nil {
+			break
+		}
+		parts = append(parts, p)
+	}
+	if len(parts) == 0 {
+		return 0, nil
+	}
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	if err != nil {
+		return 0, err
+	}
+	for _, p := range parts {
+		in, err := os.Open(p)
+		if err != nil {
+			out.Close()
+			return 0, err
+		}
+		_, err = io.Copy(out, in)
+		in.Close()
+		if err != nil {
+			out.Close()
+			return 0, err
+		}
+	}
+	if err := out.Close(); err != nil {
+		return 0, err
+	}
+	for _, p := range parts {
+		os.Remove(p)
+	}
+	return len(parts), nil
+}
 
 // inlineMax is the largest text file sent inline in a tree request instead of
 // as its own blob: one request instead of hundreds for a folder of configs.
@@ -247,7 +316,7 @@ func isEmptyRepo(err error) bool {
 func (c *Client) buildTree(ctx context.Context, repo string, files []File) (string, error) {
 	var inline, blobs []File
 	for _, f := range files {
-		if f.Size <= inlineMax && isText(f.Src) {
+		if !f.part && f.Size <= inlineMax && isText(f.Src) {
 			inline = append(inline, f)
 		} else {
 			blobs = append(blobs, f)
@@ -261,7 +330,7 @@ func (c *Client) buildTree(ctx context.Context, repo string, files []File) (stri
 	for range min(uploadWorkers, max(1, len(blobs))) {
 		wg.Go(func() {
 			for i := range work {
-				shas[i], errs[i] = c.uploadBlob(ctx, repo, blobs[i].Src, blobs[i].Size)
+				shas[i], errs[i] = c.uploadBlob(ctx, repo, blobs[i].Src, blobs[i].Offset, blobs[i].Size)
 				c.sent(1)
 			}
 		})
@@ -365,9 +434,10 @@ func (c *Client) createTree(ctx context.Context, repo, base string, entries []tr
 	return out.SHA, err
 }
 
-// uploadBlob streams a file as a base64 blob. The body is generated on the
-// fly (and again on a retry), with an exact Content-Length.
-func (c *Client) uploadBlob(ctx context.Context, repo, src string, size int64) (string, error) {
+// uploadBlob streams size bytes of a file, from offset, as a base64 blob. The
+// body is generated on the fly (and again on a retry), with an exact
+// Content-Length.
+func (c *Client) uploadBlob(ctx context.Context, repo, src string, offset, size int64) (string, error) {
 	const pre, post = `{"encoding":"base64","content":"`, `"}`
 	b := func() (io.Reader, int64, error) {
 		f, err := os.Open(src)
@@ -378,7 +448,7 @@ func (c *Client) uploadBlob(ctx context.Context, repo, src string, size int64) (
 		go func() {
 			defer f.Close()
 			enc := base64.NewEncoder(base64.StdEncoding, pw)
-			_, err := io.Copy(enc, f)
+			_, err := io.Copy(enc, io.NewSectionReader(f, offset, size))
 			if err == nil {
 				err = enc.Close()
 			}
