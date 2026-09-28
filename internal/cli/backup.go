@@ -52,6 +52,7 @@ var categoryAbout = map[string]string{
 	"build":      "Maven and Gradle settings",
 	"mobile":     "Xcode user data, Android keystores",
 	"dothaven":   "dothaven's own settings",
+	"fonts":      "fonts you installed yourself (~/Library/Fonts)",
 	"extra":      "paths you added with `dothaven include`",
 	catInventory: "list of installed apps & packages, to reinstall",
 	catMacOS:     "system settings: trackpad, keyboard, Dock, Finder…",

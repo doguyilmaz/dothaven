@@ -403,6 +403,11 @@ var Entries = []Entry{
 	// chezmoi's own config (its age recipient, template data). Its state
 	// database is rebuilt by the first apply.
 	{ID: "dev.chezmoi", Name: "chezmoi config", Category: "dev", Kind: Dir, BackupDest: "dev/chezmoi", Sensitivity: Medium, Paths: unix("~/.config/chezmoi"), Exclude: []string{"*.boltdb"}},
+	// Fonts you installed yourself — downloaded, licensed, patched. Ones from
+	// Homebrew casks come back with reinstall too; carrying them twice only
+	// costs space.
+	{ID: "fonts.user", Name: "Your fonts", Category: "fonts", Kind: Dir, BackupDest: "fonts", Sensitivity: Low,
+		Paths: map[string]string{"darwin": "~/Library/Fonts", "linux": "~/.local/share/fonts"}},
 	{ID: "dothaven.include", Name: "dothaven include list", Category: "dothaven", Kind: File, BackupDest: "dothaven/include", Sensitivity: Low, Paths: unix("~/.config/dothaven/include")},
 }
 

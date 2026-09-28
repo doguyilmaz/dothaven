@@ -358,6 +358,12 @@ Local model files (Ollama weights and the like) are not copied. `collect` record
 | `~/Library/Developer/Xcode/UserData/FontAndColorThemes/` (macOS) | Xcode themes |  |
 | `~/Library/Developer/Xcode/UserData/CodeSnippets/` (macOS) | Xcode code snippets |  |
 
+### fonts
+
+| Path | What | Handling |
+| --- | --- | --- |
+| `~/Library/Fonts/` (Linux: `~/.local/share/fonts/`) | Your fonts |  |
+
 ### dothaven
 
 | Path | What | Handling |

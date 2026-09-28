@@ -512,7 +512,16 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	defer done()
 
 	digest := &backup.DigestSink{}
-	files, out, err := buildPushFiles(ctx, cmd, env, tmp, mode, pass, o.only, o.skip, digest)
+	// Fonts are binaries, often hundreds of megabytes, and GitHub takes at most
+	// 100 MB per file: pushed only when asked for by name. File backups carry them.
+	skip := o.skip
+	if !contains(o.only, "fonts") && !contains(skip, "fonts") {
+		skip = append(append([]string(nil), skip...), "fonts")
+		if dirHasFiles(filepath.Join(env.Home(), fontsDir())) {
+			fmt.Println(dim("Your fonts stay out of GitHub pushes (large binaries) — `dothaven backup --encrypt` carries them, or add --only fonts,…"))
+		}
+	}
+	files, out, err := buildPushFiles(ctx, cmd, env, tmp, mode, pass, o.only, skip, digest)
 	if err != nil {
 		return err
 	}
@@ -590,6 +599,19 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		fmt.Println(dim("  You will need the passphrase. Nothing can open the encrypted part without it."))
 	}
 	return nil
+}
+
+// fontsDir is the user font folder, relative to home.
+func fontsDir() string {
+	if runtime.GOOS == "darwin" {
+		return filepath.Join("Library", "Fonts")
+	}
+	return filepath.Join(".local", "share", "fonts")
+}
+
+func dirHasFiles(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) > 0
 }
 
 // samePassphrase reports whether the copy on GitHub opens with pass. With
