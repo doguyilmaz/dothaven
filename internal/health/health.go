@@ -61,8 +61,8 @@ func ExecRunner(ctx context.Context, name string, args ...string) (string, error
 // Deliberately no third-party YAML or TOML libraries: a config is correct when
 // the program that reads it accepts it, so asking that program is both more
 // accurate than a re-implementation and nothing extra to trust. Formats with no
-// parser to hand are reported Unchecked rather than assumed fine — a checker
-// that quietly skips things is worse than one that admits its limits.
+// parser to hand are reported Unchecked rather than assumed fine, so the
+// report never claims more than it checked.
 func Check(ctx context.Context, run Runner, path string) Result {
 	r := Result{Path: path, Format: formatOf(path)}
 
@@ -110,9 +110,8 @@ func Check(ctx context.Context, run Runner, path string) Result {
 // wrong" from "this machine cannot tell".
 //
 // A missing validator is not a broken file. A Linux box without zsh installed
-// would otherwise report every .zshrc as broken — a health check that invents
-// faults is worse than one that admits it cannot see, because the first thing
-// it costs you is the habit of reading it.
+// would otherwise report every .zshrc as broken, and a check that reports
+// false faults teaches people to stop reading it.
 func verdict(r Result, out string, err error) Result {
 	if err == nil {
 		return r

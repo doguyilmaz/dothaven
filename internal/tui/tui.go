@@ -15,7 +15,7 @@ import (
 var menuHintStyle = lipgloss.NewStyle().Faint(true)
 
 // menuOption builds a menu entry whose label is followed by a muted hint,
-// aligned in a column so the menu reads like "action — what it does".
+// aligned in a column: the action on the left, what it does on the right.
 func menuOption(label, value, hint string) huh.Option[string] {
 	if hint == "" {
 		return huh.NewOption(label, value)

@@ -1,7 +1,7 @@
 // Package githubtest is an in-memory stand-in for the slice of the GitHub API
 // dothaven uses: users, repositories, the Git Data API (blobs, trees, commits,
 // refs), contents and tarballs, and the device-flow endpoints. It keeps real
-// objects, so a push followed by a pull is a genuine round trip.
+// objects, so a push followed by a pull is a real round trip.
 package githubtest
 
 import (

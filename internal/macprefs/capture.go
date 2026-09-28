@@ -117,8 +117,8 @@ func typeName(v Value) string {
 }
 
 // WriteArgs renders the command that replays an entry, or nil when there is
-// nothing safe to run — a review entry, or a value `defaults write` has no flag
-// for. Returning nil rather than a best-effort command is deliberate: a caller
+// nothing safe to run (a review entry, or a value `defaults write` has no flag
+// for). Returning nil rather than a best-effort command is deliberate: a caller
 // cannot then run something this package did not vouch for.
 func WriteArgs(e Entry) []string {
 	if e.Action != "" && e.Action != Apply.String() {

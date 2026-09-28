@@ -26,7 +26,7 @@ import (
 )
 
 // ClientID is the OAuth app used for browser sign-in (the device flow). It is
-// public by design — the device flow has no client secret — and is set at
+// public by design (the device flow has no client secret) and is set at
 // release time with -ldflags, or with DOTHAVEN_GITHUB_CLIENT_ID.
 var ClientID = ""
 
@@ -93,7 +93,7 @@ type APIError struct {
 func (e *APIError) Error() string { return fmt.Sprintf("GitHub API %d: %s", e.Status, e.Message) }
 
 // New returns a client for github.com. DOTHAVEN_GITHUB_API / _WEB point it
-// elsewhere — for tests, and for GitHub Enterprise — but only at https, or at
+// elsewhere (for tests, and for GitHub Enterprise), but only at https or at
 // plain http on the loopback interface.
 func New(token string) (*Client, error) {
 	c := &Client{API: "https://api.github.com", Web: "https://github.com", Token: token, HTTP: httpClient()}
@@ -120,9 +120,9 @@ func safeBase(raw string) bool {
 	return u.Scheme == "http" && (host == "127.0.0.1" || host == "localhost" || host == "::1")
 }
 
-// httpClient bounds every stage of a request that can stall — connecting,
-// the TLS handshake, waiting for the first response byte — while leaving the
-// body free to take as long as an upload honestly takes. The overall deadline
+// httpClient bounds every stage of a request that can stall (connecting, the
+// TLS handshake, waiting for the first response byte) while leaving the body
+// free to take as long as an upload needs. The overall deadline
 // is the caller's context.
 func httpClient() *http.Client {
 	t := &http.Transport{

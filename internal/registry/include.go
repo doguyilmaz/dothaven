@@ -15,9 +15,9 @@ const ExtraCategory = "extra"
 // (Paths) and paths they reviewed and declined (Declined), so the backup stops
 // asking about them.
 //
-// The registry can never be complete — every developer has a tool nobody else
-// uses — so a backup that only knows its built-in list silently leaves out
-// exactly the config that is hardest to rebuild. This is the escape hatch that
+// The registry can never be complete, because every developer has a tool
+// nobody else uses. A backup that only knows its built-in list silently leaves
+// out the config that is hardest to rebuild. This is the escape hatch that
 // needs no code change.
 type Includes struct {
 	Paths    []string // "~/"-relative, e.g. "~/.config/raycast"
@@ -26,7 +26,7 @@ type Includes struct {
 
 // ParseIncludes reads the include file: one path per line, "#" comments, a
 // leading "!" marks a declined path. Paths are normalised to "~/rel"; anything
-// outside home, or trying to climb out of it, is dropped — restore maps these
+// outside home, or trying to climb out of it, is dropped. Restore maps these
 // back under $HOME and must never be pointed anywhere else.
 func ParseIncludes(text, home string) Includes {
 	var inc Includes
@@ -77,11 +77,11 @@ func NormalizeInclude(p, home string) (string, bool) {
 }
 
 // FormatIncludes renders the include file, sorted, with a header saying what
-// it is — it sits in ~/.config and will be found by someone who did not write it.
+// it is: it sits in ~/.config and will be found by someone who did not write it.
 func FormatIncludes(inc Includes) string {
 	var b strings.Builder
 	b.WriteString("# dothaven: extra paths to back up, one per line, under your home folder.\n")
-	b.WriteString("# A line starting with ! was reviewed and left out — backup won't ask again.\n")
+	b.WriteString("# A line starting with ! was reviewed and left out; backup won't ask again.\n")
 	b.WriteString("# Edit freely, or use: dothaven include <path> / dothaven include --remove <path>\n")
 	paths := append([]string(nil), inc.Paths...)
 	sort.Strings(paths)
@@ -102,7 +102,7 @@ func FormatIncludes(inc Includes) string {
 //
 // They are Medium: scanned and redacted like everything else in a plaintext
 // backup, written owner-only on restore. A path that sits inside a
-// high-sensitivity entry is still protected — the backup gate checks every
+// high-sensitivity entry is still protected: the backup gate checks every
 // file against the high-sensitivity roots, whichever entry reached it.
 func IncludeEntries(paths []string, isDir func(string) bool, home string) []Entry {
 	out := make([]Entry, 0, len(paths))
@@ -127,9 +127,9 @@ func IncludeEntries(paths []string, isDir func(string) bool, home string) []Entr
 
 // GitReferences lists the files and folders a git config points at inside
 // home: hooks (core.hooksPath), ignore and attributes files, the commit
-// template, the init template folder, and — the ones people forget — the
-// files pulled in by [include] and [includeIf] (a work identity, a signing
-// key's config). Restoring a .gitconfig without them silently disables hooks
+// template, the init template folder, and the files pulled in by [include]
+// and [includeIf] (a work identity, a signing key's config), which are the
+// ones people forget. Restoring a .gitconfig without them silently disables hooks
 // or signs commits as the wrong person. dir is the config file's folder, which
 // a relative include path is relative to. Returns "~/"-relative paths.
 func GitReferences(config, dir, home string) []string {

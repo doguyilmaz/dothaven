@@ -14,8 +14,8 @@ func TestCompare(t *testing.T) {
 		// Comparing them raw is the whole reason this function exists.
 		{"v0.5.0", "0.5.0", 0},
 		{"0.4.0", "v0.5.0", -1},
-		// A string compare gets this backwards, and 0.9 -> 0.10 is exactly
-		// where this tool will be when it first matters.
+		// A string compare gets this backwards, and this tool will reach
+		// 0.9 -> 0.10.
 		{"0.10.0", "0.9.0", 1},
 		{"1.2", "1.2.0", 0},
 		{"1.2.1", "1.2", 1},

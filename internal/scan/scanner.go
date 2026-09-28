@@ -17,7 +17,7 @@ import (
 var actionPriority = map[Action]int{Skip: 3, Redact: 2, Include: 1}
 
 // MaxFileSize bounds how much of a file scanning will read into memory. Files
-// larger than this are skipped — secrets live in small config files, and an
+// larger than this are skipped: secrets live in small config files, and an
 // uncapped read is a memory-exhaustion vector on an attacker-supplied tree.
 const MaxFileSize = 1 << 20 // 1 MiB
 
@@ -47,9 +47,9 @@ var skipDirs = map[string]bool{
 // right for a walk over a whole home directory and wrong for a gate.
 func ScanContent(path, content string) Result { return scanContent(path, content, maxLineLen) }
 
-// ScanContentFull is ScanContent without the line-length shortcut. A gate —
-// the check that decides whether a file may be written somewhere in plaintext
-// — cannot skip the one long line a single-line JSON config keeps its token on.
+// ScanContentFull is ScanContent without the line-length shortcut. A gate (the
+// check that decides whether a file may be written somewhere in plaintext)
+// cannot skip the one long line a single-line JSON config keeps its token on.
 func ScanContentFull(path, content string) Result { return scanContent(path, content, 0) }
 
 func scanContent(path, content string, maxLine int) Result {
@@ -125,8 +125,8 @@ func scanContent(path, content string, maxLine int) Result {
 
 // ScanFile scans a regular file's contents. A missing/unreadable path, a
 // non-regular file (symlink, device, FIFO, socket), or one larger than
-// MaxFileSize returns nil — callers may pass any path defensively, and reading a
-// device or FIFO would otherwise block forever.
+// MaxFileSize returns nil. Callers may pass any path defensively, and reading
+// a device or FIFO would otherwise block forever.
 func ScanFile(path string) *Result {
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxFileSize {
@@ -146,8 +146,9 @@ func ScanFile(path string) *Result {
 // ctx.Err() when ctx is cancelled. If progress is non-nil it is incremented
 // (atomically) once per file scanned, letting a caller report progress without
 // blocking the walk. When prune is true, dependency/cache/VCS subtrees
-// (skipDirs) are skipped — right for a user-facing scan, but a security probe
-// that must not miss a secret (chezmoi export) passes false to scan everything.
+// (skipDirs) are skipped. That is right for a user-facing scan, but a security
+// probe that must not miss a secret (chezmoi export) passes false to scan
+// everything.
 func ScanDir(ctx context.Context, dir string, progress *int64, prune bool) ([]Result, error) {
 	paths := make(chan string)
 	var walkErr error
@@ -264,8 +265,8 @@ func Summarize(results []Result) Summary {
 }
 
 // dedupeLine drops a keyword finding (`TOKEN=…`) that overlaps another on
-// the same line — a specific one (the ghp_… it assigns) or an earlier keyword
-// rule: one secret, reported once, by its most telling name.
+// the same line, either a specific one (the ghp_… it assigns) or an earlier
+// keyword rule. One secret is reported once, by its most telling name.
 func dedupeLine(findings []Finding, start int, spans [][2]int) []Finding {
 	line := findings[start:]
 	if len(line) < 2 {

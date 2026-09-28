@@ -289,7 +289,7 @@ func PackagesCollector(c Ctx) snapshot.Snapshot {
 		}
 	}
 
-	// `go install`ed binaries — user tools with no config file to reproduce them.
+	// `go install`ed binaries: user tools with no config file to reproduce them.
 	if bins, err := c.Env.ListDir(c.Home + "/go/bin"); err == nil && len(bins) > 0 {
 		sorted := append([]string(nil), bins...)
 		sort.Strings(sorted)

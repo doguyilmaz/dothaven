@@ -103,8 +103,8 @@ func TestAppSlugFromEnv(t *testing.T) {
 	}
 }
 
-// Commits name the app's bot as author and the account as committer — the
-// first one too, which an empty repository gets from the Contents API.
+// Commits name the app's bot as author and the account as committer. That
+// includes the first one, which an empty repository gets from the Contents API.
 func TestCommitsNameBotAndAccount(t *testing.T) {
 	s := githubtest.New("tok", "dev")
 	defer s.Close()
@@ -150,8 +150,8 @@ func TestCommitsNameBotAndAccount(t *testing.T) {
 	}
 }
 
-// A signed push signs exactly the commit the API will build — the fields it
-// sends, dated, the message newline-terminated — and reports GitHub's
+// A signed push signs exactly the commit the API will build (the fields it
+// sends, dated, the message newline-terminated) and reports GitHub's
 // verdict. A signer that fails leaves the commit unsigned, not unmade.
 func TestSignedCommits(t *testing.T) {
 	s := githubtest.New("tok", "dev")
@@ -171,7 +171,7 @@ func TestSignedCommits(t *testing.T) {
 	push := func(body string) {
 		t.Helper()
 		files := []File{write(t, dir, "shell/.zshrc", body, 0o644)}
-		if _, err := c.Commit(ctx, "dev/b", "main", "machines/m", files, nil, "dothaven: m — encrypted backup, 1 file"); err != nil {
+		if _, err := c.Commit(ctx, "dev/b", "main", "machines/m", files, nil, "dothaven: m (encrypted backup, 1 file)"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -182,7 +182,7 @@ func TestSignedCommits(t *testing.T) {
 		!strings.HasPrefix(lines[2], "author dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com> ") ||
 		!strings.HasPrefix(lines[3], "committer dev <1001+dev@users.noreply.github.com> ") ||
 		!strings.HasSuffix(lines[2], " +0000") || lines[4] != "" ||
-		!strings.HasSuffix(payload, "\n\ndothaven: m — encrypted backup, 1 file\n") {
+		!strings.HasSuffix(payload, "\n\ndothaven: m (encrypted backup, 1 file)\n") {
 		t.Fatalf("payload is not a git commit object:\n%s", payload)
 	}
 	if !c.Signing.Signed || !c.Signing.Verified || c.Signing.Reason != "valid" {
@@ -211,7 +211,7 @@ func TestSignedCommits(t *testing.T) {
 func TestRefusesPlainHTTPElsewhere(t *testing.T) {
 	t.Setenv("DOTHAVEN_GITHUB_API", "http://evil.example.com")
 	if _, err := New("t"); err == nil {
-		t.Error("a non-loopback http API URL must be refused — the token would travel in the clear")
+		t.Error("a non-loopback http API URL must be refused: the token would travel in the clear")
 	}
 }
 

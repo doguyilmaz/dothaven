@@ -10,9 +10,9 @@ import (
 //
 // The scanner was reporting HIGH findings on a zsh theme: `token ==` (a
 // comparison, where the rule read the second `=` as the value) and
-// `token=$tokens[1]` (a variable reference). Both are noise, and noise is not
-// harmless here — a security tool that flags your shell theme is one you learn
-// to skim, which costs more than the findings it invents.
+// `token=$tokens[1]` (a variable reference). Both are noise, and noise has a
+// cost: once a security tool flags your shell theme, people learn to skim its
+// output.
 //
 // Only keyword rules are filtered. A PEM header or an AWS key's shape means
 // what it says.
@@ -25,7 +25,7 @@ func valueLooksReal(match string) bool {
 	// write `token ==`, where splitting on the first one alone leaves a value
 	// that starts with the rest of the operator rather than with the data.
 	v := strings.TrimLeft(match[i+1:], " \t=:")
-	// `${VAR:+x}`, `${VAR:-x}`, `${VAR:?x}` — shell parameter expansion, where
+	// `${VAR:+x}`, `${VAR:-x}`, `${VAR:?x}`: shell parameter expansion, where
 	// what follows the delimiter is a fallback rule and not a value at all.
 	if len(v) > 1 && (v[0] == '+' || v[0] == '-' || v[0] == '?') {
 		v = v[1:]
@@ -40,7 +40,7 @@ func valueLooksReal(match string) bool {
 		// `==`, `=~`, `<=`: the rule's delimiter was half of an operator.
 		return false
 	case '$', '%', '`':
-		// $VAR, ${VAR}, %s, `cmd` — the value lives somewhere else.
+		// $VAR, ${VAR}, %s, `cmd`: the value lives somewhere else.
 		return false
 	case '{', '(', '[':
 		// A structure, not a scalar: `token: {` opens a JSON/YAML block.
@@ -62,14 +62,6 @@ func valueLooksReal(match string) bool {
 	return true
 }
 
-// looksBinary reports whether content is binary, judged by a NUL byte in the
-// first 8 KiB — the same heuristic git uses.
-//
-// Compiled zsh (.zwc), object files and images match plenty of rules out of
-// arbitrary bytes, none of it meaningful. Binary content is therefore matched
-// only against key-material rules (Action == Skip), because GnuPG stores a
-// private key as a binary s-expression — skipping such files outright would
-// lose the one finding that matters most in them.
 // LooksBinary is looksBinary for a byte slice, without copying it.
 func LooksBinary(b []byte) bool {
 	if len(b) > 8<<10 {
@@ -78,6 +70,14 @@ func LooksBinary(b []byte) bool {
 	return bytes.IndexByte(b, 0) >= 0
 }
 
+// looksBinary reports whether content is binary, judged by a NUL byte in the
+// first 8 KiB (the same heuristic git uses).
+//
+// Compiled zsh (.zwc), object files and images match plenty of rules out of
+// arbitrary bytes, none of it meaningful. Binary content is therefore matched
+// only against key-material rules (Action == Skip), because GnuPG stores a
+// private key as a binary s-expression. Skipping such files outright would
+// miss the private key in them.
 func looksBinary(content string) bool {
 	if len(content) > 8<<10 {
 		content = content[:8<<10]

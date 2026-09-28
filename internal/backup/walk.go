@@ -21,7 +21,7 @@ const MaxFileSize = 64 << 20 // 64 MiB
 type File struct {
 	Path string // absolute path on this machine (the logical path, not the link target)
 	Dest string // slash-separated path inside the backup
-	Exec bool   // any executable bit set — hooks and scripts must stay runnable
+	Exec bool   // any executable bit set; hooks and scripts must stay runnable
 	Size int64
 }
 
@@ -48,11 +48,11 @@ var alwaysSkip = map[string]bool{".DS_Store": true}
 
 // Walk resolves a target into the files it would carry.
 //
-// Symlinks are followed, both at the root and inside it. dotfiles managed by
-// stow or a bare repo are symlinks — ~/.config/nvim pointing into ~/dotfiles —
-// and a walker that does not follow them backs up nothing at all for exactly
-// the people with the most carefully kept config. Directory links are followed
-// once per real directory, so a link cycle cannot loop.
+// Symlinks are followed, both at the root and inside it. Dotfiles managed by
+// stow or a bare repo are symlinks (~/.config/nvim pointing into ~/dotfiles),
+// and a walker that does not follow them backs up none of that config.
+// Directory links are followed once per real directory, so a link cycle
+// cannot loop.
 //
 // Sockets, FIFOs and devices are skipped without comment: they are runtime
 // endpoints (gpg-agent, ssh control masters), not data, and reading one blocks.

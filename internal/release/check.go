@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	// LatestURL answers with a 302 whose Location names the newest release —
-	// prereleases and drafts excluded, which matches what the tap ships given
+	// LatestURL answers with a 302 whose Location names the newest release,
+	// prereleases and drafts excluded. That matches what the tap ships given
 	// GoReleaser's `prerelease: auto`.
 	//
 	// Deliberately github.com and not api.github.com. The API allows 60
 	// unauthenticated requests an hour per IP address, and an IP address is
-	// what a company shares behind one NAT — so on an office network the check
+	// what a company shares behind one NAT, so on an office network the check
 	// would fail permanently while looking exactly like "you are up to date".
 	// This endpoint has no such ceiling, and the whole answer arrives in a
 	// header, so no response body is ever read.
@@ -56,7 +56,7 @@ type Checker struct {
 }
 
 // cacheFile is the whole of what dothaven remembers about update checks. It
-// holds no identifier and nothing about the machine — a timestamp and a version
+// holds no identifier and nothing about the machine: a timestamp and a version
 // string, so the answer to "have we looked today" survives a restart.
 type cacheFile struct {
 	CheckedAt time.Time `json:"checked_at"`
@@ -67,7 +67,7 @@ type cacheFile struct {
 func (c *Checker) Cached() string { return c.load().Latest }
 
 // Latest returns the newest published version, consulting the network only when
-// the cache has expired — or always, when force is set.
+// the cache has expired, or always when force is set.
 func (c *Checker) Latest(ctx context.Context, force bool) (string, error) {
 	cf := c.load()
 	if !force && c.now().Sub(cf.CheckedAt) < c.TTL {
@@ -151,7 +151,7 @@ func (h httpFetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 	// GitHub rejects requests without one. It carries the version and nothing
-	// else — no machine identifier, no usage data.
+	// else: no machine identifier, no usage data.
 	req.Header.Set("User-Agent", h.ua)
 
 	client := &http.Client{

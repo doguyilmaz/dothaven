@@ -18,7 +18,7 @@ func fakeGit(out map[string]string) Runner {
 }
 
 func TestRepoWithNoRemoteIsAlwaysAtRisk(t *testing.T) {
-	// Clean tree, nothing stashed — and still unrecoverable, because there is
+	// Clean tree, nothing stashed, and still unrecoverable, because there is
 	// nowhere else for any of it to be.
 	r := inspectOne(context.Background(), fakeGit(map[string]string{
 		"status":   "",
@@ -66,7 +66,7 @@ func TestUnsavedCountsCommitsOnNoRemote(t *testing.T) {
 }
 
 func TestStashesAloneAreAtRisk(t *testing.T) {
-	// A stash is not carried by pushing a branch, which is exactly why it gets
+	// A stash is not carried by pushing a branch, which is why it gets
 	// lost in a migration.
 	r := inspectOne(context.Background(), fakeGit(map[string]string{
 		"status":   "",

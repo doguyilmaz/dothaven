@@ -62,7 +62,7 @@ func TestAndroidSDKPackagesReadsTheLayout(t *testing.T) {
 	}
 	for _, g := range got {
 		if !want[g] {
-			t.Errorf("unexpected package %q — licenses is not one", g)
+			t.Errorf("unexpected package %q: licenses is not one", g)
 		}
 	}
 }

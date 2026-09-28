@@ -30,7 +30,7 @@ const (
 // The point of knowing is to delegate. Homebrew records which version it put in
 // the Caskroom; a binary that rewrites itself in place leaves that record
 // describing a file that no longer exists, and the next `brew upgrade` silently
-// throws the replacement away. So dothaven never writes over itself — it works
+// throws the replacement away. So dothaven never writes over itself: it works
 // out who owns the file and hands the job back to them.
 func Detect(execPath, brewPrefix, goBin string) Method {
 	if execPath == "" {
@@ -75,7 +75,7 @@ func Steps(m Method) []Step {
 			// `brew update` first, always. The tap is a git clone that only
 			// refreshes on update, so upgrading against a stale clone reports
 			// "already installed" for a version that has been published for
-			// hours — the very thing this command exists to fix.
+			// hours, which is what this command exists to fix.
 			//
 			// Optional, because it refreshes *every* tap on the machine: one
 			// tap that has been deleted upstream makes it exit non-zero while

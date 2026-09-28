@@ -53,9 +53,9 @@ func TestExtractRoundTrip(t *testing.T) {
 	}
 }
 
-// A tar entry may name its way out of the extraction directory. A tool that
-// restores into a home directory is exactly where that lands, so it is refused
-// rather than sanitised silently.
+// A tar entry may name its way out of the extraction directory. For a tool
+// that restores into a home directory, that is where the file lands, so it is
+// refused rather than sanitised silently.
 func TestExtractRefusesPathTraversal(t *testing.T) {
 	d := t.TempDir()
 	src := filepath.Join(d, "evil.tar.gz")
@@ -69,7 +69,7 @@ func TestExtractRefusesPathTraversal(t *testing.T) {
 	}
 	if _, err := os.Stat("/tmp/dothaven-escaped"); err == nil {
 		os.Remove("/tmp/dothaven-escaped")
-		t.Fatal("the escaping entry was actually written")
+		t.Fatal("the escaping entry was written")
 	}
 }
 
@@ -95,8 +95,8 @@ func TestExtractSkipsSymlinks(t *testing.T) {
 	}
 }
 
-// Format is judged by content, so a backup renamed on the way across — or saved
-// by a browser as "backup (1)" — still opens.
+// Format is judged by content, so a backup renamed on the way across, or saved
+// by a browser as "backup (1)", still opens.
 func TestDetectByContent(t *testing.T) {
 	d := t.TempDir()
 	plain := filepath.Join(d, "renamed")

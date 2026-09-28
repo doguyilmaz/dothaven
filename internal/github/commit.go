@@ -28,7 +28,7 @@ type File struct {
 const MaxFile = 95 << 20
 
 // inlineMax is the largest text file sent inline in a tree request instead of
-// as its own blob — one request instead of hundreds for a folder of configs.
+// as its own blob: one request instead of hundreds for a folder of configs.
 const inlineMax = 256 << 10
 
 // inlineBatch bounds how much inline content one tree request carries.
@@ -48,7 +48,7 @@ type treeEntry struct {
 
 // Commit replaces everything under prefix on branch with files (plus extra,
 // small in-memory files such as a README at the repository root) as one
-// commit, and returns its SHA — or "" when nothing changed.
+// commit, and returns its SHA, or "" when nothing changed.
 //
 // The subtree under prefix is rebuilt from scratch, so a file deleted on this
 // machine disappears from the repository too; the rest of the repository

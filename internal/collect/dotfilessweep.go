@@ -68,7 +68,7 @@ func ManagedDotNames(entries []registry.Entry) map[string]bool {
 // ManagedConfigNames derives the set of ~/.config/<name> entries covered by the
 // registry, across both darwin and linux paths (a tool's ~/.config form may
 // appear only on linux). Used to flag the ~/.config children that aren't
-// covered — otherwise the top-level sweep marks all of ~/.config "managed" and
+// covered. Otherwise the top-level sweep marks all of ~/.config "managed" and
 // silently hides every uncovered tool living under it.
 func ManagedConfigNames(entries []registry.Entry) map[string]bool {
 	set := map[string]bool{}
@@ -181,7 +181,7 @@ func DotfilesSweepCollector(c Ctx) snapshot.Snapshot {
 
 // uncoveredNoise are home entries that are state, caches or toolchains rather
 // than config: offering them for backup would bury the real candidates. None
-// of it is lost by leaving it out — it rebuilds, or it is history.
+// of it is lost by leaving it out: it rebuilds, or it is history.
 var uncoveredNoise = map[string]bool{
 	".local": true, ".npm": true, ".cargo": true, ".rustup": true, ".nvm": true,
 	".pyenv": true, ".rbenv": true, ".gem": true, ".gradle": true, ".m2": true,
@@ -296,7 +296,7 @@ func Uncovered(listDir func(string) ([]string, error), home string, entries []re
 	sweep(".claude", "~/.claude/", claudeNoise, false)
 	sweep(".codex", "~/.codex/", codexNoise, false)
 	sweep(".gemini", "~/.gemini/", geminiNoise, false)
-	// Personal scripts are the classic thing nobody remembers to copy.
+	// Personal scripts are easy to forget when moving machines.
 	if names, err := listDir(filepath.Join(home, "bin")); err == nil && len(names) > 0 && !isCovered("~/bin") {
 		out = append(out, "~/bin")
 	}

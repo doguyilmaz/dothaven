@@ -48,7 +48,7 @@ func TestShouldTemplate(t *testing.T) {
 }
 
 // The escaped output must parse and render back to the original, with only the
-// home directory swapped — which is exactly what chezmoi apply will do.
+// home directory swapped, which is what chezmoi apply will do.
 func TestTemplatizeRendersBack(t *testing.T) {
 	in := "local k = {{ mods='CMD' }}\nprintf '{{.Name}}'\npath=/home/u/bin\n"
 	out, _ := Templatize(in, "/home/u")

@@ -1,5 +1,5 @@
 // Package macprefs reads macOS preference domains and decides which keys are
-// a setting somebody chose and which are just state an app happened to write.
+// a setting somebody chose and which are state an app happened to write.
 //
 // Everything here is a pure function over bytes; running `defaults` is the
 // caller's job.
@@ -18,9 +18,9 @@ import (
 type Kind int
 
 const (
-	// Composite is the zero value: anything that is not a single scalar —
-	// dictionaries, arrays, data blobs, dates. `defaults write` cannot replay
-	// these from a flat value, and they are overwhelmingly app state.
+	// Composite is the zero value: anything that is not a single scalar
+	// (dictionaries, arrays, data blobs, dates). `defaults write` cannot
+	// replay these from a flat value, and they are overwhelmingly app state.
 	Composite Kind = iota
 	String
 	Int
@@ -74,7 +74,7 @@ func parse(b []byte, keep func(key string) bool) (map[string]Value, error) {
 
 			// Anything below the outer dict is somebody else's structure. Skip
 			// the whole subtree so a nested <key> cannot be mistaken for a
-			// preference — writing one back would invent a top-level key that
+			// preference. Writing one back would invent a top-level key that
 			// never existed.
 			if depth > 1 || (depth == 1 && !haveKey && name != "key") {
 				if err := dec.Skip(); err != nil {

@@ -13,7 +13,8 @@ const (
 	// not writing it is the answer that cannot break a Mac.
 	Skip Action = iota
 	// Review is a real setting whose value only makes sense on the machine it
-	// came from — a path, an identifier. Captured and shown, never written.
+	// came from, such as a path or an identifier. Captured and shown, never
+	// written.
 	Review
 	// Apply is a portable setting: replay it with `defaults write`.
 	Apply
@@ -54,20 +55,20 @@ var noise = regexp.MustCompile(strings.Join([]string{
 	`[Tt]imestamp`,
 }, "|"))
 
-// identifier matches a value that only names a thing on the old machine — a
+// identifier matches a value that only names a thing on the old machine: a
 // boot, display or hardware UUID. Unlike a path, there is no version of it
 // worth setting by hand here, so it is dropped rather than reported.
 var identifier = regexp.MustCompile(
 	`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
 
 // hostPath matches a value that points into the old machine's filesystem. The
-// setting is real — where screenshots land, which folder a dialog opens — and
+// setting is real (where screenshots land, which folder a dialog opens), and
 // the equivalent here is something a person can choose, so it is reported.
 var hostPath = regexp.MustCompile(`^(/Users/|/Volumes/|/private/)`)
 
 // portable are the nested values worth carrying: settings you notice the
 // moment you sit at a new Mac, which happen to live in an array or a dict.
-// Everything else nested stays skipped — Spaces layouts, display arrangements,
+// Everything else nested stays skipped: Spaces layouts, display arrangements,
 // an app's own state.
 var portable = map[string]bool{
 	"NSGlobalDomain\x00AppleLanguages":                       true, // language order
@@ -77,8 +78,8 @@ var portable = map[string]bool{
 }
 
 // Portable reports whether a nested value is carried: the list above, and
-// NSUserKeyEquivalents in any domain — the App Shortcuts set for a menu item,
-// kept in that app's domain (NSGlobalDomain for "All Applications").
+// NSUserKeyEquivalents in any domain. Those are the App Shortcuts set for a
+// menu item, kept in that app's domain (NSGlobalDomain for "All Applications").
 func Portable(domain, key string) bool {
 	return key == "NSUserKeyEquivalents" || portable[domain+"\x00"+key]
 }
@@ -88,7 +89,7 @@ func Portable(domain, key string) bool {
 // The order matters. Anything that is not a single value goes first, because
 // that is where Spaces layouts and display UUIDs live and `defaults write`
 // could not replay them regardless. Then bookkeeping by key name. Only then is
-// the value examined, so a genuine setting that happens to hold a path is
+// the value examined, so a real setting that happens to hold a path is
 // reported rather than dropped.
 func Classify(domain, key string, v Value) (Action, string) {
 	if v.Kind == Composite {

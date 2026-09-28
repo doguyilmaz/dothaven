@@ -13,7 +13,7 @@ var dockURL = regexp.MustCompile(`"_CFURLString"\s*=\s*"([^"]+)"`)
 
 // ParseDockApps returns the app bundles pinned in the Dock, in order. The Dock
 // layout is a nested array the per-key capture cannot replay, and it is the
-// first thing anyone looks at on a new Mac — so it gets a path of its own.
+// first thing anyone looks at on a new Mac, so it gets a path of its own.
 func ParseDockApps(out string) []string {
 	var apps []string
 	seen := map[string]bool{}

@@ -64,8 +64,8 @@ func PrivateTempDir(kind string) (string, func(), error) {
 var aborting atomic.Bool
 
 // Aborting reports that the process is on its way out (RemoveTempDirs ran).
-// Long writes into a temporary folder — unpacking an archive — check it, so
-// they do not recreate what was just removed.
+// Long writes into a temporary folder, such as unpacking an archive, check it
+// so they do not recreate what was just removed.
 func Aborting() bool { return aborting.Load() }
 
 // RemoveTempDirs removes every folder PrivateTempDir made that is still there.
@@ -86,8 +86,8 @@ func RemoveTempDirs() {
 }
 
 // SweepTempDirs removes temporary folders left by dothaven runs that are no
-// longer alive — a crash, a kill -9, a power cut in the middle of a restore —
-// so decrypted files do not stay behind. Only this user's folders are
+// longer alive (after a crash, a kill -9, a power cut in the middle of a
+// restore) so decrypted files do not stay behind. Only this user's folders are
 // considered, and only those whose process is gone.
 func SweepTempDirs() int {
 	base := os.TempDir()

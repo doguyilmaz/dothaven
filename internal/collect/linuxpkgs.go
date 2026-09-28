@@ -32,7 +32,7 @@ func ParseSnapList(text string) []string {
 			continue
 		}
 		if f[0] == "Name" {
-			continue // header row — detected by content so a leading blank line can't leak it
+			continue // header row, detected by content so a leading blank line can't leak it
 		}
 		out = append(out, f[0])
 	}
@@ -41,8 +41,8 @@ func ParseSnapList(text string) []string {
 }
 
 // LinuxPackagesCollector inventories explicitly-installed system packages on
-// Linux (apt/dnf/pacman) plus snap and flatpak apps. A no-op on other OSes —
-// the package set is reinstalled by the generated install script on apply.
+// Linux (apt/dnf/pacman) plus snap and flatpak apps. A no-op on other OSes.
+// The package set is reinstalled by the generated install script on apply.
 func LinuxPackagesCollector(c Ctx) snapshot.Snapshot {
 	out := snapshot.Snapshot{}
 	if runtime.GOOS != "linux" {

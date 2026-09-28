@@ -15,7 +15,7 @@ import (
 
 type Env interface {
 	// Run executes a command and returns its stdout. A non-zero exit is tolerated
-	// (e.g. `npm ls` exits 1 on peer warnings) — only a spawn failure is an error.
+	// (e.g. `npm ls` exits 1 on peer warnings); only a spawn failure is an error.
 	Run(ctx context.Context, args ...string) (string, error)
 	ReadFile(path string) ([]byte, error)
 	// ListDir returns the names of a directory's entries (non-recursive).
@@ -124,8 +124,8 @@ func WriteFile(path, content string) error {
 }
 
 // WriteFileSecure atomically writes content owner-only (0600 file, 0700 dirs).
-// Used for any output that can hold secrets — backups, snapshots, security
-// reports, pre-restore snapshots — so it is never world-readable.
+// Used for any output that can hold secrets (backups, snapshots, security
+// reports, pre-restore snapshots), so it is never world-readable.
 func WriteFileSecure(path, content string) error {
 	return writeFile(path, []byte(content), 0o700, 0o600)
 }
@@ -149,7 +149,7 @@ func WriteBytesAs(path string, data []byte, perm os.FileMode) error {
 
 // writeFile writes to a temp file in the destination dir and renames it into
 // place, so an interrupted write can never leave a half-written (or empty)
-// target — the rename is atomic on the same filesystem.
+// target. The rename is atomic on the same filesystem.
 func writeFile(path string, content []byte, dirPerm, filePerm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
@@ -180,9 +180,9 @@ func writeFile(path string, content []byte, dirPerm, filePerm os.FileMode) error
 
 // DataDir is dothaven's stable per-user data directory ($XDG_DATA_HOME/dothaven,
 // else ~/.local/share/dothaven). Backups live here so `backup` and the commands
-// that read them (restore/status/diff) always agree regardless of the cwd —
-// regardless of the directory it is run from. ~/Downloads is deliberately
-// avoided: it's user-visible clutter and broadly readable by other apps.
+// that read them (restore/status/diff) always agree, whatever directory they
+// are run from. ~/Downloads is deliberately avoided: it's user-visible clutter
+// and broadly readable by other apps.
 func (o *OS) DataDir() string {
 	if x := os.Getenv("XDG_DATA_HOME"); x != "" {
 		return filepath.Join(x, "dothaven")
@@ -194,7 +194,7 @@ func (o *OS) DataDir() string {
 // ($XDG_CACHE_HOME/dothaven, else ~/.cache/dothaven). Deliberately not DataDir:
 // that one holds backups and snapshots, where a file rewritten on every command
 // would be mistaken for the newest snapshot by doctor's no-argument fallback,
-// and would create the directory 0755 before backup could create it 0700 —
+// and would create the directory 0755 before backup could create it 0700.
 // MkdirAll does not tighten a directory that already exists.
 //
 // Everything here can be deleted at any time; the only cost is a redundant

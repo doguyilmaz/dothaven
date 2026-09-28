@@ -54,7 +54,7 @@ func TestWriteFileAtomicOverwriteLeavesNoTemp(t *testing.T) {
 
 func TestRunNilContextNoPanic(t *testing.T) {
 	// A nil context must be defaulted (not passed to WithTimeout, which panics).
-	// The command not existing is fine — we only assert this doesn't panic.
+	// The command not existing is fine; this only asserts it doesn't panic.
 	if _, err := Real().Run(nil, "dothaven-no-such-command-xyz"); err == nil {
 		t.Log("unexpected: bogus command did not error (harmless)")
 	}
@@ -88,7 +88,7 @@ func TestCacheDir(t *testing.T) {
 	}
 
 	// Disposable bookkeeping must not share a directory with backups and
-	// snapshots — see TestUpdateCacheIsNotInTheDataDir for why.
+	// snapshots (see TestUpdateCacheIsNotInTheDataDir for why).
 	if o.CacheDir() == o.DataDir() {
 		t.Error("CacheDir and DataDir are the same directory")
 	}

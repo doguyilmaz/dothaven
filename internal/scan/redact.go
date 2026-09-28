@@ -14,8 +14,8 @@ const Marker = "[REDACTED]"
 
 // ApplyRedactions masks every redact-action finding's matches in content, one
 // line at a time, the way the scan found them. A match can therefore never
-// run from one line into the next — which is how `token =` on one line could
-// otherwise swallow the key of `secret = x` on the next and leave x behind.
+// run from one line into the next. Otherwise `token =` on one line could
+// swallow the key of `secret = x` on the next and leave x behind.
 // Every match on a line is masked, not just the first.
 func ApplyRedactions(content string, r Result) string {
 	if r.Action != Redact {
@@ -73,8 +73,8 @@ func keepKey(m string) string {
 	return m[:j] + Marker
 }
 
-// RedactSection scrubs a section in place — content AND pairs (values and keys)
-// AND items — so no section type bypasses the gate. It returns kept=false when
+// RedactSection scrubs a section in place: content, pairs (values and keys) and
+// items, so no section type bypasses the gate. It returns kept=false when
 // the section must be dropped entirely (its content scanned to "skip", e.g. a
 // private key), plus the scan results for the run's summary.
 func RedactSection(name string, s *snapshot.Section) (kept bool, results []Result) {
@@ -99,9 +99,10 @@ func RedactSection(name string, s *snapshot.Section) (kept bool, results []Resul
 			continue
 		}
 		// Scan the reconstructed `key=value`, not the value alone: an opaque
-		// secret (no recognizable prefix) under a credential-named key — e.g. a
-		// flattened JSON `auth.apiKey` => <random> — only trips the keyword
-		// patterns when the keyword and a delimiter sit on the same line.
+		// secret (no recognizable prefix) under a credential-named key, such
+		// as a flattened JSON `auth.apiKey` => <random>, only trips the
+		// keyword patterns when the keyword and a delimiter sit on the same
+		// line.
 		if r := ScanContent(name+"."+k, k+"="+s.Pairs[k]); r.Action != Include {
 			results = append(results, r)
 			s.Pairs[k] = Marker
@@ -158,8 +159,9 @@ func RedactSSHConfig(text string) string {
 // setting's name, a token's prefix, its last two characters), never the value.
 // A scan's output lands in terminal scrollback, CI logs and screen shares.
 func Preview(match string) string {
-	// A PEM header names the kind of key, not the key — but only the header:
-	// a one-line JSON PEM (a service-account key) matches with its body.
+	// A PEM header names the kind of key, not the key, so show the header
+	// alone: a one-line JSON PEM (a service-account key) matches with its
+	// body.
 	if h := pemHeader.FindString(match); h != "" {
 		return h
 	}
@@ -187,7 +189,7 @@ func Preview(match string) string {
 // ageIdentityRe is a whole age identity, classic or post-quantum.
 var ageIdentityRe = regexp.MustCompile(`AGE-SECRET-KEY-(PQ-)?1[0-9A-Z]{50,}`)
 
-// ContainsAgeIdentity reports whether b holds an age identity — the key that
+// ContainsAgeIdentity reports whether b holds an age identity, the key that
 // opens every file encrypted to it.
 func ContainsAgeIdentity(b []byte) bool {
 	return bytes.Contains(b, []byte("AGE-SECRET-KEY-")) && ageIdentityRe.Match(b)

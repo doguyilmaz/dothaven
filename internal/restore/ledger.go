@@ -11,7 +11,7 @@ import (
 )
 
 // Ledger remembers what restore did on this machine, so running it again shows
-// what is already applied, what you changed since, and what you chose to skip —
+// what is already applied, what you changed since, and what you chose to skip,
 // instead of offering every file as new work each time.
 //
 // It holds hashes, never content: it lives beside backups in the data
@@ -104,8 +104,8 @@ func (l *Ledger) refine(e *Entry, backupID string) {
 			e.AppliedAt = a.At
 			return
 		case e.Status == StatusConflict && a.SHA256 == e.LiveSHA:
-			// The file here is exactly what restore wrote before, untouched
-			// since; the backup simply has a newer copy. Nothing of the
+			// The file here is what restore wrote before, untouched since;
+			// the backup has a newer copy. Nothing of the
 			// user's would be lost by updating it.
 			e.Status = StatusUpdate
 		case e.Status == StatusConflict:

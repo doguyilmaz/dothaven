@@ -116,7 +116,7 @@ func toolVersionItems(tvs []ToolVersion) []snapshot.Item {
 
 // VersionManagersCollector inventories versions installed via asdf, pyenv, and
 // rbenv. The declarative configs (.tool-versions, mise config) live in the
-// registry; this captures what is actually installed for parity checks.
+// registry; this captures what is installed, for parity checks.
 func VersionManagersCollector(c Ctx) snapshot.Snapshot {
 	out := snapshot.Snapshot{}
 

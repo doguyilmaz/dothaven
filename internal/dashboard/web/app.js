@@ -136,7 +136,7 @@ function renderSummary(s) {
 
   const cats = [...s.coverage.categories].sort((a, b) => b.files - a.files);
   bars($("coverage"), cats, (c) => c.files, (c) => (c.credentials ? "🔑 " : "") + c.name,
-    (c) => `${fmt.format(c.files)} files · ${bytes(c.bytes)}${c.about ? " — " + c.about : ""}`);
+    (c) => `${fmt.format(c.files)} files · ${bytes(c.bytes)}${c.about ? " · " + c.about : ""}`);
   table($("coverage-table"), [{ t: "Category" }, { t: "Files", num: true }, { t: "Size", num: true }, { t: "What" }],
     cats.map((c) => [c.name, fmt.format(c.files), bytes(c.bytes), c.about || ""]));
 
@@ -150,7 +150,7 @@ function renderSummary(s) {
     b.replaceChildren(el("p", { class: "empty", text: "No backups yet. For a new machine: dothaven backup --encrypt" }));
   } else {
     table(b, [{ t: "When" }, { t: "Kind" }, { t: "Size", num: true }, { t: "Where" }],
-      s.backups.slice(0, 12).map((x) => [when(x.modified), x.kind, x.kind === "folder" ? "—" : bytes(x.size), x.path]));
+      s.backups.slice(0, 12).map((x) => [when(x.modified), x.kind, x.kind === "folder" ? "" : bytes(x.size), x.path]));
   }
 
   const l = $("ledger");
@@ -160,7 +160,7 @@ function renderSummary(s) {
     s.ledger.lastApplied ? el("li", null, el("span", { class: "path", text: "Last restore" }), el("span", { class: "meta", text: when(s.ledger.lastApplied) })) : null));
 
   const inv = s.inventory;
-  $("inventory-sub").textContent = inv.source ? `From ${inv.source} (${when(inv.date) || inv.date}).` : "No inventory yet — run dothaven collect, or make a backup.";
+  $("inventory-sub").textContent = inv.source ? `From ${inv.source} (${when(inv.date) || inv.date}).` : "No inventory yet. Run dothaven collect, or make a backup.";
   bars($("inventory"), inv.groups, (g) => g.count, (g) => g.label, (g) => `${fmt.format(g.count)} ${g.label}`);
   table($("inventory-table"), [{ t: "Group" }, { t: "Count", num: true }], inv.groups.map((g) => [g.label, fmt.format(g.count)]));
 }
@@ -184,7 +184,7 @@ function renderRepos(r) {
   const root = $("repos");
   root.classList.remove("lazy");
   if (!r.repos.length) {
-    root.replaceChildren(el("p", { class: "ok", text: `✓ ${fmt.format(r.checked)} repositories checked — everything is on a remote.` }));
+    root.replaceChildren(el("p", { class: "ok", text: `✓ ${fmt.format(r.checked)} repositories checked, and everything is on a remote.` }));
     return;
   }
   root.replaceChildren(
@@ -219,7 +219,7 @@ function renderGitHub(g) {
 }
 
 async function load(fresh) {
-  try { renderSummary(await api("summary", fresh)); } catch (e) { $("hero").textContent = "—"; $("hero-sub").textContent = "Could not load: " + e.message; }
+  try { renderSummary(await api("summary", fresh)); } catch (e) { $("hero").textContent = "?"; $("hero-sub").textContent = "Could not load: " + e.message; }
   api("secrets", fresh).then(renderSecrets, (e) => fail($("secrets"), e));
   api("repos", fresh).then(renderRepos, (e) => fail($("repos"), e));
   api("github", fresh).then(renderGitHub, (e) => fail($("github"), e));

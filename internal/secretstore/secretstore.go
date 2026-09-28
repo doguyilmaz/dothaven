@@ -1,5 +1,5 @@
-// Package secretstore keeps small secrets — a GitHub token, a remembered
-// backup passphrase — in the operating system's credential store: the macOS
+// Package secretstore keeps small secrets (a GitHub token, a remembered
+// backup passphrase) in the operating system's credential store: the macOS
 // Keychain, or the Secret Service (GNOME Keyring, KWallet) on Linux. Where
 // neither is available it falls back to an owner-only file and says so.
 package secretstore
@@ -75,8 +75,8 @@ func run(stdin string, name string, args ...string) (string, error) {
 }
 
 // encPrefix marks a stored value as base64. Secrets are stored encoded so
-// that nothing about them — quotes, backslashes, spaces at either end, ş or ğ
-// — depends on how `security -i` parses a line or how `security -w` prints a
+// that nothing about them (quotes, backslashes, spaces at either end, ş or ğ)
+// depends on how `security -i` parses a line or how `security -w` prints a
 // password it considers unprintable (as hex). Values stored by older versions
 // have no prefix and are read as they are.
 const encPrefix = "b64:"
@@ -100,7 +100,7 @@ func (s *Store) Get(account string) (string, error) {
 	return v, err
 }
 
-// GetExact is Get, also saying whether the value was stored encoded — and so
+// GetExact is Get, also saying whether the value was stored encoded, and so
 // is certain to be exactly what was saved. A value an older version stored
 // raw may not be: the Keychain prints a password it considers unprintable (ş,
 // ğ) as hex.
