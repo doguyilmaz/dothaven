@@ -122,7 +122,19 @@ func TestSignsLikeGitWithSSH(t *testing.T) {
 
 func TestSignsLikeGitWithGPG(t *testing.T) {
 	tools := need(t, "git", "gpg")
-	gnupg := t.TempDir()
+	// gpg-agent puts its socket in GNUPGHOME, and a socket path is limited to
+	// 104 bytes on macOS: t.TempDir() there (/var/folders/…/T/Test…/001) is
+	// too long, and the agent never starts. /tmp keeps it short.
+	gnupg, err := os.MkdirTemp("/tmp", "dh-gpg-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if gpgconf, err := exec.LookPath("gpgconf"); err == nil {
+			_ = exec.Command(gpgconf, "--homedir", gnupg, "--kill", "gpg-agent").Run()
+		}
+		os.RemoveAll(gnupg)
+	})
 	t.Setenv("GNUPGHOME", gnupg)
 	run(t, gnupg, "", "gpg", "--batch", "--pinentry-mode", "loopback", "--passphrase", "", "--quick-gen-key", "Tester <1001+tester@users.noreply.github.com>", "ed25519", "sign", "never")
 	env, home := gitHome(t, "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = "+tools["gpg"]+"\n[user]\n\tsigningkey = 1001+tester@users.noreply.github.com\n")
