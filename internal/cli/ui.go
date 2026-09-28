@@ -155,6 +155,7 @@ func dashSummary(ctx context.Context, env *sys.OS, version string) dashSummaryDa
 			d.Coverage.Bytes += f.Size
 		}
 	}
+	d.Coverage.Categories = []dashCategory{}
 	for _, c := range per {
 		d.Coverage.Categories = append(d.Coverage.Categories, *c)
 	}
