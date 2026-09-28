@@ -1,12 +1,14 @@
 ---
 title: Snapshot format
-weight: 8
+weight: 15
 ---
 
-A snapshot is dothaven's machine inventory: a single JSON file produced by
-`dothaven collect`. It is the unit that the snapshot-reading commands consume —
-`compare`, `list`, and `doctor` all parse the same format. The schema is small,
-deterministic, and designed to read cleanly in a git diff.
+A snapshot is dothaven's machine inventory: a single JSON file. `dothaven collect`
+writes one to `~/.local/share/dothaven/snapshots/<host>-<UTC timestamp>.json`, and
+every backup carries one as `inventory/snapshot.json` (the installed-software part,
+without the config file contents). `compare`, `list`, `missing` and `reinstall` all
+read the same format. The schema is small, deterministic, and designed to read
+cleanly in a git diff.
 
 ## Top-level shape
 
@@ -19,9 +21,10 @@ type Snapshot map[string]Section
 ```
 
 A section id is a dotted name describing one area of inventory, for example
-`runtimes.go`, `packages.brew`, or `dotfiles.zshrc`. The set of ids depends on
-what the collectors find on the machine; there is no fixed enumeration in the
-format itself.
+`runtimes.go`, `apps.brew.formulae`, or `shell.zshrc`. Registry entries use their
+registry ID; collectors use the ids listed on the [Collectors](../collectors) page.
+The set of ids depends on what is found on the machine; there is no fixed
+enumeration in the format itself.
 
 ## The Section model
 
@@ -101,29 +104,31 @@ A trimmed snapshot with one section of each shape:
 {
   "meta": {
     "pairs": {
-      "host": "studio.local",
-      "os": "darwin"
+      "date": "2026-09-27",
+      "host": "studio",
+      "os": "darwin arm64"
     }
   },
-  "packages.brew": {
+  "packages.npm.global": {
     "items": [
-      { "raw": "git 2.44.0", "columns": ["git", "2.44.0"] },
-      { "raw": "jq 1.7.1", "columns": ["jq", "1.7.1"] }
+      { "raw": "typescript@5.6.2", "columns": ["typescript", "5.6.2"] },
+      { "raw": "@biomejs/biome@1.9.4", "columns": ["@biomejs/biome", "1.9.4"] }
     ]
   },
   "runtimes.go": {
     "pairs": {
+      "platform": "darwin/arm64",
       "version": "go1.26.3"
     }
   },
-  "dotfiles.zshrc": {
-    "content": "export EDITOR=nvim\nalias ll='ls -la'\n"
+  "shell.zshrc": {
+    "content": "export EDITOR=nvim\nalias ll='ls -la'"
   }
 }
 ```
 
-Note the ordering: section ids (`dotfiles.zshrc`, `meta`, `packages.brew`,
-`runtimes.go`) and pair keys (`host` before `os`) are alphabetical, regardless
+Note the ordering: section ids (`meta`, `packages.npm.global`, `runtimes.go`,
+`shell.zshrc`) and pair keys (`date`, `host`, `os`) are alphabetical, regardless
 of the order the collectors ran in. Empty fields never appear — `meta` has only
 `pairs`, so no `items` or `content` keys are emitted.
 
@@ -145,7 +150,7 @@ func Parse(data []byte) (Snapshot, error) {
 ```
 
 A non-object root, malformed JSON, or a non-string value inside `pairs` all fail
-parsing. Because commands like `compare` and `doctor` read arbitrary files
+parsing. Because commands like `compare` and `missing` read arbitrary files
 supplied by the user, failing fast surfaces a bad input immediately instead of
 producing a misleading half-parsed diff.
 
@@ -158,7 +163,8 @@ producing a misleading half-parsed diff.
 dothaven compare old.json new.json
 ```
 
-With no arguments, it picks the two newest `.json` reports in `reports/`:
+With no arguments, it compares your two newest snapshots, with the **older one
+first** (left):
 
 ```bash
 dothaven compare
@@ -166,13 +172,15 @@ dothaven compare
 
 ### Orientation
 
-The diff is oriented around the **left** snapshot. Callers pass the newer
-snapshot as left, so the labels read naturally as change-since-the-older-run:
+The diff is oriented around the **left** (first) snapshot:
 
-- **added** — present only in left (only in the newer snapshot).
-- **removed** — present only in right (only in the older snapshot).
-- **changed** — present in both, but with differing contents.
+- **added** (`+`) — present only in the left snapshot.
+- **removed** (`-`) — present only in the right snapshot.
+- **changed** (`~`) — present in both, but with differing contents.
 - **equal** — present in both and identical.
+
+Every added or removed line also names the snapshot it is only in, so the output
+reads correctly whichever order you pass the files in.
 
 ### What counts as a change
 
@@ -195,45 +203,56 @@ content is not noise.
 lines are suppressed), colorizing the output when stdout is a terminal:
 
 ```text
+- [fonts.user]  (only in new)
+  - JetBrainsMono-Regular.ttf  (only in new)
 [runtimes.go]
   ~ version = go1.26.2 → go1.26.3
-+ [packages.cargo]  (only in new.json)
-  + ripgrep 14.1.0  (only in new.json)
-- [fonts.user]  (only in old.json)
++ [runtimes.rust.crates]  (only in old)
+  + ripgrep@14.1.0  (only in old)
 ```
 
-Leading `+`, `-`, and `~` mark added, removed, and changed entries; section
-headers without a marker are sections that exist on both sides. When nothing
+The labels are the file names without `.json`.
+
+Sections are listed alphabetically. Leading `+`, `-`, and `~` mark added,
+removed, and changed entries; section headers without a marker are sections that
+exist on both sides. When nothing
 differs, `compare` prints `No differences found.`
 
 ## Producing a snapshot
 
 Snapshots come from `collect`, which inventories the live machine and writes a
-timestamped file:
+timestamped, owner-only file:
 
 ```bash
 dothaven collect
 ```
 
 ```text
-Report saved to: /path/to/reports/studio.local-20260604-101500.json
+Snapshot saved to: /Users/you/.local/share/dothaven/snapshots/studio-20260927233425.json
+  24 sections. Browse with `dothaven list <section>`, e.g. `dothaven list brew`.
 ```
 
 Relevant flags:
 
 | Flag           | Effect                                                                 |
 | -------------- | --------------------------------------------------------------------- |
-| `-o`, `--output` | Output directory. Default: `./reports` in a git repo, else `~/.local/share/dothaven`. |
+| `-o`, `--output` | Output directory (default: `~/.local/share/dothaven/snapshots`). |
 | `--no-redact`  | Keep raw values (skip secret redaction).                              |
 | `--slim`       | Truncate long file contents to 10 lines.                             |
 
-To read a single section back out of the most recent report by fuzzy name:
+To read sections back out of the newest snapshot by fuzzy name, or out of a
+backup's inventory:
 
 ```bash
 dothaven list runtimes
+dothaven list brew ~/Downloads/backup-studio-20260927232938.tar.gz.age
 ```
+
+Snapshots from older versions of dothaven, which wrote them next to other files in
+the data folder or into a `reports/` folder inside git repositories, are still found
+by `list`, `compare` and `missing`.
 
 {{< cards >}}
   {{< card link="../commands" title="Commands" subtitle="Full reference for collect, compare, list, and more" >}}
-  {{< card link="../quick-start" title="Quick start" subtitle="Collect and compare your first snapshot" >}}
+  {{< card link="../collectors" title="Collectors" subtitle="What each section comes from" >}}
 {{< /cards >}}

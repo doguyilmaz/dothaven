@@ -88,8 +88,12 @@ dothaven doctor            # is dothaven itself set up right on this machine?
   open with `age -d` too, and old ones from earlier versions still restore.
 - **Nothing you have is replaced without asking.** Restores preview, ask per differing file,
   and keep what they replace. Off a terminal, commands that change things need `--yes`.
-- **Tokens live in your keychain** (macOS Keychain or the Secret Service), never on a command line.
-- **The GitHub repo must be private** — dothaven refuses to write to a public one.
+- **Tokens live in your keychain** (macOS Keychain or the Secret Service), never on a command line,
+  and never in the environment of a tool dothaven runs.
+- **The GitHub repo must be private** — dothaven refuses to write to a public one. Every `.age`
+  file is checked before upload, and your chezmoi/sops age key never goes to GitHub, not even encrypted.
+- **Decrypted files don't linger.** Temporary folders are owner-only, removed even on a forced exit,
+  and swept on the next run after a crash; read-only commands unpack only what they read.
 - **The dashboard is local and read-only**: loopback only, one-time key, strict CSP, no outside assets.
 
 What stays out on purpose: data (databases, Docker volumes), system config under `/etc`, app

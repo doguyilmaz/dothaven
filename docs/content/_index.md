@@ -5,7 +5,7 @@ layout: hextra-home
 
 {{< hextra/hero-badge >}}
   <div class="hx:w-2 hx:h-2 hx:rounded-full hx:bg-primary-400"></div>
-  Single static binary · macOS &amp; Linux
+  One static binary · macOS &amp; Linux · encryption built in
 {{< /hextra/hero-badge >}}
 
 <div class="hx:mt-6 hx:mb-6">
@@ -16,7 +16,7 @@ layout: hextra-home
 
 <div class="hx:mb-12">
 {{< hextra/hero-subtitle >}}
-  dothaven inventories your machine's config, scans it for secrets,&nbsp;<br class="hx:sm:block hx:hidden" />and feeds chezmoi age-encrypted backups for clean-install migration.
+  Dotfiles, AI tool setup, SSH keys, cloud logins, installed apps and macOS settings —&nbsp;<br class="hx:sm:block hx:hidden" />in one encrypted file or a private GitHub repo, restored selectively on the next machine.
 {{< /hextra/hero-subtitle >}}
 </div>
 
@@ -28,27 +28,27 @@ layout: hextra-home
 
 {{< hextra/feature-grid >}}
   {{< hextra/feature-card
-    title="Inventory everything"
-    subtitle="Shell, git, editors, SSH, cloud CLIs, Homebrew, global packages, runtimes, fonts, AI tooling — captured into one JSON snapshot."
+    title="One complete, encrypted backup"
+    subtitle="`dothaven backup --encrypt` writes a single age file with your config, keys and tokens, the list of apps you had, and your macOS settings. It is never written unencrypted, not even for a moment."
   >}}
   {{< hextra/feature-card
-    title="Secrets never leak"
-    subtitle="A pattern scanner redacts tokens and keys, and refuses to write a private key into a plaintext backup."
+    title="Your AI tooling comes along"
+    subtitle="Claude Code, Codex, Gemini CLI, Cursor, Windsurf, VS Code, opencode, Copilot CLI and more: skills, agents, commands, hooks, plugins and MCP servers."
   >}}
   {{< hextra/feature-card
-    title="Encrypted migration"
-    subtitle="Hands off to chezmoi with age — high-sensitivity files are added with --encrypt, plain configs stay plain."
+    title="Restore what you choose"
+    subtitle="Everything, some categories or single files. You see a diff before anything is replaced, the old copy is kept, and a rerun shows what is already applied."
   >}}
   {{< hextra/feature-card
-    title="Reinstall on apply"
-    subtitle="Generates a run_onchange script so a fresh machine reinstalls Homebrew, node, and global packages automatically."
+    title="Or keep it on GitHub"
+    subtitle="`dothaven github push` keeps each machine in a private repo, encrypted by default. `dothaven restore github` brings it back anywhere. No git needed on either side."
   >}}
   {{< hextra/feature-card
-    title="Verify parity"
-    subtitle="doctor diffs a snapshot against a new machine and lists exactly what's still missing — with a CI-friendly exit code."
+    title="See it all in a dashboard"
+    subtitle="`dothaven ui` opens a local, read-only page: what your backups cover, what they miss, secrets in plain files, and repos with unpushed work."
   >}}
   {{< hextra/feature-card
-    title="No runtime to install"
-    subtitle="One signed, notarized Go binary via Homebrew. No Node, no Bun, no interpreter — it just runs."
+    title="Checks before you wipe"
+    subtitle="`ready` finds unpushed work and gitignored `.env` files. `missing` lists what the new machine still lacks. `doctor` checks that dothaven itself can do its job."
   >}}
 {{< /hextra/feature-grid >}}

@@ -3,131 +3,124 @@ title: Installation
 weight: 2
 ---
 
-dothaven ships as a single static Go binary built with [Cobra](https://github.com/spf13/cobra). There is no interpreter, runtime, or package manager to install alongside it — pick one of the methods below and you have a working `dothaven` command.
+dothaven is one static binary. It needs no interpreter and no runtime, and encryption is built in: you do not need to install age to make or open encrypted backups.
 
 ## Install
 
 {{< tabs >}}
-  {{< tab name="Homebrew" >}}
-Install from the tap. Homebrew resolves the right binary for your platform:
+  {{< tab name="Fresh machine" >}}
+The installer script is the fastest way onto a freshly wiped machine. It needs no Homebrew and no sudo:
 
 ```bash
-brew install doguyilmaz/tap/dothaven
+curl -fsSL https://raw.githubusercontent.com/doguyilmaz/dothaven/main/scripts/install.sh | sh
 ```
+
+It downloads the release for your OS and CPU, checks it against the release's published SHA-256 checksums (and refuses to install on a mismatch), and puts `dothaven` in `~/.local/bin`. If that folder is not on your `PATH` yet, it prints the line to add.
+
+Why not Homebrew here? On a new Mac, Homebrew needs the Xcode command-line tools first, which takes several minutes before you can restore anything.
+
+You can set these before running it:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DOTHAVEN_VERSION` | latest release | A tag such as `v1.4.0` |
+| `DOTHAVEN_BIN_DIR` | `~/.local/bin` | Where to install |
+| `DOTHAVEN_BASE_URL` | the GitHub releases page | Download from a mirror |
+  {{< /tab >}}
+  {{< tab name="Homebrew (macOS)" >}}
+```bash
+brew install --cask doguyilmaz/tap/dothaven
+```
+
+The macOS binaries are signed and notarized.
   {{< /tab >}}
   {{< tab name="Go" >}}
-Build and install the latest release straight from the module:
-
 ```bash
 go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest
 ```
 
-This drops the `dothaven` binary into `$(go env GOPATH)/bin` — make sure that directory is on your `PATH`.
+This puts `dothaven` in `$(go env GOPATH)/bin`. Make sure that folder is on your `PATH`.
+  {{< /tab >}}
+  {{< tab name="Release binary" >}}
+Download `dothaven_<os>_<arch>.tar.gz` from the [releases page](https://github.com/doguyilmaz/dothaven/releases), check it against `checksums.txt`, unpack it and move `dothaven` somewhere on your `PATH`.
   {{< /tab >}}
   {{< tab name="Source" >}}
-Clone the repo and build the `./cmd/dothaven` package:
-
 ```bash
 git clone https://github.com/doguyilmaz/dothaven.git
 cd dothaven
 go build ./cmd/dothaven
 ```
 
-The resulting `dothaven` binary lands in the current directory. Move it somewhere on your `PATH` (for example `/usr/local/bin`) if you want it available everywhere.
+The binary lands in the current folder. A source build reports its version as `dev`.
   {{< /tab >}}
 {{< /tabs >}}
+
+## Check it works
+
+```bash
+dothaven --version
+dothaven doctor
+```
+
+`doctor` checks that dothaven can do its job on this machine: its folders and their permissions, free disk space, the keychain, the tools each feature uses, and GitHub if you are signed in. It changes nothing. See [Doctor & troubleshooting](../troubleshooting).
+
+## Supported platforms
+
+| OS | Architectures |
+| --- | --- |
+| macOS | `amd64`, `arm64` |
+| Linux | `amd64`, `arm64` |
+
+Windows is not supported.
+
+## What else you might want
+
+dothaven runs on its own. A few features call tools you may already have; `dothaven doctor` shows which are present.
+
+| Tool | Used for | If it is missing |
+| --- | --- | --- |
+| `git` | `ready` (finding unpushed work) | `ready` cannot check repositories |
+| Homebrew | Listing and reinstalling Homebrew apps (macOS) | The Homebrew part of the inventory and of `reinstall` is skipped |
+| `defaults` | macOS settings (built into macOS) | — |
+| `gh` | Signing in to GitHub without a browser | Use `github login --with-token` instead |
+| `zsh`, `ssh` | `check` of zsh files and SSH config | Those files are reported as unchecked |
+| `chezmoi` | The optional chezmoi sync | Only `init`, `chezmoi-export --apply` and `migrate` need it |
+
+The chezmoi path also needs an age key for chezmoi (see [Encryption](../encryption#the-chezmoi-path)). Encrypted dothaven backups do not.
 
 ## Updating
 
 ```bash
-dothaven upgrade
+dothaven upgrade          # also: dothaven update
+dothaven upgrade --check  # see what is available, change nothing
 ```
 
-`upgrade` (also spelled `update`) works out how dothaven was installed and runs that installer's own upgrade — `brew update && brew upgrade --cask dothaven` for a Homebrew install, `go install …@latest` for a Go one. Pass `--check` to see what is available without changing anything.
+`upgrade` works out how dothaven was installed and runs that installer's own upgrade. For Homebrew that is `brew update && brew upgrade --cask dothaven`; for `go install` it is `go install …@latest`. For anything else it prints the releases page. dothaven never overwrites its own binary, because Homebrew tracks the version it installed and would be left describing a file that no longer exists.
 
-dothaven never replaces its own binary: Homebrew tracks the version it installed, so overwriting that file behind its back leaves `brew outdated` describing something that is no longer there.
+On a terminal, dothaven checks at most once a day for a newer release and prints one line on stderr when there is one. Set `DOTHAVEN_NO_UPDATE_CHECK=1` to turn it off. See [the update notice](../commands#the-update-notice).
 
-On a terminal, dothaven also checks once a day for a newer release and prints a one-line notice on stderr. Set `DOTHAVEN_NO_UPDATE_CHECK=1` to turn that off. See [the update notice](../commands#the-update-notice) for exactly what it requests.
+## Where dothaven keeps things
 
-## Supported platforms
-
-Release builds are static (`CGO_ENABLED=0`) and cross-compiled for:
-
-| OS              | Architectures   |
-| --------------- | --------------- |
-| macOS (darwin)  | `amd64`, `arm64` |
-| Linux           | `amd64`, `arm64` |
-
-Building from source with the Go or Source method works on any platform the Go toolchain targets, but the packaged Homebrew/release artifacts cover the matrix above.
-
-## Verify the install
-
-Confirm the binary is on your `PATH` and prints a version:
-
-```bash
-dothaven --version
-```
-
-```text
-dothaven version 0.2.0
-```
-
-A source or `go install` build that wasn't stamped at release time reports `dev`:
-
-```text
-dothaven version dev
-```
-
-The release version is embedded into the binary at build time via `-ldflags -X main.version`; source builds fall back to the default `dev` value.
-
-## Runtime dependencies
-
-Running `dothaven` itself needs nothing else — the binary is self-contained. Discovery, audit, and reporting commands (`collect`, `doctor`, `scan`, `security`, `status`, `diff`, `compare`, `list`, `backup`, `restore`) work out of the box.
-
-Two commands reach into the storage/encryption layer and need additional tooling:
-
-{{< callout type="info" >}}
-`chezmoi-export --apply` and `init` use [chezmoi](https://www.chezmoi.io) for storage and [age](https://github.com/FiloSottile/age) for encryption. Install both and configure an age key before applying changes — dothaven handles discovery, audit, and export planning, while chezmoi performs storage, encryption, and apply.
-{{< /callout >}}
-
-{{< callout type="warning" >}}
-age is the encryption backend. If you lose the age key, encrypted files become unrecoverable. Back up your key before exporting secrets.
-{{< /callout >}}
-
-See [Encryption](../encryption) for setting up an age key and the chezmoi integration.
-
-## Where reports are written
-
-Commands that emit JSON snapshots resolve the output directory in this order:
-
-1. An explicit `-o` / `--output` flag wins.
-2. Otherwise, `<cwd>/reports` when the current directory is inside a git repository.
-3. Otherwise, `~/.local/share/dothaven`.
-
-```bash
-dothaven collect -o ./snapshots
-```
+| What | Where |
+| --- | --- |
+| Backups, snapshots, the restore ledger | `~/.local/share/dothaven` (or `$XDG_DATA_HOME/dothaven`) |
+| Your include list, GitHub settings | `~/.config/dothaven` (or `$XDG_CONFIG_HOME/dothaven`) |
+| The GitHub token and remembered passphrase | Your system keychain (see [GitHub sync](../github#where-the-token-is-kept)) |
+| The update check cache | `~/.cache/dothaven` (or `$XDG_CACHE_HOME/dothaven`) |
 
 ## Shell completion
 
-Cobra provides a built-in `completion` command that generates completion scripts for bash, zsh, fish, and PowerShell. Print the script for your shell:
-
 ```bash
-dothaven completion zsh
-```
-
-To load completions in the current session:
-
-```bash
+dothaven completion zsh      # also: bash, fish, powershell
 source <(dothaven completion zsh)
 ```
 
-Run `dothaven completion --help` for per-shell instructions on installing the script permanently.
+Run `dothaven completion --help` for how to install it permanently.
 
 ## Next steps
 
 {{< cards >}}
   {{< card link="../quick-start" title="Quick start" >}}
+  {{< card link="../migration" title="Moving to a new machine" >}}
   {{< card link="../commands" title="Commands" >}}
-  {{< card link="../encryption" title="Encryption" >}}
 {{< /cards >}}

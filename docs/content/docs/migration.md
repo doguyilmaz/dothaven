@@ -1,348 +1,294 @@
 ---
-title: Migration runbook
-weight: 12
+title: Moving to a new machine
+weight: 4
 ---
 
-This is the end-to-end procedure for moving a development setup to a new machine.
-It is built around the hybrid model: **dothaven** handles discovery, audit, and
-export, while **chezmoi** handles storage, age-encryption, and applying configs
-on the destination. dothaven never stores or transmits your files — it plans the
-hand-off and `chezmoi add` does the rest.
+This is the end-to-end guide: everything you do on the old machine before you wipe it or hand it back, and everything you do on the new one to get your setup back.
 
-The runbook has two halves: everything you do on the **old machine** before you
-wipe or hand it back, and everything you do on the **new machine** to restore
-parity. Each half is an ordered checklist — work top to bottom.
+There are three ways to carry your setup. Pick one:
+
+| Way | Best when | What you need |
+| --- | --- | --- |
+| [**One encrypted file**](#way-1-one-encrypted-file) (recommended) | You are moving once, from one machine to another | A USB drive, cloud storage, or any way to copy one file |
+| [**Private GitHub repo**](#way-2-a-private-github-repo) | You want every machine backed up somewhere you can reach from anywhere | A GitHub account |
+| [**chezmoi repo**](#way-3-a-chezmoi-repo) | You already use, or want, [chezmoi](https://www.chezmoi.io/) to keep machines in sync | chezmoi, an age key, a private git repo |
+
+The first two carry the same backup: your config, your credentials, the list of apps you had, and your macOS settings. The chezmoi way carries config files and an install script, but not macOS settings.
 
 {{< callout type="info" >}}
-dothaven is a single static Go binary with no runtime dependency. chezmoi and
-age are separate tools you install alongside it; only the `chezmoi-export
---apply` path and the new-machine restore actually invoke them.
+Prefer menus to commands? Run `dothaven` with no arguments. The first group, **Moving to a new Mac** ("machine" on Linux), walks through the same five steps as Way 1. Its **Pack everything into one encrypted file** entry does all of the old-machine part in one go, and checks that the file opens before you wipe anything. See [Interactive mode](../interactive#pack-everything-into-one-encrypted-file).
 {{< /callout >}}
 
-## Before you start
+## Way 1: one encrypted file
 
-Install dothaven on the old machine if it is not already present.
+### On the old machine
 
-{{< tabs >}}
-  {{< tab name="Homebrew" >}}
-```bash
-brew install doguyilmaz/tap/dothaven
-```
-  {{< /tab >}}
-  {{< tab name="Go" >}}
-```bash
-go install github.com/doguyilmaz/dothaven/cmd/dothaven@latest
-```
-  {{< /tab >}}
-  {{< tab name="Source" >}}
-```bash
-git clone https://github.com/doguyilmaz/dothaven
-cd dothaven
-go build ./cmd/dothaven
-```
-  {{< /tab >}}
-{{< /tabs >}}
+{{% steps %}}
 
-You will also need [chezmoi](https://www.chezmoi.io/) and
-[age](https://github.com/FiloSottile/age). The next step checks for both.
-
-## Part 1 — Old machine
-
-### Step 1: Verify the chezmoi + age prerequisites
-
-`dothaven init` is a read-only preflight. It probes whether chezmoi is
-installed, whether your `~/.config/chezmoi/chezmoi.toml` declares
-`encryption = "age"`, whether the chezmoi source directory is a git repo, and
-your GitHub login (via `gh api user`, if available). It prints a checklist and
-the exact command for each unmet step — it does **not** change anything.
+### Check that nothing exists only here
 
 ```bash
-dothaven init
+dothaven ready
 ```
+
+Config can be rebuilt. Uncommitted changes, unpushed commits and stashes cannot, and neither can the `.env` file a fresh `git clone` will not bring back. `ready` looks through your home folder (up to 5 folders deep) for git repositories and reports:
+
+- repositories with **no remote at all**: every commit in them exists only on this machine;
+- repositories with **uncommitted files, commits on no remote, or stashes**;
+- **gitignored files a clone won't bring back**: `.env` files, keys and keystores, cloud credentials, Terraform state;
+- how old your **newest backup** is.
 
 ```text
-dothaven init — chezmoi + age bootstrap
+1 repository with no remote — these exist ONLY on this machine:
+  ✗ ~/code/prototype                              12 commits, 1 file uncommitted
 
-  ✓ chezmoi installed
-  ✓ age encryption configured
-  → initialize a chezmoi source repo
-      chezmoi init
+1 repository with gitignored files a fresh clone won't bring back:
+  ⚠ ~/code/api                                    .env
 
-Run the commands above, then re-run `dothaven init`.
+❌ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
 ```
 
-Work through any `→` items and re-run until everything reads `✓`. When the
-prerequisites are met, `init` prints the next two commands for you:
+Fix what it lists: add a remote and push, commit and push (a stash is not pushed by pushing a branch), and copy ignored files you need. For a gitignored file you want in your backup, `dothaven include ~/code/api/.env` carries it in the encrypted backup.
 
-```text
-✓ Setup complete. Next:
-  dothaven chezmoi-export          # dry-run — review the plan
-  dothaven chezmoi-export --apply  # execute
-```
+Nothing is fetched, so `ready` is fast and works offline, but it judges "pushed" against the remote state git last saw. It exits with code 2 while anything is at risk, or when you have no backup newer than 7 days.
 
-### Step 2: Collect a snapshot and audit it
-
-Inventory the machine into a timestamped JSON snapshot. By default `collect`
-redacts secrets before anything touches disk and prints an inline sensitivity
-report.
+### Catch config dothaven does not know about
 
 ```bash
-dothaven collect
+dothaven include --list
 ```
 
-```text
-Report saved to: /Users/you/projects/dotfiles/reports/old-host-20260604093000.json
-
-⚠ Sensitivity report:
-  HIGH   /Users/you/.npmrc                npm auth token — redacted
-  HIGH   /Users/you/.ssh/id_ed25519       private key — skipped
-
-  1 items redacted, 1 skipped.
-```
-
-The output directory is resolved in this order: an explicit `-o` / `--output`
-wins; otherwise, if the working directory is a git repo the file lands in
-`<cwd>/reports`; otherwise it falls back to `~/.local/share/dothaven`. The filename is
-`<hostname>-<UTC timestamp>.json`. **Keep this file** — you will copy it to the
-new machine and feed it to `dothaven doctor` to verify parity in Part 2.
-
-Before you export anything, review what is sensitive on disk with the standalone
-scanners. `scan` prints findings to the console; `security` writes a grouped
-Markdown report (default `SECURITY.md`).
+This lists files and folders in your home folder that look like config but are in no backup. Add the ones you want:
 
 ```bash
-dothaven scan ~          # console: L<line> [SEVERITY] <label>: <match>
-dothaven security ~      # writes SECURITY.md
+dothaven include ~/.config/raycast ~/bin
 ```
 
-```text
-Security report written to: SECURITY.md
-  142 scanned, 3 with findings.
-```
+You can skip this step: on a terminal, `backup` offers these paths once anyway.
 
-Read the report. Anything HIGH is what the export will encrypt or skip — confirm
-nothing surprising is about to be carried over.
+### Make the encrypted backup
 
-### Step 3: Plan the chezmoi export (dry-run)
-
-`chezmoi-export` builds the hand-off plan: plain `chezmoi add` for ordinary
-configs and `chezmoi add --encrypt` for anything high-sensitivity. It is a
-**dry-run by default** — nothing changes until you pass `--apply`.
+Write it straight to where it needs to end up, such as a USB drive:
 
 ```bash
-dothaven chezmoi-export
+dothaven backup --encrypt -o /Volumes/MyDrive
 ```
+
+On a terminal it first shows the category picker with everything selected (press Enter to keep it that way) and offers any config nothing covers yet. Then it asks for a passphrase twice (at least 10 characters). You will need it on the new machine, and nothing can open the file without it, so put it in your password manager now.
+
+The result is one file, `backup-<host>-<timestamp>.tar.gz.age`, holding:
+
+- every config file dothaven tracks, plus your includes;
+- your credentials: `~/.ssh` keys, cloud logins, tokens, GnuPG keys;
+- the list of installed apps and packages, with a script to reinstall them;
+- your macOS settings: trackpad, keyboard, Finder, hot corners, keyboard shortcuts and layouts, language order, and the apps in your Dock.
 
 ```text
-chezmoi-export plan — 4 path(s), 1 encrypted:
+✓ Encrypted backup saved — 194 files, 3.1 MB
+  /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
+  ai (58), cloud (6), editor (97), git (9), npm (1), shell (14), ssh (5), terminal (4)
+  + installed apps & packages list, 214 macOS settings
 
-     add            /Users/you/.config/ghostty/config  (plain)
-     add            /Users/you/.gitconfig  (plain)
-     add            /Users/you/.zshrc  (plain)
-  🔒 add --encrypt  /Users/you/.ssh/id_ed25519  (ssh private key)
-  + run_onchange install script (brew, packages)
-
-Dry-run. Re-run with --apply to execute (requires chezmoi + a configured age key).
+Next:
+  Copy this file off this machine — a USB drive, cloud storage, another computer.
+  It lives on the disk you are about to replace.
+  On the new machine: dothaven restore backup-mymac-20260927232938.tar.gz.age
+  You will need the passphrase. Nothing can open this file without it.
 ```
 
-The plan also lists a `run_onchange install script` line when brew or package
-groups are selected — that is the script chezmoi will run on the new machine to
-reinstall everything. Useful flags:
+Why this is safe to carry: the file is encrypted as it is written. Your keys and tokens never touch the disk in plaintext, not even as a temporary file. It is a standard age file, so `age -d` can also open it; dothaven itself needs nothing extra installed.
 
-- `--pin` — pin global packages to the version captured on this machine
-  (otherwise the fresh machine installs the current release).
-- `--only` / `--skip` — comma-separated categories or groups to include or
-  exclude (for example `--only ssh,brew` or `--skip vscode`). Skip wins over
-  only.
+{{< callout type="info" >}}
+In a script, set `DOTHAVEN_PASSPHRASE` instead of typing it. It must also be at least 10 characters. The prompt is the default because an environment variable is visible to every program the shell starts.
+{{< /callout >}}
 
-Iterate on the plan with these flags until it lists exactly what you want to
-carry over.
+### Get the file off the machine, and check it opens
 
-### Step 4: Apply the export
-
-When the plan looks right, run it. `--apply` requires `chezmoi` and a configured
-age key; if chezmoi is not found it stops with exit code 1 and tells you to
-install it.
+If you did not write it to a drive, copy it to one, or to cloud storage, or to another computer. Then prove it opens with your passphrase without changing anything:
 
 ```bash
-dothaven chezmoi-export --apply
+dothaven restore --dry-run /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
 ```
+
+It asks for the passphrase and lists what it would restore. (The menu's **Pack everything** flow does this check for you.)
+
+{{% /steps %}}
+
+### On the new machine
+
+{{% steps %}}
+
+### Install dothaven
+
+On a fresh Mac, the installer script is quickest. It does not need Homebrew:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/doguyilmaz/dothaven/main/scripts/install.sh | sh
+```
+
+See [Installation](../installation) for other ways.
+
+### Put your files back
+
+Plug in the drive, then:
+
+```bash
+dothaven restore
+```
+
+With no path on a terminal, `restore` looks for backups in `~/.local/share/dothaven`, the current folder, Downloads, Desktop, Documents and mounted drives, and lets you pick one (or type a path). You can also name the file:
+
+```bash
+dothaven restore /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
+```
+
+It asks for the passphrase (three tries on a terminal), then asks what to restore:
 
 ```text
-  ✔ .chezmoiignore (gnupg runtime cruft)
-
-  ✔ /Users/you/.config/ghostty/config
-  ✔ /Users/you/.gitconfig
-  ✔ /Users/you/.zshrc
-  ✔ encrypted /Users/you/.ssh/id_ed25519
-  ✔ run_onchange_install-packages.sh
-
-Done. Review with `chezmoi diff`, then commit your private chezmoi source repo.
+What should be restored?
+  Already-applied files are not listed again.
+> Everything new or updated (194)
+  Choose categories            e.g. only ai, shell and git
+  Choose files                 type / to filter
+  Show me the list first
+  Cancel
 ```
 
-What `--apply` writes into your chezmoi source directory:
+On a new machine almost everything is new, so the first choice is usually right. If a file already exists and differs (say, a default `.zshrc`), you are asked about it on its own, with a diff, and whatever you replace is saved to a `pre-restore-<timestamp>` folder first. Details are in [Backup & restore](../backup-restore#restore).
 
-- One `chezmoi add` (or `add --encrypt`) per planned path.
-- `run_onchange_install-packages.sh` — a command-guarded bash script that
-  reinstalls brew formulae/casks, fnm node versions, and global packages
-  (`bun`, `pnpm`, `npm`, `cargo`) on the next `chezmoi apply`. Every step is
-  `|| true` and the script ends in `exit 0`, so a missing tool never aborts the
-  apply. Deno global bins are recorded as a comment (the original module URL is
-  not recoverable from a bin name) — reinstall those by hand.
-- `.chezmoiignore` entries for GnuPG runtime cruft (sockets, locks, the RNG
-  seed) when a real GnuPG key is present. Key material itself is **not** ignored.
+### Put your macOS settings back
+
+When the restore finishes on a Mac, it offers:
+
+```text
+Also put back your macOS settings (trackpad, keyboard, Dock, Finder)?
+```
+
+Say yes, or do it later with `dothaven defaults import <file>`. Settings already set on this Mac are shown as done, not offered again. The Dock is rebuilt from the apps installed here, so it is worth doing again after the next step.
+
+### Reinstall your apps and packages
+
+The restore then offers to reinstall. You can also run it yourself:
+
+```bash
+dothaven reinstall /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
+```
+
+It compares the backup's list with this machine, shows what is already installed, and installs only what is missing: everything, some groups, or packages you pick. It runs attached to your terminal with no time limit, so Homebrew and `sudo` can ask for your password and a long `brew bundle` is not cut off.
 
 {{< callout type="warning" >}}
-The generated `run_onchange_install-packages.sh` is **unencrypted**: the Brewfile
-is embedded verbatim. dothaven redacts inline credentials it can detect (such as
-a private tap's `https://user:pass@host`), but review the script before you
-commit it to make sure no secret slipped in.
-{{< /callout >}}
-
-### Step 5: Commit the private chezmoi source repo
-
-Review the staged changes, then commit and push the chezmoi source repository.
-This repo holds your configs and the age-encrypted secrets — keep it **private**.
+On a fresh Mac, install Homebrew first. If `brew` is missing, `reinstall` warns you, skips the Homebrew part, and prints the official install command:
 
 ```bash
-chezmoi diff
-chezmoi cd
-git add -A
-git commit -m "Sync configs from old-host"
-git push
-exit
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-At this point the old machine's work is done. Make sure you still have:
+Then run `dothaven reinstall` again. Each step skips itself if its tool is missing, so running it twice is safe.
+{{< /callout >}}
 
-1. The snapshot JSON from Step 2 (for the parity check on the new machine).
-2. A backup of your **age private key** — see the warning below.
+### Check what is still missing
+
+```bash
+dothaven missing /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
+```
+
+This lists what the old machine had installed that this one does not, grouped by package manager, with the command that installs each group:
+
+```text
+Missing on this machine:
+
+  npm globals (2)
+    typescript@5.6.2, @biomejs/biome@1.9.4
+    fix: npm install -g typescript @biomejs/biome
+
+2 items missing across 1 group.
+Install them (all, or the ones you pick): dothaven reinstall /Volumes/MyDrive/backup-….tar.gz.age
+```
+
+It matches on names, not versions. It exits with code 1 while anything is missing, and prints `✓ Nothing missing` when you are done.
+
+### Sign back in to things
+
+Some things cannot be copied and need you: see [What does not travel](#what-does-not-travel) below.
+
+{{% /steps %}}
+
+## Way 2: a private GitHub repo
+
+Instead of a file, keep the backup in a private repository on your GitHub account. No git is needed on either machine.
+
+On the old machine:
+
+```bash
+dothaven ready                # same check as above
+dothaven github login         # once per machine
+dothaven github push          # creates <you>/dothaven-backup (private) the first time
+```
+
+`push` makes the same backup as `backup --encrypt` and commits it to `machines/<this machine>/` in the repo. It is encrypted by default. Other modes keep config readable on GitHub; see [GitHub sync](../github#storage-modes).
+
+On the new machine:
+
+```bash
+dothaven github login
+dothaven restore github
+```
+
+If the repo holds several machines, it asks which one (or pass `dothaven github pull --machine <name>`). From there it is the same as Way 1: pick what to restore, then settings, `reinstall` and `missing`. Those commands accept `github` in place of a file, too:
+
+```bash
+dothaven reinstall github
+dothaven missing github
+```
+
+## Way 3: a chezmoi repo
+
+If you want [chezmoi](https://www.chezmoi.io/) to own your dotfiles and keep machines in sync, dothaven can hand them over. This path needs chezmoi and an age key set up for chezmoi, and it does not carry macOS settings.
+
+On the old machine:
+
+```bash
+dothaven init                      # checks chezmoi, the age key and the source repo; prints what to fix
+dothaven chezmoi-export            # dry run: shows what would be added, and what encrypted
+dothaven chezmoi-export --apply    # adds the files to your chezmoi source
+chezmoi cd                         # then commit and push the source repo (keep it private)
+```
+
+`chezmoi-export` adds files one by one. Files with a secret in them are added encrypted; config that names your home folder is added as a template so it works under a different username. It also writes an install script that chezmoi runs on the new machine to reinstall your packages.
+
+On the new machine, put your age key back first (for example at `~/.config/chezmoi/key.txt`), then:
+
+```bash
+chezmoi init <your-private-repo>
+dothaven migrate                   # checks the prerequisites, then runs chezmoi apply
+```
 
 {{< callout type="error" >}}
-age is the encryption backend. **If you lose your age key, every encrypted file
-in your chezmoi repository is unrecoverable** — there is no recovery path. Before
-you wipe the old machine, back the key up somewhere safe and offline (a password
-manager or hardware-backed store). dothaven and `init` use
-`~/.config/chezmoi/key.txt`; check `~/.config/chezmoi/chezmoi.toml` for the exact
-path your setup uses.
+With chezmoi, the age key is the only way to decrypt your secrets. If you lose it, every encrypted file in the repo is unrecoverable. Back it up offline before you wipe the old machine, and never commit it.
 {{< /callout >}}
 
-## Part 2 — New machine
+Details are on [Encryption & chezmoi](../encryption#the-chezmoi-path).
 
-### Step 6: Install chezmoi and restore the age key
+## What does not travel
 
-On the fresh machine, install chezmoi and age, then **restore your age private
-key first** — before any `chezmoi apply`. chezmoi needs the key to decrypt the
-encrypted files in your source repo; without it the apply will fail on the first
-encrypted entry.
+dothaven leaves these out on purpose. Deal with them by hand:
 
-```bash
-brew install chezmoi age
-mkdir -p ~/.config/chezmoi
-# Restore the key you backed up in Step 5, e.g.:
-cp /Volumes/backup/key.txt ~/.config/chezmoi/key.txt
-chmod 600 ~/.config/chezmoi/key.txt
-```
+- [ ] **Data.** Databases, Docker volumes, anything a local service stores. Dump and copy what you need. (`dothaven services export` carries the *config* of Homebrew services such as nginx and MySQL, not their data.)
+- [ ] **System config** outside your home folder, such as `/etc/hosts`.
+- [ ] **Keychain items**: code-signing certificates, provisioning profiles, saved passwords. Re-import or re-download them.
+- [ ] **Sign-ins**: browser sync, the App Store, licensed apps, anything behind two-factor login. (CLI logins in files, such as `~/.aws` or `gh`, do travel in an encrypted backup.)
+- [ ] **Large downloads**: Ollama models, simulator runtimes, Android emulators. The inventory records their names; pull them again.
+- [ ] **Project-level config** (a repo's `.claude/`, `.mcp.json`, `.vscode/`). It travels with the project's own repository. Make sure it is pushed (`dothaven ready`).
+- [ ] **Unsaved work**: save and quit your editors before the final backup. A backup carries files on disk, not open buffers.
 
-{{< callout type="warning" >}}
-Restore the age key **before** initializing chezmoi. If chezmoi applies an
-encrypted file and cannot find the key, the apply aborts. Put the key back at
-the path your `chezmoi.toml` expects, then continue.
-{{< /callout >}}
+## If something goes wrong
 
-### Step 7: Initialize chezmoi from your private repo
-
-Point chezmoi at the private source repo you pushed in Step 5 and apply it. This
-clones the repo, decrypts the encrypted files with your age key, and writes every
-config into place.
-
-```bash
-chezmoi init --apply git@github.com:you/dotfiles-private.git
-```
-
-### Step 8: Let the run_onchange script reinstall packages
-
-Because the source repo contains `run_onchange_install-packages.sh`, chezmoi
-runs it as part of the apply (and again whenever its contents change). The script
-installs:
-
-- Homebrew formulae and casks (via `brew bundle` from the embedded Brewfile)
-- fnm node versions
-- global `bun`, `pnpm`, `npm`, and `cargo` packages
-
-Each block is guarded by `command -v <tool>` and every install is `|| true`, so
-the script keeps going even if a manager is missing. The first run can take a
-while as Homebrew downloads everything. Deno global bins, recorded only as a
-comment, must be reinstalled manually.
-
-To install dothaven itself on the new machine so you can verify parity:
-
-```bash
-brew install doguyilmaz/tap/dothaven
-```
-
-### Step 9: Verify parity with the snapshot
-
-Copy the snapshot JSON from Step 2 to the new machine, then run `dothaven
-doctor` against it. doctor re-inventories the live machine and lists everything
-that was present in the snapshot but is **missing** here. It only checks
-*installable* inventory — packages, runtimes, brew formulae/casks, macOS apps,
-fonts, and editor extensions — and matches on name, so version drift is ignored.
-
-```bash
-dothaven doctor old-host-20260604093000.json
-```
-
-When everything lines up:
-
-```text
-✅ Parity — everything installable in the snapshot is present on this machine.
-```
-
-When something is still missing, doctor groups it by section, prints a count,
-and **exits non-zero** (CI-friendly):
-
-```text
-Missing on this machine (present in the snapshot):
-
-  apps.brew.formulae (2)
-    - jq
-    - ripgrep
-  packages.npm.global (1)
-    - typescript
-
-3 item(s) missing across 1 section(s).
-```
-
-A non-zero exit here is a normal outcome, not an error — it is the to-do list of
-what to install. Re-run `chezmoi apply` (to re-trigger the install script) or
-install the listed items by hand, then run `doctor` again until it reports
-parity.
-
-## Manual checklist (out of scope)
-
-dothaven and chezmoi cover discovery, secrets, configs, and reinstallable
-packages. The following are deliberately **not** captured — handle them by hand
-on the new machine:
-
-- **System files outside `$HOME`** — `/etc/hosts` and other `/etc` edits are not
-  in scope.
-- **VPN configuration and certificates** — reconfigure your VPN client and
-  re-import any profiles.
-- **Browser sync** — sign in to your browser to pull bookmarks, extensions, and
-  saved sessions.
-- **Provisioning profiles and signing identities** — re-download Apple
-  provisioning profiles and re-import code-signing certificates into the
-  keychain.
-- **Ollama models** — the snapshot records model *names* (`ai.ollama.models`)
-  but not the weights. Re-pull each model, e.g. `ollama pull llama3`.
-- **Anything requiring an interactive login** — App Store apps, licensed
-  software, and 2FA-gated services need to be signed in again.
-
-## Related pages
+- **Wrong passphrase**: dothaven cannot recover it, and neither can anyone else. Try the one in your password manager.
+- **A redacted file was not restored**: it came from a plain backup, which masks secret values. Restore from an encrypted backup instead.
+- **Anything else**: run `dothaven doctor`, then see [Doctor & troubleshooting](../troubleshooting).
 
 {{< cards >}}
-  {{< card link="../quick-start" title="Quick start" subtitle="Collect, audit, and export in five steps" >}}
-  {{< card link="../commands" title="Commands" subtitle="Full reference for every subcommand and flag" >}}
-  {{< card link="../security" title="Security & redaction" subtitle="How secrets are detected and handled" >}}
+  {{< card link="../backup-restore" title="Backup & restore" subtitle="Every option, and what each restore status means" >}}
+  {{< card link="../github" title="GitHub sync" subtitle="Modes, sign-in, and the security model" >}}
+  {{< card link="../security" title="Security" subtitle="What is redacted, left out, and encrypted" >}}
 {{< /cards >}}
