@@ -131,6 +131,11 @@ func checkMachine(env *sys.OS) []checkRow {
 		term, st = "not a terminal — commands that change files need --yes", statusInfo
 	}
 	rows = append(rows, checkRow{Name: "terminal", Status: st, Detail: term})
+	for _, r := range checkBrewPaths(env) {
+		rows = append(rows, checkRow{Name: "Homebrew path", Status: statusWarn,
+			Detail: fmt.Sprintf("%s runs brew from %s; here it is in %s", r.File, r.Wrong, r.Right),
+			Fix:    fmt.Sprintf("change %s/bin/brew to %s/bin/brew in %s", r.Wrong, r.Right, r.File)})
+	}
 	return rows
 }
 

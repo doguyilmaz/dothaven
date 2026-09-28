@@ -294,6 +294,9 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 		fmt.Printf("  %s %s skipped: the file here is a symlink, and writing through it would change what it points to\n", warn("⚠"), plural(res.SkippedSymlink, "file"))
 	}
 	printRedacted(plan)
+	if res.Restored > 0 {
+		printBrewPaths(checkBrewPaths(env))
+	}
 	return offerExtras(cmd, env, path, dir, extras)
 }
 
