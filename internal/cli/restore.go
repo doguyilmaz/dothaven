@@ -158,6 +158,7 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	}
 	t := restore.Tally(plan.Entries)
 	fmt.Printf("  %s: %s\n", plural(len(plan.Entries), "file"), restoreBreakdown(t))
+	printUnplaced(plan, path)
 
 	if o.dryRun {
 		printRestorePlan(env, plan, false)
@@ -247,6 +248,28 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	}
 	printRedacted(plan)
 	return offerExtras(cmd, env, path, dir, extras)
+}
+
+// printUnplaced lists the backup files restore will not write anywhere, so
+// that none of them is lost without a word: macOS-only config restored on
+// Linux, a tool this version does not know, a file that could not be read.
+func printUnplaced(plan restore.Plan, src string) {
+	if n := len(plan.Unmatched); n > 0 {
+		fmt.Printf("  %s %s %s no place on this machine — its tool keeps config elsewhere on %s, or not at all:\n",
+			warn("?"), plural(n, "file"), pick(n, "has", "have"), runtime.GOOS)
+		printList(plan.Unmatched, 6)
+		hint := "They stay in the backup; copy any you need by hand from " + src
+		if fi, err := os.Stat(src); err != nil || !fi.IsDir() {
+			// An archive was opened into a temporary folder that is gone
+			// once this command ends.
+			hint = "They stay in the backup file: `tar -xzf` it (after `age -d` if encrypted) to copy any by hand."
+		}
+		fmt.Printf("    %s\n", dim(hint))
+	}
+	if n := len(plan.Unreadable); n > 0 {
+		fmt.Fprintf(os.Stderr, "  %s %s in the backup could not be read:\n", danger("✗"), plural(n, "file"))
+		printListTo(os.Stderr, plan.Unreadable, 6)
+	}
 }
 
 // chooseRestore asks how much of the plan to apply. It returns which entries

@@ -53,6 +53,20 @@ type Plan struct {
 	BackupDir  string
 	BackupID   string // the backup's own name, stable however it was carried
 	Categories []string
+	// Unmatched are backup files with no place on this machine: config of a
+	// tool that lives elsewhere (or nowhere) on this OS, or one this version
+	// does not know. They are listed, never silently dropped.
+	Unmatched []string
+	// Unreadable are backup files that could not be read.
+	Unreadable []string
+}
+
+// metaPath reports whether a backup file is the backup's own bookkeeping —
+// its manifest, inventory and settings — which restore does not map to a
+// config location (the next steps handle those).
+func metaPath(rel string) bool {
+	return rel == "MANIFEST.txt" || rel == "dothaven.json" || rel == "README.md" ||
+		strings.HasPrefix(rel, "inventory/") || strings.HasPrefix(rel, "macos-defaults/")
 }
 
 type mapping struct {
@@ -170,6 +184,7 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 	dirDests := dirDestsByLength(m)
 	backupID := filepath.Base(filepath.Clean(backupDir))
 	var entries []Entry
+	var unmatched, unreadable []string
 	catSet := map[string]bool{}
 
 	walkErr := filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
@@ -183,10 +198,14 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 		rel = filepath.ToSlash(rel)
 		target, category, sens := matchTarget(rel, m, dirDests)
 		if target == "" {
+			if !metaPath(rel) {
+				unmatched = append(unmatched, rel)
+			}
 			return nil
 		}
 		raw, rerr := os.ReadFile(path)
 		if rerr != nil {
+			unreadable = append(unreadable, rel)
 			return nil
 		}
 		exec := false
@@ -205,7 +224,7 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 		return nil
 	})
 	if walkErr != nil {
-		return Plan{BackupDir: backupDir, BackupID: backupID}, nil
+		return Plan{BackupDir: backupDir, BackupID: backupID}, walkErr
 	}
 
 	cats := make([]string, 0, len(catSet))
@@ -213,7 +232,8 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 		cats = append(cats, c)
 	}
 	sort.Strings(cats)
-	return Plan{Entries: entries, BackupDir: backupDir, BackupID: backupID, Categories: cats}, nil
+	return Plan{Entries: entries, BackupDir: backupDir, BackupID: backupID, Categories: cats,
+		Unmatched: unmatched, Unreadable: unreadable}, nil
 }
 
 // Filter narrows a plan's entries by category (skip wins; non-empty only restricts).
@@ -235,7 +255,8 @@ func Filter(p Plan, only, skip []string) Plan {
 		cats = append(cats, c)
 	}
 	sort.Strings(cats)
-	return Plan{Entries: kept, BackupDir: p.BackupDir, BackupID: p.BackupID, Categories: cats}
+	return Plan{Entries: kept, BackupDir: p.BackupDir, BackupID: p.BackupID, Categories: cats,
+		Unmatched: p.Unmatched, Unreadable: p.Unreadable}
 }
 
 // Counts tallies entries by status.
