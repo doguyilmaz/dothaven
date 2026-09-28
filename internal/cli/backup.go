@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/backup"
@@ -374,9 +375,29 @@ func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOp
 		sink = o.digest
 	}
 	redact := o.redact()
+	var read int64
+	var at atomic.Pointer[string]
+	stop := startActivity("Reading your config", &read, 0, func() string {
+		if p := at.Load(); p != nil {
+			return *p
+		}
+		return ""
+	})
 	res, err := backup.RunTo(targets, sink, backup.Options{
 		Context: ctx, Redact: redact, Encrypted: o.encrypt, Only: o.only, Skip: o.skip, Remote: o.remote,
+		// A readable push cannot hold .git folders, so it does not read them.
+		SkipVCS: o.remote && !o.encrypt,
+		Reading: func(dest string, file bool) {
+			at.Store(&dest)
+			if file {
+				atomic.AddInt64(&read, 1)
+			}
+			runlog.reading(dest, file)
+		},
 	})
+	stop()
+	runlog.done()
+	runlog.stepf("read %d files (%s)", res.TotalFiles, humanBytes(res.TotalBytes))
 	out.res = res
 	if err != nil {
 		return err

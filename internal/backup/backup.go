@@ -33,6 +33,13 @@ type Options struct {
 	// Remote marks a run whose output leaves this machine (a GitHub push).
 	// LocalOnly entries, and any file holding an age identity, stay behind.
 	Remote bool
+	// SkipVCS leaves .git and similar folders out of the walk, for output
+	// that cannot hold them (a readable push).
+	SkipVCS bool
+	// Reading, when set, is told each entry as its walk starts and each file
+	// just before it is read, so a caller can show where a slow backup is and
+	// which file a stall is on.
+	Reading func(dest string, file bool)
 }
 
 // maxGateText is the largest text file the plaintext gate will scan. Scanning
@@ -123,7 +130,10 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			reported = appendRoot(reported, t.Src)
 			continue
 		}
-		files, skipped := Walk(t, WalkOptions{MaxSize: opts.MaxFileSize})
+		if opts.Reading != nil {
+			opts.Reading(t.Dest, false)
+		}
+		files, skipped := Walk(t, WalkOptions{MaxSize: opts.MaxFileSize, SkipVCS: opts.SkipVCS})
 		for _, s := range skipped {
 			if s.Reason == "too large" {
 				res.TooLarge = append(res.TooLarge, s)
@@ -148,6 +158,9 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			if opts.Remote && reachesGuarded(t, f.Path, localOnly) {
 				res.KeptLocal = append(res.KeptLocal, f.Dest)
 				continue
+			}
+			if opts.Reading != nil {
+				opts.Reading(f.Dest, true)
 			}
 			raw, err := readRegular(f.Path, f.Size)
 			if err != nil {

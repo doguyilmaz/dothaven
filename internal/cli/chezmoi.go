@@ -36,7 +36,9 @@ func runShell(ctx context.Context, name string, args ...string) (string, error) 
 	// from `chezmoi apply`'s install script) can't keep Wait() blocked past the
 	// deadline after CommandContext SIGKILLs the direct child.
 	cmd.WaitDelay = 5 * time.Second
+	start := time.Now()
 	out, err := cmd.CombinedOutput()
+	runlog.command(append([]string{name}, args...), time.Since(start), err)
 	return strings.TrimSpace(string(out)), err
 }
 

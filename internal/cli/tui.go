@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -118,7 +119,10 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 					// An ExitError already conveyed its outcome (e.g. a drift exit
 					// code); other errors are shown. Either way, stay in the menu.
 					var ee ExitError
-					if !errors.As(rerr, &ee) && !errors.Is(rerr, tui.ErrAborted) {
+					switch {
+					case errors.Is(rerr, context.Canceled):
+						fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
+					case !errors.As(rerr, &ee) && !errors.Is(rerr, tui.ErrAborted):
 						fmt.Fprintln(cmd.ErrOrStderr(), danger("✗ "+rerr.Error()))
 					}
 				}

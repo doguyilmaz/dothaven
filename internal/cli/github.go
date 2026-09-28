@@ -539,6 +539,47 @@ func createRepoErr(tok, repo string, err error) error {
 	return fmt.Errorf("could not create %s: %w", repo, err)
 }
 
+// largeReadable is how many files a readable push holds before dothaven asks.
+// Readable pushes are for browsing config on GitHub; tens of thousands of
+// files (a plugin folder, say) take long to upload and bury the config.
+const largeReadable = 3000
+
+// confirmLargeReadable asks before a readable push of more than
+// largeReadable files, naming the folders that make it large.
+func confirmLargeReadable(files []github.File, yes bool) bool {
+	if len(files) <= largeReadable || yes {
+		return true
+	}
+	counts := map[string]int{}
+	for _, f := range files {
+		parts := strings.SplitN(f.Path, "/", 4)
+		if len(parts) > 3 {
+			parts = parts[:3]
+		}
+		counts[strings.Join(parts, "/")]++
+	}
+	type folder struct {
+		name string
+		n    int
+	}
+	var top []folder
+	for k, n := range counts {
+		top = append(top, folder{k, n})
+	}
+	sort.Slice(top, func(i, j int) bool { return top[i].n > top[j].n })
+	fmt.Printf("\n%s This readable push has %s. Most of them are in:\n", warn("⚠"), plural(len(files), "file"))
+	for _, f := range top[:min(3, len(top))] {
+		fmt.Printf("  %-44s %s\n", f.name, plural(f.n, "file"))
+	}
+	fmt.Println(dim("  An encrypted push uploads one file instead (--mode encrypted), or leave a category out with --skip."))
+	if !tui.Interactive() {
+		fmt.Println(dim("  Continuing, as this is not a terminal. Pass --yes to skip this note."))
+		return true
+	}
+	ok, err := tui.Confirm(fmt.Sprintf("Upload %s as readable files anyway?", plural(len(files), "file")))
+	return err == nil && ok
+}
+
 func readMachineMeta(ctx context.Context, c *github.Client, repo, m string) machineMeta {
 	var meta machineMeta
 	if b, err := c.Raw(ctx, repo, "machines/"+m+"/dothaven.json"); err == nil {
@@ -676,9 +717,17 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 			fmt.Println(dim("Your fonts stay out of GitHub pushes (large binaries) — `dothaven backup --encrypt` carries them, or add --only fonts,…"))
 		}
 	}
+	runlog.stepf("push %s as %s, mode %s", r.FullName, machine, mode)
 	files, out, err := buildPushFiles(ctx, cmd, env, tmp, mode, pass, o.only, skip, digest)
 	if err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintln(os.Stderr, "Push cancelled. Nothing was uploaded.")
+			return ExitError{Code: 130}
+		}
 		return err
+	}
+	if mode != modeEncrypted && !confirmLargeReadable(files, o.yes) {
+		return ExitError{Code: 1}
 	}
 	// Encrypted means encrypted: check the bytes about to leave this machine,
 	// not the flag that asked for them.
@@ -730,12 +779,18 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	for _, f := range files {
 		total += f.Size
 	}
-	fmt.Printf("\nUploading %s (%s) to %s …\n", plural(len(files), "file"), humanBytes(total), r.FullName)
+	fmt.Printf("\nUploading %s (%s) to %s\n", plural(len(files), "file"), humanBytes(total), r.FullName)
+	runlog.stepf("uploading %d files (%s)", len(files), humanBytes(total))
+	var sent int64
+	c.Sent = &sent
+	stop := startActivity("Uploading", &sent, len(files), nil)
 	sha, err := c.Commit(ctx, r.FullName, firstNonEmpty(r.DefaultBranch, cfg.Branch), "machines/"+machine, files,
 		map[string]string{"README.md": repoReadme(r.FullName)},
-		fmt.Sprintf("dothaven: %s — %s backup, %s", machine, mode, plural(out.res.TotalFiles, "file")))
+		fmt.Sprintf("dothaven: %s, %s backup, %s", machine, mode, plural(out.res.TotalFiles, "file")))
+	stop()
 	if err != nil {
 		if ctx.Err() != nil {
+			fmt.Fprintln(os.Stderr, "Push cancelled. Nothing was committed; the last push on GitHub is unchanged.")
 			return ExitError{Code: 130}
 		}
 		if errors.Is(err, github.ErrNotFound) {

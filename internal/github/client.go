@@ -76,6 +76,8 @@ type Client struct {
 	// how the last one went.
 	Sign    Signer
 	Signing SignResult
+	// Sent, when set, counts the files of a commit as GitHub receives them.
+	Sent *int64
 }
 
 // ErrNotFound is a 404: missing, or not visible to this token (GitHub does

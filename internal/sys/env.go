@@ -77,7 +77,12 @@ func (o *OS) Run(ctx context.Context, args ...string) (string, error) {
 	cmd.WaitDelay = 5 * time.Second
 	out := &capBuffer{cap: maxCmdOutput}
 	cmd.Stdout = out
-	if err := cmd.Run(); err != nil {
+	start := time.Now()
+	err := cmd.Run()
+	if OnCommand != nil {
+		OnCommand(args, time.Since(start), err)
+	}
+	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			return out.buf.String(), nil // tolerate non-zero exit, keep stdout
@@ -86,6 +91,10 @@ func (o *OS) Run(ctx context.Context, args ...string) (string, error) {
 	}
 	return out.buf.String(), nil
 }
+
+// OnCommand, when set, is told each command Run ran, how long it took and
+// how it ended. The run log uses it.
+var OnCommand func(args []string, took time.Duration, err error)
 
 func (o *OS) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
 

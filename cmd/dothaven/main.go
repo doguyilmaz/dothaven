@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/cli"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -30,10 +31,23 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		first := <-sigCh
+		// Said at once: work that is stuck (a read macOS is holding for a
+		// privacy prompt) may take a while to notice the cancel, and a Ctrl-C
+		// with no answer gets pressed twenty times.
+		fmt.Fprintln(os.Stderr, "\nStopping… press Ctrl-C again to quit now.")
 		cancel()
 		<-sigCh // a second signal force-exits, even if a command ignores the context
-		// No defer runs past os.Exit: remove decrypted temporary files here.
-		sys.RemoveTempDirs()
+		// No defer runs past os.Exit: remove decrypted temporary files here,
+		// but give it a second at most; a quit must not wait on cleanup.
+		done := make(chan struct{})
+		go func() {
+			sys.RemoveTempDirs()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
 		// Exit code reflects the signal that initiated shutdown (the cause), using
 		// the conventional 128+signum so a supervisor can tell SIGINT (130) from
 		// SIGTERM (143).

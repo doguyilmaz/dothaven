@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -118,7 +119,22 @@ func Execute(ctx context.Context, env *sys.OS, version string) error {
 	if !suppressNotice(root, os.Args[1:]) {
 		probe = startUpdateCheck(ctx, env, version)
 	}
+	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) {
+		switch cmd.Name() {
+		case "help", "completion", "__complete", "__completeNoDesc", "version":
+			return
+		}
+		runlog.open(env, cmd.CommandPath())
+		sys.OnCommand = runlog.command
+	}
 	err := root.ExecuteContext(ctx)
+	runlog.close(err)
+	if err != nil && runlog.Path() != "" {
+		var ee ExitError
+		if !errors.As(err, &ee) || ee.Code == 130 {
+			fmt.Fprintln(os.Stderr, dim("Log of this run: "+shortHome(env, runlog.Path())))
+		}
+	}
 	probe.finish(os.Stderr, version)
 	return err
 }

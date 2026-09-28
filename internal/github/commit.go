@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -261,6 +262,7 @@ func (c *Client) buildTree(ctx context.Context, repo string, files []File) (stri
 		wg.Go(func() {
 			for i := range work {
 				shas[i], errs[i] = c.uploadBlob(ctx, repo, blobs[i].Src, blobs[i].Size)
+				c.sent(1)
 			}
 		})
 	}
@@ -296,6 +298,13 @@ func (c *Client) buildTree(ctx context.Context, repo string, files []File) (stri
 		if err != nil {
 			return err
 		}
+		inBatch := 0
+		for _, e := range batch {
+			if e.Content != nil {
+				inBatch++
+			}
+		}
+		c.sent(inBatch)
 		tree, batch, size = t, nil, 0
 		return nil
 	}
@@ -317,6 +326,13 @@ func (c *Client) buildTree(ctx context.Context, repo string, files []File) (stri
 		return "", err
 	}
 	return tree, nil
+}
+
+// sent counts files the server has, for a caller's progress line.
+func (c *Client) sent(n int) {
+	if c.Sent != nil {
+		atomic.AddInt64(c.Sent, int64(n))
+	}
 }
 
 func mode(f File) string {
