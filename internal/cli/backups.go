@@ -237,7 +237,7 @@ func openBackup(ctx context.Context, env *sys.OS, path string) (dir string, clea
 	encrypted := backup.Detect(path) == backup.FormatAge
 	attempts := 1
 	if encrypted {
-		if _, env := os.LookupEnv(passphraseEnv); !env {
+		if _, env := lookupSecretEnv(passphraseEnv); !env {
 			attempts = 3
 		}
 		fmt.Fprintln(os.Stderr, dim("This backup is encrypted."))

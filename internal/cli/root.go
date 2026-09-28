@@ -104,6 +104,7 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 // output, not ahead of it: "here is what to do about this" belongs at the end,
 // where the reader already is.
 func Execute(ctx context.Context, env *sys.OS, version string) error {
+	takeSecretEnv()
 	root := NewRoot(env, version)
 	var probe *updateProbe
 	if !suppressNotice(root, os.Args[1:]) {

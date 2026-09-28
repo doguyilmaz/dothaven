@@ -139,6 +139,9 @@ type installGroup struct {
 	Missing []string // install tokens: names, or whole Brewfile lines
 	Have    int      // already installed here; -1 when it cannot be known
 	Prelude []string // Brewfile taps a Homebrew group needs installed first
+	// Unsafe counts entries that are not a valid package name (or Brewfile
+	// line) and would reach a shell; they are left out, and said so.
+	Unsafe int
 }
 
 // brewLine matches a Brewfile directive and its first quoted argument.
@@ -158,6 +161,9 @@ var sectionGroups = []struct{ id, label string }{
 	{"packages.pub", "Dart global packages"},
 	{"packages.dotnet", ".NET tools"},
 	{"editor.cursor.extensions", "Cursor extensions"},
+	// VS Code extensions normally come with the Brewfile; without Homebrew
+	// (Linux) this is how they come back.
+	{"editor.vscode.extensions", "VS Code extensions"},
 	{"packages.apt", "apt packages"},
 	{"packages.dnf", "dnf packages"},
 	{"packages.pacman", "pacman packages"},
@@ -196,6 +202,9 @@ func planReinstall(want, have snapshot.Snapshot) []installGroup {
 			}
 			dir, name := m[1], m[2]
 			if dir == "tap" {
+				if !chezmoi.SafeBrewLine(line) {
+					continue // an unusable tap only means its casks fail to install
+				}
 				// A cask from a third-party tap is named without it; the tap
 				// has to come along with whatever group is installed.
 				taps = append(taps, strings.TrimSpace(line))
@@ -209,6 +218,10 @@ func planReinstall(want, have snapshot.Snapshot) []installGroup {
 				}
 				byDir[dir] = g
 				order = append(order, dir)
+			}
+			if !chezmoi.SafeBrewLine(line) {
+				g.Unsafe++
+				continue
 			}
 			installed := false
 			switch dir {
@@ -232,9 +245,13 @@ func planReinstall(want, have snapshot.Snapshot) []installGroup {
 		}
 	}
 
+	brewVSCode := false
+	for _, g := range groups {
+		brewVSCode = brewVSCode || g.ID == "brew:vscode"
+	}
 	for _, sg := range sectionGroups {
 		sec, ok := want[sg.id]
-		if !ok || len(sec.Items) == 0 {
+		if !ok || len(sec.Items) == 0 || (sg.id == "editor.vscode.extensions" && brewVSCode) {
 			continue
 		}
 		fold := strings.HasSuffix(sg.id, ".extensions")
@@ -245,6 +262,10 @@ func planReinstall(want, have snapshot.Snapshot) []installGroup {
 				continue
 			}
 			k := keyOf(it)
+			if !chezmoi.SafeName(k) {
+				g.Unsafe++
+				continue
+			}
 			if fold {
 				k = strings.ToLower(k)
 			}
@@ -321,6 +342,8 @@ func renderInstall(groups []installGroup) (string, int) {
 			m.DotnetTools = g.Missing
 		case "editor.cursor.extensions":
 			m.CursorExtensions = g.Missing
+		case "editor.vscode.extensions":
+			m.VSCodeExtensions = g.Missing
 		case "packages.apt":
 			m.AptPackages = g.Missing
 		case "packages.dnf":
@@ -356,6 +379,9 @@ func printReinstallPlan(groups []installGroup) {
 			todo = warn(padTo(fmt.Sprintf("%d to install", len(g.Missing)), 18))
 		}
 		fmt.Printf("  %s %s  %s\n", padTo(g.Label, 28), todo, have)
+		if g.Unsafe > 0 {
+			fmt.Printf("    %s\n", warn(fmt.Sprintf("⚠ %s left out: not a valid package name, and it would reach a shell", plural(g.Unsafe, "entry"))))
+		}
 	}
 }
 

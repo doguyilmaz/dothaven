@@ -66,7 +66,7 @@ vscode "golang.Go"`
 	if n != 6 {
 		t.Errorf("renderInstall counted %d, want 6", n)
 	}
-	for _, want := range []string{`tap "hashicorp/tap"`, `brew "postgresql@16", restart_service: true`, `cask "visual-studio-code"`, "npm install -g @anthropic-ai/claude-code", "pipx install black"} {
+	for _, want := range []string{`tap "hashicorp/tap"`, `brew "postgresql@16", restart_service: true`, `cask "visual-studio-code"`, "npm install -g '@anthropic-ai/claude-code'", "pipx install 'black'"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("script missing %q:\n%s", want, script)
 		}
@@ -75,5 +75,47 @@ vscode "golang.Go"`
 		if strings.Contains(script, not) {
 			t.Errorf("script reinstalls something already here: %q", not)
 		}
+	}
+}
+
+// A name that is not a package name never reaches the install script, and
+// the plan says it was left out rather than dropping it silently.
+func TestReinstallLeavesOutUnsafeNames(t *testing.T) {
+	bf := "brew \"git\"\nbrew \"x#{system('id')}\"\n"
+	want := snapshot.Snapshot{
+		"apps.brew.bundle":    {Content: &bf},
+		"packages.npm.global": {Items: []snapshot.Item{{Raw: "typescript", Columns: []string{"typescript"}}, {Raw: "$(id)", Columns: []string{"$(id)"}}}},
+	}
+	groups := planReinstall(want, snapshot.Snapshot{})
+	unsafe := 0
+	for _, g := range groups {
+		unsafe += g.Unsafe
+	}
+	if unsafe != 2 {
+		t.Errorf("unsafe = %d, want 2 (%+v)", unsafe, groups)
+	}
+	script, _ := renderInstall(groups)
+	if strings.Contains(script, "$(id)") || strings.Contains(script, "system(") {
+		t.Errorf("script carries an injected name:\n%s", script)
+	}
+	if !strings.Contains(script, `brew "git"`) || !strings.Contains(script, "'typescript'") {
+		t.Errorf("script lost the real packages:\n%s", script)
+	}
+}
+
+// Without Homebrew there is no Brewfile to carry VS Code extensions; the
+// inventory's list brings them back instead — but not twice when there is one.
+func TestReinstallVSCodeExtensionsWithoutBrew(t *testing.T) {
+	ext := snapshot.Section{Items: []snapshot.Item{{Raw: "ms-python.python", Columns: []string{"ms-python.python"}}}}
+	groups := planReinstall(snapshot.Snapshot{"editor.vscode.extensions": ext}, snapshot.Snapshot{})
+	script, _ := renderInstall(groups)
+	if !strings.Contains(script, "code --install-extension 'ms-python.python'") {
+		t.Errorf("no VS Code install without a Brewfile:\n%s", script)
+	}
+	bf := "vscode \"ms-python.python\"\n"
+	groups = planReinstall(snapshot.Snapshot{"editor.vscode.extensions": ext, "apps.brew.bundle": {Content: &bf}}, snapshot.Snapshot{})
+	script, _ = renderInstall(groups)
+	if strings.Contains(script, "code --install-extension") {
+		t.Errorf("installed twice (Brewfile and list):\n%s", script)
 	}
 }

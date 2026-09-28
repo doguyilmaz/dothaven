@@ -21,6 +21,31 @@ const minPassphrase = 10
 
 var errNoTerminal = errors.New("no terminal to ask for a passphrase on — set " + passphraseEnv)
 
+// secretEnv holds DOTHAVEN_PASSPHRASE and DOTHAVEN_GITHUB_TOKEN once Execute
+// has taken them out of the environment. Every process dothaven starts —
+// brew, npm and pipx install hooks, chezmoi, git — would otherwise inherit
+// them.
+var secretEnv = map[string]string{}
+
+// takeSecretEnv moves the secret variables from the environment into
+// secretEnv.
+func takeSecretEnv() {
+	for _, name := range []string{passphraseEnv, tokenEnv} {
+		if v, ok := os.LookupEnv(name); ok {
+			secretEnv[name] = v
+			_ = os.Unsetenv(name)
+		}
+	}
+}
+
+// lookupSecretEnv reads a secret variable, taken or still in the environment.
+func lookupSecretEnv(name string) (string, bool) {
+	if v, ok := secretEnv[name]; ok {
+		return v, true
+	}
+	return os.LookupEnv(name)
+}
+
 // readSecret reads one line from the terminal without echoing it. It opens
 // /dev/tty rather than trusting stdin, so it still works when stdin or stdout
 // is redirected (`dothaven restore x.age | tee log`).
@@ -43,7 +68,7 @@ func readSecret(prompt string) (string, error) {
 // rule as a typed one. Set but empty is an error, not "no passphrase": a
 // script whose $PASS expanded to nothing must fail, not upload plaintext.
 func envPassphrase() (string, bool, error) {
-	p, ok := os.LookupEnv(passphraseEnv)
+	p, ok := lookupSecretEnv(passphraseEnv)
 	if !ok {
 		return "", false, nil
 	}
@@ -86,7 +111,7 @@ func newPassphrase() (string, error) {
 // passphrase — once, when it is first needed, so a plain archive never asks.
 func askPassphrase() func() (string, error) {
 	return func() (string, error) {
-		if p, ok := os.LookupEnv(passphraseEnv); ok {
+		if p, ok := lookupSecretEnv(passphraseEnv); ok {
 			return p, nil
 		}
 		return readSecret("  Passphrase for this backup: ")

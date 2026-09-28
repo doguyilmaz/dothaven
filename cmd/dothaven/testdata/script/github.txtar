@@ -2,6 +2,7 @@
 # this machine encrypted, recognise an unchanged machine, restore it onto an
 # empty one, keep a second machine in split mode, and refuse a public repo.
 env DOTHAVEN_PASSPHRASE='correct horse battery staple'
+env LEAK_LOG=$WORK/leak.log
 
 # Without any login it says how to sign in.
 ! exec dothaven github push --yes --only shell
@@ -80,6 +81,11 @@ stdout 'secrets/age/chezmoi-key.txt'
 stdout 'Pushed 1 file'
 exec dothaven backup --encrypt --only secrets -o $WORK/local
 stdout 'Encrypted backup saved — 2 files'
+
+# Neither the passphrase nor the token reached any tool dothaven ran — the
+# inventory step runs brew.
+exec dothaven backup --encrypt --only inventory -o $WORK/inv
+! exists $WORK/leak.log
 
 # A public repository is never written to.
 ! exec dothaven github push --repo tester/public-one --only shell

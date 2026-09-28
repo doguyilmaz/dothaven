@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -297,6 +298,7 @@ type Manifest struct {
 	PacmanPackages   []string
 	SnapPackages     []string
 	FlatpakPackages  []string
+	VSCodeExtensions []string
 }
 
 // CrossManagerDuplicates are names installed by more than one JS global manager
@@ -322,12 +324,63 @@ func CrossManagerDuplicates(m Manifest) []string {
 	return dupes
 }
 
+// safeName matches a package name the way the managers spell them — npm's
+// @scope/name@1.2.3, pipx and uv names, crates, flatpak app IDs, apt's
+// name:arch and name=version, rustup's stable-aarch64-apple-darwin — and
+// nothing a shell reads as syntax. Names come from a backup's inventory,
+// which in a readable GitHub copy anyone with write access could edit; the
+// install script runs them.
+var safeName = regexp.MustCompile(`^[A-Za-z0-9@_][A-Za-z0-9@._+/:=~-]*$`)
+
+// SafeName reports whether a package name can go into the install script.
+func SafeName(s string) bool { return len(s) <= 214 && safeName.MatchString(s) }
+
+// safeBrewLine is the Brewfile grammar `brew bundle dump` writes: a directive,
+// a quoted name, optionally a second quoted argument (a tap's URL) and
+// `key: value` options. A Brewfile is Ruby, and inside a double-quoted Ruby
+// string `#{…}`, `#@x` and `#$x` run code, so a quoted part may not contain #.
+var safeBrewLine = func() *regexp.Regexp {
+	str := `"[^"\\#\n]*"`
+	val := `(\d+|true|false|:[a-z_]+|` + str + `|\[\s*(` + str + `(\s*,\s*` + str + `)*)?\s*\])`
+	return regexp.MustCompile(`^\s*(tap|brew|cask|mas|vscode|whalebrew|go|cargo|uv|flatpak)\s+` + str +
+		`(\s*,\s*` + str + `)?(\s*,\s*[a-z_]+:\s*` + val + `)*\s*(#[^\n]*)?$`)
+}()
+
+// SafeBrewLine reports whether a Brewfile line is one brew bundle wrote, and
+// safe to hand to it.
+func SafeBrewLine(l string) bool { return safeBrewLine.MatchString(l) }
+
+// safeNames keeps the names that can go into a script, single-quoted.
+func safeNames(pkgs []string) []string {
+	var out []string
+	for _, p := range pkgs {
+		if SafeName(p) {
+			out = append(out, "'"+p+"'")
+		}
+	}
+	return out
+}
+
+// safeBrewfile keeps the Brewfile's directives that pass SafeBrewLine, and
+// its blank and comment lines.
+func safeBrewfile(content string) string {
+	var out []string
+	for _, l := range strings.Split(content, "\n") {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "#") || SafeBrewLine(l) {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 func guarded(tool string, body ...string) string {
 	lines := append([]string{fmt.Sprintf("if command -v %s >/dev/null 2>&1; then", tool)}, body...)
 	return strings.Join(append(lines, "fi"), "\n")
 }
 
 func installBlock(tool, add string, pkgs []string) (string, bool) {
+	pkgs = safeNames(pkgs)
 	if len(pkgs) == 0 {
 		return "", false
 	}
@@ -345,10 +398,10 @@ func installBlock(tool, add string, pkgs []string) (string, bool) {
 func BuildPackageInstallScript(m Manifest) (string, bool) {
 	var blocks []string
 
-	if strings.TrimSpace(m.Brewfile) != "" {
+	if bf := strings.TrimSpace(safeBrewfile(m.Brewfile)); bf != "" {
 		blocks = append(blocks, guarded("brew",
 			"  brew bundle --file=- <<'BREWFILE' || true",
-			strings.TrimSpace(m.Brewfile),
+			bf,
 			"BREWFILE"))
 	}
 
@@ -358,6 +411,7 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 			versions = append(versions, v)
 		}
 	}
+	versions = safeNames(versions)
 	if len(versions) > 0 {
 		body := make([]string, len(versions))
 		for i, v := range versions {
@@ -376,12 +430,8 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 		blocks = append(blocks, b)
 	}
 
-	if len(m.CargoCrates) > 0 {
-		body := make([]string, len(m.CargoCrates))
-		for i, c := range m.CargoCrates {
-			body[i] = fmt.Sprintf("  cargo install %s || true", c)
-		}
-		blocks = append(blocks, guarded("cargo", body...))
+	if b, ok := installBlock("cargo", "cargo install", m.CargoCrates); ok {
+		blocks = append(blocks, b)
 	}
 
 	// Inventory that collect captures but the script used to drop. Each is
@@ -394,6 +444,10 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 		blocks = append(blocks, b)
 	}
 	if b, ok := installBlock("cursor", "cursor --install-extension", m.CursorExtensions); ok {
+		blocks = append(blocks, b)
+	}
+	// Set only where the Brewfile does not already carry them (no Homebrew).
+	if b, ok := installBlock("code", "code --install-extension", m.VSCodeExtensions); ok {
 		blocks = append(blocks, b)
 	}
 	if b, ok := installBlock("uv", "uv tool install", m.UvTools); ok {
@@ -437,14 +491,16 @@ func BuildPackageInstallScript(m Manifest) (string, bool) {
 	if len(m.DenoBins) > 0 {
 		lines := []string{"# deno global bins (reinstall manually — original module URL not captured):"}
 		for _, b := range m.DenoBins {
-			lines = append(lines, "#   "+b)
+			if SafeName(b) {
+				lines = append(lines, "#   "+b)
+			}
 		}
 		blocks = append(blocks, strings.Join(lines, "\n"))
 	}
 
 	header := strings.Join([]string{
 		"#!/bin/bash",
-		"# Generated by `dothaven chezmoi-export`. chezmoi re-runs this on apply when it changes.",
+		"# Generated by dothaven: reinstalls the apps and packages the old machine had.",
 		"set -uo pipefail",
 	}, "\n")
 
