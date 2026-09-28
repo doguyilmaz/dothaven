@@ -1,6 +1,7 @@
 package macprefs
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
@@ -52,14 +53,26 @@ func Collect(domain string, plist []byte) ([]Entry, Counts, error) {
 		}
 		e := Entry{Domain: domain, Key: key, Type: typeName(v), Value: value,
 			Action: action.String(), Reason: reason}
-		switch res := scan.ScanContent(domain+"/"+key, value); res.Action {
+		// Scanned as key=value: an opaque token under a key named apiToken
+		// has no prefix to recognise; only the name gives it away.
+		pair := key + "=" + value
+		res := scan.ScanContent(domain+"/"+key, pair)
+		if res.Action == scan.Include && credentialKey.MatchString(key) && opaque(value) {
+			res.Action = scan.Redact
+			res.Findings = nil // nothing to mask by pattern: the whole value goes
+		}
+		switch res.Action {
 		case scan.Skip:
 			counts.Secret++
 			continue
 		case scan.Redact:
 			counts.Secret++
 			// A redacted value cannot be written back, only looked at.
-			e.Value = scan.ApplyRedactions(value, res)
+			red, ok := strings.CutPrefix(scan.ApplyRedactions(pair, res), key+"=")
+			if !ok || red == value {
+				red = scan.Marker
+			}
+			e.Value = red
 			e.Action = Review.String()
 			e.Reason = "value looks like a secret"
 		}
@@ -74,6 +87,16 @@ func Collect(domain string, plist []byte) ([]Entry, Counts, error) {
 
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Key < entries[j].Key })
 	return entries, counts, nil
+}
+
+// credentialKey matches preference names that hold a credential. Preference
+// keys are camelCase (syncApiToken, licenseKey), which the scanner's
+// word-bounded keyword rules are not written for.
+var credentialKey = regexp.MustCompile(`(?i)(token|secret|passw(or)?d|api[-_]?key|license[-_]?key|credential|private[-_]?key)`)
+
+// opaque is a value that could be a credential: long, and not prose.
+func opaque(v string) bool {
+	return len(v) >= 12 && !strings.ContainsAny(v, " \t\n") && !strings.HasPrefix(v, "<")
 }
 
 func typeName(v Value) string {

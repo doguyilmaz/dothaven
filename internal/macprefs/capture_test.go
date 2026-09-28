@@ -72,6 +72,8 @@ func TestCollectDoesNotLeakSecrets(t *testing.T) {
 	<string>ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789</string>
 	<key>theme</key>
 	<string>dark</string>
+	<key>syncApiToken</key>
+	<string>c2a1f0e9d8b7a6c5d4e3f2a1b0c9d8e7</string>
 </dict>
 </plist>`
 
@@ -80,8 +82,12 @@ func TestCollectDoesNotLeakSecrets(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 	for _, e := range entries {
-		if strings.Contains(e.Value, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") {
+		// The prefixed token, and the opaque one only its key name gives away.
+		if strings.Contains(e.Value, "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") || strings.Contains(e.Value, "c2a1f0e9d8b7a6c5") {
 			t.Fatalf("token survived into %+v", e)
+		}
+		if e.Key == "syncApiToken" && e.Action != "review" {
+			t.Errorf("a redacted value must not be written back: %+v", e)
 		}
 	}
 	if counts.Secret == 0 {
