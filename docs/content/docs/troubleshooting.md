@@ -157,13 +157,17 @@ Make the repository private in its GitHub settings, or push somewhere else with 
 
 Run `dothaven github login`. A token can expire or be revoked; `doctor` shows which source the rejected token came from. If `DOTHAVEN_GITHUB_TOKEN` is set, it is used before anything else.
 
+### GitHub: pushes are not "Verified"
+
+dothaven signs a push only when your git signs commits; `dothaven github status` says which key it uses, or that commits are unsigned. See [Verified commits](../github#verified-commits) to set it up. When a push is signed but not Verified, the push says why: most often the key is on your account only as an authentication key. Add it again with **Key type: Signing Key**.
+
 ### GitHub: "… this sign-in cannot see it" or "the dothaven app can't reach any repository yet"
 
-You signed in through the GitHub App, which reaches only the repositories it is installed on. Make the private repository (`dothaven-backup`) if it does not exist yet, then add it to the app at `https://github.com/apps/dothaven/installations/new` (or **Settings → Applications → Installed GitHub Apps → dothaven → Configure**). Choose **Only select repositories** and pick that one.
+Only for a build that signs in through a GitHub App: such an app reaches just the repositories it is installed on. Make the private repository (`dothaven-backup`) if it does not exist yet, then add it to the app from **Settings → Applications → Installed GitHub Apps → Configure**. The standard build signs in with an OAuth app and never needs this.
 
 ### GitHub: "your GitHub sign-in has expired"
 
-The six-month refresh token ran out, or the app's access was revoked. Run `dothaven github login` again. The 8-hour renewals in between happen by themselves; the dashboard and `doctor` only report that one is due.
+A GitHub App sign-in's six-month refresh token ran out, or its access was revoked. Run `dothaven github login` again.
 
 ### GitHub: "This build has no GitHub app configured for browser sign-in"
 

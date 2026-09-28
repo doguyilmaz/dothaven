@@ -22,9 +22,11 @@ stdout 'Created .*tester/dothaven-backup \(private\)'
 stdout 'Pushed 3 files as machines/oldmac'
 stdout 'dothaven restore github'
 exists .config/dothaven/github.json
-# The author is the account, by its noreply address — a push never publishes
-# a real email. With no GitHub App in this build, GitHub picks the committer.
-signedby 'tester <1001+tester@users.noreply.github.com>' -
+# The account is named by its noreply address — a push never publishes a real
+# email. With no GitHub App in this build, it is author and committer both.
+signedby 'tester <1001+tester@users.noreply.github.com>' 'tester <1001+tester@users.noreply.github.com>'
+exec dothaven github status
+stdout 'Commits: unsigned'
 
 # Same machine, nothing changed: no second copy in the history.
 exec dothaven github push --only shell,ssh --machine oldmac
@@ -65,12 +67,12 @@ grep 'alias ll' .zshrc
 grep 'BEGIN OPENSSH PRIVATE KEY' .ssh/id_ed25519
 
 # Split mode: readable files, plus an encrypted bundle for the key. A build
-# with the GitHub App names its bot as the committer.
+# with the GitHub App names its bot as the author; you stay the committer.
 env DOTHAVEN_GITHUB_APP=dothaven
 exec dothaven github push --mode split --only shell,ssh --machine laptop
 stdout '2 files readable, 2 files encrypted'
 stdout 'Pushed'
-signedby 'tester <1001+tester@users.noreply.github.com>' 'dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com>'
+signedby 'dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com>' 'tester <1001+tester@users.noreply.github.com>'
 env DOTHAVEN_GITHUB_APP=
 rm .zshrc .ssh
 ! exec dothaven restore github
@@ -103,6 +105,24 @@ stdout 'Pushed'
 exec dothaven github push --mode plain --only extra --machine plainbox
 stdout 'Already up to date'
 ! stdout 'different passphrase'
+
+# When git signs commits, pushes are signed with the same key, and GitHub's
+# verdict is reported: Verified, or what to fix.
+[exec:ssh-keygen] [exec:git] exec ssh-keygen -q -t ed25519 -N '' -C signing -f $WORK/signkey
+[exec:ssh-keygen] [exec:git] exec git config --global commit.gpgsign true
+[exec:ssh-keygen] [exec:git] exec git config --global gpg.format ssh
+[exec:ssh-keygen] [exec:git] exec git config --global gpg.ssh.program ssh-keygen
+[exec:ssh-keygen] [exec:git] exec git config --global user.signingkey $WORK/signkey.pub
+[exec:ssh-keygen] [exec:git] exec dothaven github status
+[exec:ssh-keygen] [exec:git] stdout 'Commits: signed with SSH key .*signkey.pub'
+[exec:ssh-keygen] [exec:git] exec dothaven github push --mode plain --only shell --machine signed
+[exec:ssh-keygen] [exec:git] stdout 'Pushed 1 file as machines/signed .*Verified'
+[exec:ssh-keygen] [exec:git] signedby 'tester <1001+tester@users.noreply.github.com>' 'tester <1001+tester@users.noreply.github.com>' signed
+[exec:ssh-keygen] [exec:git] ghunverified unknown_key
+[exec:ssh-keygen] [exec:git] exec dothaven github push --mode plain --only ssh --machine signed2
+[exec:ssh-keygen] [exec:git] stdout 'does not know this key as a signing key'
+[exec:ssh-keygen] [exec:git] ! stdout 'Verified'
+[exec:ssh-keygen] [exec:git] exec git config --global --unset commit.gpgsign
 
 # A public repository is never written to.
 ! exec dothaven github push --repo tester/public-one --only shell

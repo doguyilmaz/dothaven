@@ -112,26 +112,16 @@ The client talks HTTPS to the API directly, so neither machine needs git and the
 
 `DOTHAVEN_GITHUB_API` and `DOTHAVEN_GITHUB_WEB` point the client elsewhere (`https`, or `http` on loopback only), which is how the tests use `githubtest`, and how GitHub Enterprise would work.
 
-Sign-in is the device flow of a GitHub App. Its user tokens last 8 hours; `resolveToken` renews them with the refresh token (no client secret is needed for device-flow tokens) and saves the new pair, since a refresh token works only once. Read-only callers pass `renew=false` and report instead. Commits name the account's noreply address as author and the app's `<slug>[bot]` account as committer, looked up once per push. Commits made with a user token are not signed by GitHub whatever they name; a signed bot commit needs an installation token, which needs the app's private key, which a program on users' machines cannot hold.
+Sign-in is the device flow of an OAuth app (scope `repo`): no installation step, and the first push can create the repository. The client also takes a GitHub App's device flow, whose user tokens last 8 hours: `resolveToken` renews them with the refresh token (no client secret is needed for device-flow tokens) and saves the new pair, since a refresh token works only once; read-only callers pass `renew=false` and report instead.
 
-### Setting up the GitHub App (maintainers)
+Commits name the GitHub App's `<slug>[bot]` as author and the account's noreply address as committer. When the user's git signs commits (`commit.gpgsign`), `cli.gitSigning` signs the exact object the API will build — `github.CommitPayload`, with the dates fixed and sent along — through `ssh-keygen -Y sign -n git` or `gpg -bsau`, and passes it as the commit's `signature`. GitHub checks it against the committer's signing keys, and its verdict comes back in the response's `verification`. The format is tested against `git verify-commit` itself. A bot-signed commit is not possible here: it needs an installation token, and so the app's private key, which a program on users' machines cannot hold.
 
-Releases get sign-in from two repository **variables** (Settings → Secrets and variables → Actions → Variables), read by `release.yml` and baked in with `-ldflags`: `DOTHAVEN_GITHUB_CLIENT_ID` (public by design) and `DOTHAVEN_GITHUB_APP` (the app's URL name). To create the app, go to **Settings → Developer settings → GitHub Apps → New GitHub App**:
+### Setting up sign-in and the bot (maintainers)
 
-| Setting | Value |
-| --- | --- |
-| Name | `dothaven` (its URL name becomes `DOTHAVEN_GITHUB_APP`; the bot is `dothaven[bot]`) |
-| Homepage URL | The docs site |
-| Callback URL | Leave empty; the device flow does not use one |
-| Expire user authorization tokens | Keep it on; dothaven renews them |
-| Request user authorization during installation | Off |
-| Enable Device Flow | **On** |
-| Webhook | Off (untick **Active**) |
-| Repository permissions | **Contents: Read and write**. Metadata: Read-only is added automatically. Nothing else |
-| Account permissions | None |
-| Where can this app be installed | **Any account** |
+Releases read two repository **variables** (Settings → Secrets and variables → Actions → Variables; both are public by design, so not secrets), baked in with `-ldflags` by `release.yml`. They come from two apps, as in lockstep:
 
-Then upload `docs/static/images/bot-1024.png` as the logo, copy the **Client ID** (not the App ID) into `DOTHAVEN_GITHUB_CLIENT_ID`, and never create a client secret or private key: the CLI needs neither, and neither must ship in it. Without **Administration** or **Repository creation** permission the app cannot create repositories, so users make the private one themselves and install the app on it; `push` explains this when it happens.
+1. **The OAuth app, for sign-in** → `DOTHAVEN_GITHUB_CLIENT_ID`. **Settings → Developer settings → OAuth Apps → New OAuth App**: name `dothaven`, homepage and authorization callback URL both the docs site (the callback is required but unused), then tick **Enable Device Flow**. Copy its **Client ID**. Never generate a client secret: the device flow needs none, and none may ship in the CLI.
+2. **The GitHub App, for the bot** → `DOTHAVEN_GITHUB_APP`. **Settings → Developer settings → GitHub Apps → New GitHub App**: name `dothaven` (its URL name is the variable's value; the bot is `dothaven[bot]`), homepage the docs site, webhook off, **no permissions at all**, installable only on this account. It is never installed and never signs anyone in: GitHub creates the bot account with the app, and commits name it by its noreply address. Upload `docs/static/images/bot-1024.png` as its logo. No private key or client secret.
 
 ## Dashboard
 

@@ -236,14 +236,18 @@ func TestScripts(t *testing.T) {
 			e.Setenv("GH_CONFIG_DIR", e.WorkDir+"/.gh-none")
 			e.Setenv("GH_TOKEN", "")
 			e.Setenv("GITHUB_TOKEN", "")
+			// Only the script's own git config: the machine's could sign.
+			e.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			e.Setenv("GIT_CONFIG_GLOBAL", e.WorkDir+"/.gitconfig")
 			return nil
 		},
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
 			// signedby asserts the newest commit on the fake GitHub names this
-			// author and committer ("-" for one left to GitHub).
+			// author and committer ("-" for one left to GitHub), and with a
+			// third argument "signed", that it came signed.
 			"signedby": func(ts *testscript.TestScript, neg bool, args []string) {
-				if len(args) != 2 {
-					ts.Fatalf("usage: signedby <author> <committer>")
+				if len(args) != 2 && (len(args) != 3 || args[2] != "signed") {
+					ts.Fatalf("usage: signedby <author> <committer> [signed]")
 				}
 				sigs := ts.Value("github").(*githubtest.Server).Signatures()
 				if len(sigs) == 0 {
@@ -256,10 +260,18 @@ func TestScripts(t *testing.T) {
 					}
 					return s
 				}
-				ok := last.Author == want(args[0]) && last.Committer == want(args[1])
+				ok := last.Author == want(args[0]) && last.Committer == want(args[1]) && last.Signed == (len(args) == 3)
 				if ok == neg {
-					ts.Fatalf("newest commit: author %q, committer %q", last.Author, last.Committer)
+					ts.Fatalf("newest commit: author %q, committer %q, signed %v", last.Author, last.Committer, last.Signed)
 				}
+			},
+			// ghunverified makes the fake GitHub refuse to verify signatures,
+			// giving this reason.
+			"ghunverified": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 1 {
+					ts.Fatalf("usage: ghunverified <reason>")
+				}
+				ts.Value("github").(*githubtest.Server).Unverified = args[0]
 			},
 			// filemode asserts a file's permission bits. `stat` spells this
 			// differently on macOS and Linux, and the assertion has to hold on

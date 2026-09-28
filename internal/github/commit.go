@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 )
 
@@ -118,15 +119,26 @@ func (c *Client) commitOnce(ctx context.Context, repo, branch, prefix, sub strin
 	if parent != "" {
 		cb["parents"] = []string{parent}
 	}
+	c.Signing = SignResult{}
+	if c.Sign != nil && c.Author != nil && c.Committer != nil {
+		c.addSignature(ctx, cb, rootTree, parent, message)
+	}
 	b, err := jsonBody(cb)
 	if err != nil {
 		return "", err
 	}
 	var commit struct {
-		SHA string `json:"sha"`
+		SHA          string `json:"sha"`
+		Verification struct {
+			Verified bool   `json:"verified"`
+			Reason   string `json:"reason"`
+		} `json:"verification"`
 	}
 	if err := c.do(ctx, http.MethodPost, "/repos/"+repo+"/git/commits", b, "", &commit); err != nil {
 		return "", err
+	}
+	if c.Signing.Signed {
+		c.Signing.Verified, c.Signing.Reason = commit.Verification.Verified, commit.Verification.Reason
 	}
 
 	if parent == "" {
@@ -159,6 +171,56 @@ func (c *Client) seedIfEmpty(ctx context.Context, repo, branch string, root map[
 		return err
 	}
 	return c.do(ctx, http.MethodPut, "/repos/"+repo+"/contents/README.md", b, "", nil)
+}
+
+// Signer signs a commit object exactly as git would store it, returning the
+// ASCII-armoured signature (SSH or OpenPGP) for its gpgsig header.
+type Signer func(ctx context.Context, payload []byte) (string, error)
+
+// SignResult is how the last commit's signing went, and what GitHub made of
+// it: Verified is GitHub's own verdict, Reason its word for why not
+// ("unknown_key", "unverified_email", …).
+type SignResult struct {
+	Signed, Verified bool
+	Reason           string
+	Err              error // signing itself failed; the commit went unsigned
+}
+
+// addSignature signs the commit the request describes. The API adds the
+// signature to the commit it builds from these fields, so the payload has to
+// be that commit byte for byte: the dates are fixed here and sent along, and
+// the message ends in a newline as git's do.
+func (c *Client) addSignature(ctx context.Context, cb map[string]any, tree, parent, message string) {
+	at := time.Now().UTC().Truncate(time.Second)
+	if !strings.HasSuffix(message, "\n") {
+		message += "\n"
+	}
+	sig, err := c.Sign(ctx, CommitPayload(tree, parent, *c.Author, *c.Committer, at, message))
+	if err != nil {
+		c.Signing.Err = err
+		return
+	}
+	date := at.Format(time.RFC3339)
+	cb["message"] = message
+	cb["author"] = map[string]string{"name": c.Author.Name, "email": c.Author.Email, "date": date}
+	cb["committer"] = map[string]string{"name": c.Committer.Name, "email": c.Committer.Email, "date": date}
+	cb["signature"] = sig
+	c.Signing.Signed = true
+}
+
+// CommitPayload is a commit object as git writes it, without the signature:
+// what a commit signature covers.
+func CommitPayload(tree, parent string, author, committer Identity, at time.Time, message string) []byte {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "tree %s\n", tree)
+	if parent != "" {
+		fmt.Fprintf(&b, "parent %s\n", parent)
+	}
+	stamp := fmt.Sprintf("%d +0000", at.Unix())
+	fmt.Fprintf(&b, "author %s <%s> %s\n", author.Name, author.Email, stamp)
+	fmt.Fprintf(&b, "committer %s <%s> %s\n\n", committer.Name, committer.Email, stamp)
+	b.WriteString(message)
+	return b.Bytes()
 }
 
 // signed adds the client's author and committer to a commit request.

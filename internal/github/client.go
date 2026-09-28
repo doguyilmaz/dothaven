@@ -38,9 +38,10 @@ func ClientIDFromEnv() string {
 	return ClientID
 }
 
-// AppSlug is the GitHub App behind browser sign-in, by its URL name (the
-// "dothaven" in github.com/apps/dothaven). Set with ClientID at release time,
-// or with DOTHAVEN_GITHUB_APP. Its bot account commits every push.
+// AppSlug is the GitHub App whose bot account authors every push, by its URL
+// name (the "dothaven" in github.com/apps/dothaven). Set with ClientID at
+// release time, or with DOTHAVEN_GITHUB_APP. The app needs no permissions and
+// is never installed: GitHub creates the bot account along with it.
 var AppSlug = ""
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
@@ -68,9 +69,13 @@ type Client struct {
 	Web   string // https://github.com
 	Token string
 	HTTP  *http.Client
-	// Author and Committer, when set, sign the commits this client makes;
-	// otherwise GitHub signs them as the signed-in account.
+	// Author and Committer, when set, name who made the commits this client
+	// writes; otherwise GitHub names the signed-in account.
 	Author, Committer *Identity
+	// Sign, when set with both of them, signs each commit; Signing reports
+	// how the last one went.
+	Sign    Signer
+	Signing SignResult
 }
 
 // ErrNotFound is a 404: missing, or not visible to this token (GitHub does

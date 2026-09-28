@@ -6,6 +6,7 @@ package githubtest
 
 import (
 	"archive/tar"
+	"cmp"
 	"compress/gzip"
 	"crypto/sha1"
 	"encoding/base64"
@@ -45,14 +46,19 @@ type Server struct {
 	AppSlug string
 	// Installations is what /user/installations reports.
 	Installations int
+	// Unverified, when set, is the reason GitHub gives for not verifying a
+	// signed commit ("unknown_key", …); otherwise signed commits verify.
+	Unverified string
 	// Commits records each commit's author and committer, in order; read it
 	// with Signatures while the server is running.
 	Commits []Signature
 }
 
-// Signature is who a commit names, as the API received it.
+// Signature is who a commit names, as the API received it, and whether it
+// came signed.
 type Signature struct {
 	Author, Committer string // "name <email>", or "" when left to GitHub
+	Signed            bool
 }
 
 // UserID and BotID are the account ids the fake hands out.
@@ -304,7 +310,7 @@ func (s *Server) repoRoute(w http.ResponseWriter, r *http.Request, full string, 
 			Author, Committer        *person
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		s.Commits = append(s.Commits, Signature{req.Author.String(), req.Committer.String()})
+		s.Commits = append(s.Commits, Signature{Author: req.Author.String(), Committer: req.Committer.String()})
 		b, err := base64.StdEncoding.DecodeString(req.Content)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"message": "bad base64"})
@@ -385,10 +391,16 @@ func (s *Server) repoRoute(w http.ResponseWriter, r *http.Request, full string, 
 			Tree              string
 			Parents           []string
 			Author, Committer *person
+			Signature         string
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		s.Commits = append(s.Commits, Signature{req.Author.String(), req.Committer.String()})
-		writeJSON(w, 201, map[string]string{"sha": s.putCommit(commit{req.Tree, req.Parents, req.Message})})
+		signed := req.Signature != ""
+		s.Commits = append(s.Commits, Signature{req.Author.String(), req.Committer.String(), signed})
+		verification := map[string]any{"verified": false, "reason": "unsigned"}
+		if signed {
+			verification = map[string]any{"verified": s.Unverified == "", "reason": cmp.Or(s.Unverified, "valid")}
+		}
+		writeJSON(w, 201, map[string]any{"sha": s.putCommit(commit{req.Tree, req.Parents, req.Message}), "verification": verification})
 	case strings.HasPrefix(join, "git/refs/heads/") && r.Method == http.MethodPatch:
 		var req struct{ SHA string }
 		_ = json.NewDecoder(r.Body).Decode(&req)

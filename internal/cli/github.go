@@ -445,6 +445,11 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 		repo = me.Login + "/" + defaultRepoName
 	}
 	fmt.Printf("%s %s %s\n", bold("Signed in as"), me.Login, dim("(via "+src+")"))
+	if g, ok := loadGitSigning(ctx); ok {
+		fmt.Printf("%s %s %s\n", bold("Commits:"), "signed with "+g.describe(), dim("(from your git config)"))
+	} else {
+		fmt.Printf("%s %s\n", bold("Commits:"), dim("unsigned; for GitHub's Verified badge, have git sign commits (GitHub sync docs → Verified commits)"))
+	}
 	r, err := c.GetRepo(ctx, repo)
 	if errors.Is(err, github.ErrNotFound) {
 		if h := appAccessHint(tok, repo); h != "" {
@@ -479,19 +484,28 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 	return nil
 }
 
-// signCommits names the signed-in account as author, by its noreply address
-// so a push never publishes a real email, and the build's GitHub App bot as
-// committer: the history reads "you authored, dothaven[bot] committed".
-func signCommits(ctx context.Context, c *github.Client, me github.User) {
-	if me.ID != 0 {
-		a := github.NoReply(me.Login, me.ID)
-		c.Author = &a
+// signCommits sets who each push names, as lockstep's vault does: the
+// build's GitHub App bot as author (its avatar on the history), and the
+// signed-in account as committer, by its noreply address so a push never
+// publishes a real email. When the user's git signs commits, the push is
+// signed with the same key; GitHub checks that against the committer, so it
+// shows Verified once the key is one of the account's signing keys.
+func signCommits(ctx context.Context, env *sys.OS, c *github.Client, me github.User) (gitSigning, bool) {
+	if me.ID == 0 {
+		return gitSigning{}, false
 	}
+	you := github.NoReply(me.Login, me.ID)
+	c.Author, c.Committer = &you, &you
 	if slug := github.AppSlugFromEnv(); slug != "" {
 		if bot, err := c.Bot(ctx, slug); err == nil {
-			c.Committer = &bot
+			c.Author = &bot
 		}
 	}
+	g, ok := loadGitSigning(ctx)
+	if ok {
+		c.Sign = g.signer(env)
+	}
+	return g, ok
 }
 
 // appAccessHint explains a repository a GitHub App sign-in cannot see: the
@@ -601,7 +615,7 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		return fmt.Errorf("machine name %q: use lowercase letters, digits, '.', '-' or '_'", machine)
 	}
 
-	signCommits(ctx, c, me)
+	signing, _ := signCommits(ctx, env, c, me)
 
 	r, err := c.GetRepo(ctx, repo)
 	switch {
@@ -738,8 +752,15 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 		printLeftOut(out.res, mode != modePlain, "dothaven github push --mode encrypted")
 		return nil
 	}
-	fmt.Printf("%s Pushed %s as machines/%s %s\n", good("✓"), plural(out.res.TotalFiles, "file"), machine, dim("("+mode+", commit "+sha[:7]+")"))
+	verified := ""
+	if c.Signing.Verified {
+		verified = ", Verified"
+	}
+	fmt.Printf("%s Pushed %s as machines/%s %s\n", good("✓"), plural(out.res.TotalFiles, "file"), machine, dim("("+mode+", commit "+sha[:7]+verified+")"))
 	fmt.Printf("  %s\n", r.HTMLURL+"/tree/"+firstNonEmpty(r.DefaultBranch, "main")+"/machines/"+machine)
+	if note := signingNote(c.Signing, signing); note != "" {
+		fmt.Printf("  %s %s\n", warn("⚠"), note)
+	}
 	printLeftOut(out.res, mode != modePlain, "dothaven github push --mode encrypted")
 	fmt.Println("\n" + bold("On the new machine:"))
 	fmt.Printf("  %s\n  %s\n", kbd("dothaven github login"), kbd("dothaven restore github"))

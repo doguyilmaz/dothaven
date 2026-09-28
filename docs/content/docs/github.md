@@ -23,7 +23,7 @@ dothaven github login
 
 There are three ways to sign in. Without `--with-token`, `login` tries the first, then the second:
 
-1. **Browser sign-in.** When your build of dothaven includes the dothaven GitHub App, `login` shows a one-time code, copies it to your clipboard and opens github.com. Approve it there and the terminal carries on by itself. The app reaches only the repositories you install it on, and only their contents, so it needs one more step: [make the private repository](https://github.com/new) (`dothaven-backup`; it can be empty) and install the app on just that one. `login` tells you if the app can't reach anything yet, and prints the link.
+1. **Browser sign-in.** When your build of dothaven includes its sign-in app, `login` shows a one-time code, copies it to your clipboard and opens github.com. Approve it there and the terminal carries on by itself. Nothing else to set up: the first push creates your private repository. The permission this needs (GitHub's `repo`) reaches all your repositories, as the GitHub CLI's login does; for one repository only, use a token (option 3).
 2. **The GitHub CLI.** Without a built-in app, dothaven uses your `gh` login (`gh auth login`), and stores nothing of its own.
 3. **A token on stdin**, the most locked-down option:
 
@@ -31,7 +31,7 @@ There are three ways to sign in. Without `--with-token`, `login` tries the first
    dothaven github login --with-token < token.txt
    ```
 
-   First [create the private repository](https://github.com/new) yourself; it can be empty, and the first push starts it. Then create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) limited to that one repository, with **Contents: read & write** (Metadata: read comes with every token). It reaches as little as the GitHub App installed on one repository, and works with any build. Push with `--repo you/that-name`, or it will look for `<you>/dothaven-backup`.
+   First [create the private repository](https://github.com/new) yourself; it can be empty, and the first push starts it. Then create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) limited to that one repository, with **Contents: read & write** (Metadata: read comes with every token). This is narrower than the browser sign-in, which can reach every repository you have. Push with `--repo you/that-name`, or it will look for `<you>/dothaven-backup`.
 
 If none of these is available, `login` prints what to do instead.
 
@@ -51,7 +51,7 @@ When looking for a token, dothaven checks, in order: the `DOTHAVEN_GITHUB_TOKEN`
 
 ### Staying signed in
 
-A GitHub App sign-in lasts 8 hours and comes with a refresh token that lasts 6 months. dothaven keeps both, and any `dothaven github` command (or `restore github`) renews the pair by itself when it is due, so in practice you sign in again only after six months without using it. The dashboard and `doctor` never renew it, because they never write anything; they say when a renewal is due. A token from `--with-token`, `gh` or the environment is used as it is.
+The browser sign-in does not expire; `dothaven github logout` forgets it, and revoking it on GitHub (Settings → Applications) ends it everywhere. A build set up with a GitHub App for sign-in instead gets 8-hour sign-ins with a 6-month refresh token; dothaven renews those by itself when any `dothaven github` command (or `restore github`) runs. The dashboard and `doctor` never renew, because they never write anything; they say when a renewal is due.
 
 ## Push
 
@@ -61,8 +61,9 @@ dothaven github push
 
 `push` (also `sync` or `save`) builds the same backup `dothaven backup` makes and commits it to `machines/<this machine>/` in the repository, replacing the previous copy there. Other machines' folders are left alone.
 
-- **The first push creates the repository** `<you>/dothaven-backup`, private, after asking. Off a terminal it needs `--yes`. It is deliberately not called `dotfiles`, so it stays clear of the dotfiles repo many people keep by hand. dothaven only creates repositories on your own account. Signed in through the GitHub App, create it yourself first and install the app on it; if the app can't see or create the repository, `push` says which and links the fix.
-- **Commits say who made them.** Each push is authored by your account, by its GitHub noreply address, so a push never publishes your real email. With the GitHub App, the committer is `dothaven[bot]`, and the history shows its avatar next to yours.
+- **The first push creates the repository** `<you>/dothaven-backup`, private, after asking. Off a terminal it needs `--yes`. It is deliberately not called `dotfiles`, so it stays clear of the dotfiles repo many people keep by hand. dothaven only creates repositories on your own account. A sign-in that may not create repositories (a fine-grained token) gets told to make it on GitHub first.
+- **Commits say who made them.** Each push is authored by `dothaven[bot]`, so the history shows its avatar, and committed by you, by your GitHub noreply address, so a push never publishes your real email.
+- **Signed when your git signs.** If git signs your commits, dothaven signs each push with the same key, and GitHub marks it **Verified**; see [Verified commits](#verified-commits).
 - **It refuses public repositories.** If the repository is public, `push` stops with an error and writes nothing. Even an encrypted backup reveals which services you use; a plain one is your config for anyone to read.
 - **Nothing changes if nothing changed.** dothaven fingerprints what went into the backup (paths, content hashes, executable bits; not timestamps). If it matches the last push, you get `✓ Already up to date` and no new commit. If nothing changed but you are pushing with a different passphrase, the copy on GitHub is replaced anyway, so the passphrase you now know is the one that opens it.
 - **Encrypted means encrypted.** Before uploading, dothaven checks that every `.age` file it is about to send really is age-encrypted, and refuses to upload otherwise.
@@ -80,6 +81,20 @@ On the new machine:
   dothaven restore github
   You will need the passphrase. Nothing can open the encrypted part without it.
 ```
+
+### Verified commits
+
+dothaven signs a push when your git config signs commits (`commit.gpgsign = true`), with the same key: SSH (`gpg.format = ssh` and `user.signingkey`) or GPG. It never writes your git config. To start signing with the SSH key you already use for GitHub:
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519.pub
+git config --global commit.gpgsign true
+```
+
+Then add that public key on GitHub a second time as a signing key: **Settings → SSH and GPG keys → New SSH key → Key type: Signing Key**. The signature is checked against the committer, which is you, so the key has to be on your account. A passphrase or security-key touch is asked for in the terminal, as git would ask.
+
+After each push dothaven reads GitHub's verdict: `✓ Pushed … (encrypted, commit 3f9c2ab, Verified)`, or one line saying what to fix, such as a key GitHub does not know as a signing key. `dothaven github status` shows which key signs. If signing fails (no agent, a cancelled prompt), the push still goes up, unsigned, and says so.
 
 ### Storage modes
 
@@ -208,7 +223,7 @@ This removes dothaven's stored token and remembered passphrase. If you are still
 - **Private only.** dothaven checks the repository's visibility before every push and refuses a public one. `dothaven doctor` flags a public backup repository as a problem.
 - **Encrypted by default.** In `encrypted` and `split` modes, credentials are only ever uploaded inside age-encrypted archives, written in a private temporary folder that is removed afterwards.
 - **The token never touches a command line or git.** It lives in your keychain (or `gh`, or the environment), and is sent only to the GitHub API over HTTPS.
-- **Narrow access.** The GitHub App reaches only the repositories you install it on, with read & write to their contents and nothing else; a fine-grained token can be limited the same way.
+- **Narrow access if you want it.** A fine-grained token can be limited to the one repository.
 - **Your history is yours.** git history keeps every push. If you ever pushed something you regret, deleting it from the latest version is not enough; treat anything that was in a readable push as exposed to whoever can read the repository.
 
 ## Environment variables
@@ -219,8 +234,8 @@ This removes dothaven's stored token and remembered passphrase. If you are still
 | `DOTHAVEN_PASSPHRASE` | The passphrase for the encrypted parts, for scripts |
 | `DOTHAVEN_SECRET_STORE=file` | Force the owner-only file store instead of the keychain (headless machines) |
 | `DOTHAVEN_GITHUB_API`, `DOTHAVEN_GITHUB_WEB` | Point at another GitHub, such as GitHub Enterprise. Must be `https` (plain `http` only on localhost) |
-| `DOTHAVEN_GITHUB_CLIENT_ID` | The GitHub App's client ID for browser sign-in, if your build has none |
-| `DOTHAVEN_GITHUB_APP` | That app's URL name (the `dothaven` in `github.com/apps/dothaven`); its bot is named as committer |
+| `DOTHAVEN_GITHUB_CLIENT_ID` | The OAuth app used for browser sign-in, if your build has none |
+| `DOTHAVEN_GITHUB_APP` | The GitHub App whose bot authors each push, by its URL name (the `dothaven` in `github.com/apps/dothaven`) |
 
 {{< cards >}}
   {{< card link="../migration" title="Moving to a new machine" >}}

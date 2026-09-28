@@ -28,8 +28,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PAT with write access to the homebrew-tap repo (set as a repo secret).
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-          # The GitHub App behind `dothaven github login`: its public client ID
-          # (device flow; no secret) and its URL name (for the bot committer).
+          # Public OAuth client ID for `dothaven github login` (device flow; no
+          # secret), and the GitHub App whose bot authors each push.
           DOTHAVEN_GITHUB_CLIENT_ID: ${{ vars.DOTHAVEN_GITHUB_CLIENT_ID }}
           DOTHAVEN_GITHUB_APP: ${{ vars.DOTHAVEN_GITHUB_APP }}
           # macOS signing + notarization (gates the notarize block in .goreleaser.yaml).

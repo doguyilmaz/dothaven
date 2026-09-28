@@ -103,9 +103,9 @@ func TestAppSlugFromEnv(t *testing.T) {
 	}
 }
 
-// Commits name the account as author and the app's bot as committer — the
+// Commits name the app's bot as author and the account as committer — the
 // first one too, which an empty repository gets from the Contents API.
-func TestCommitsSignedByBot(t *testing.T) {
+func TestCommitsNameBotAndAccount(t *testing.T) {
 	s := githubtest.New("tok", "dev")
 	defer s.Close()
 	s.AppSlug = "dothaven"
@@ -127,8 +127,8 @@ func TestCommitsSignedByBot(t *testing.T) {
 	if err != nil || me.ID != githubtest.UserID {
 		t.Fatalf("me = %+v, %v", me, err)
 	}
-	author := NoReply(me.Login, me.ID)
-	c.Author, c.Committer = &author, &bot
+	you := NoReply(me.Login, me.ID)
+	c.Author, c.Committer = &bot, &you
 
 	dir := t.TempDir()
 	files := []File{write(t, dir, "shell/.zshrc", "alias ll='ls -la'\n", 0o644)}
@@ -136,8 +136,8 @@ func TestCommitsSignedByBot(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := githubtest.Signature{
-		Author:    "dev <1001+dev@users.noreply.github.com>",
-		Committer: "dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com>",
+		Author:    "dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com>",
+		Committer: "dev <1001+dev@users.noreply.github.com>",
 	}
 	sigs := s.Signatures()
 	if len(sigs) != 2 {
@@ -147,6 +147,64 @@ func TestCommitsSignedByBot(t *testing.T) {
 		if sig != want {
 			t.Errorf("commit %d signed %+v, want %+v", i, sig, want)
 		}
+	}
+}
+
+// A signed push signs exactly the commit the API will build — the fields it
+// sends, dated, the message newline-terminated — and reports GitHub's
+// verdict. A signer that fails leaves the commit unsigned, not unmade.
+func TestSignedCommits(t *testing.T) {
+	s := githubtest.New("tok", "dev")
+	defer s.Close()
+	s.AddRepo("dev/b", true)
+	c := client(t, s)
+	ctx := context.Background()
+	bot, you := Identity{"dothaven[bot]", "2002+dothaven[bot]@users.noreply.github.com"}, NoReply("dev", 1001)
+	c.Author, c.Committer = &bot, &you
+
+	var payload string
+	c.Sign = func(_ context.Context, p []byte) (string, error) {
+		payload = string(p)
+		return "-----BEGIN SSH SIGNATURE-----\nU1NIU0lH\n-----END SSH SIGNATURE-----\n", nil
+	}
+	dir := t.TempDir()
+	push := func(body string) {
+		t.Helper()
+		files := []File{write(t, dir, "shell/.zshrc", body, 0o644)}
+		if _, err := c.Commit(ctx, "dev/b", "main", "machines/m", files, nil, "dothaven: m — encrypted backup, 1 file"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	push("one\n")
+	lines := strings.Split(payload, "\n")
+	if !strings.HasPrefix(lines[0], "tree ") || !strings.HasPrefix(lines[1], "parent ") ||
+		!strings.HasPrefix(lines[2], "author dothaven[bot] <2002+dothaven[bot]@users.noreply.github.com> ") ||
+		!strings.HasPrefix(lines[3], "committer dev <1001+dev@users.noreply.github.com> ") ||
+		!strings.HasSuffix(lines[2], " +0000") || lines[4] != "" ||
+		!strings.HasSuffix(payload, "\n\ndothaven: m — encrypted backup, 1 file\n") {
+		t.Fatalf("payload is not a git commit object:\n%s", payload)
+	}
+	if !c.Signing.Signed || !c.Signing.Verified || c.Signing.Reason != "valid" {
+		t.Errorf("signing = %+v", c.Signing)
+	}
+	if sigs := s.Signatures(); !sigs[len(sigs)-1].Signed {
+		t.Error("the signature was not sent")
+	}
+
+	s.Unverified = "unknown_key"
+	push("two\n")
+	if !c.Signing.Signed || c.Signing.Verified || c.Signing.Reason != "unknown_key" {
+		t.Errorf("unverified: %+v", c.Signing)
+	}
+
+	c.Sign = func(context.Context, []byte) (string, error) { return "", errors.New("agent refused") }
+	push("three\n")
+	if c.Signing.Signed || c.Signing.Err == nil {
+		t.Errorf("failed signing: %+v", c.Signing)
+	}
+	if sigs := s.Signatures(); sigs[len(sigs)-1].Signed {
+		t.Error("a commit whose signing failed must go up unsigned")
 	}
 }
 
