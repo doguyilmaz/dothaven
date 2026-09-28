@@ -297,6 +297,7 @@ func gate(scanPath, body string, redact bool, entryRedact func(string) string, r
 // ManifestMeta is the run context recorded in a backup's MANIFEST.
 type ManifestMeta struct {
 	Host      string
+	Home      string // the home folder files came from; restore rewrites it to the new one
 	OS        string
 	Version   string
 	Created   string // pre-formatted timestamp
@@ -314,6 +315,9 @@ func Manifest(meta ManifestMeta, res Result) string {
 	var b strings.Builder
 	b.WriteString("# dothaven backup\n#\n")
 	fmt.Fprintf(&b, "# host:      %s\n", meta.Host)
+	if meta.Home != "" {
+		fmt.Fprintf(&b, "# home:      %s\n", meta.Home)
+	}
 	fmt.Fprintf(&b, "# os:        %s\n", meta.OS)
 	fmt.Fprintf(&b, "# created:   %s\n", meta.Created)
 	fmt.Fprintf(&b, "# dothaven:  %s\n", meta.Version)

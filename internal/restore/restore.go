@@ -4,9 +4,11 @@
 package restore
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -45,6 +47,7 @@ type Entry struct {
 	BackupSHA   string
 	LiveSHA     string    // "" when there is no live file
 	AppliedAt   time.Time // when restore last wrote it, if the ledger knows
+	Rewritten   bool      // the old machine's home path was rewritten to this one's
 }
 
 // Plan is the full set of restorable entries from one backup directory.
@@ -59,6 +62,18 @@ type Plan struct {
 	Unmatched []string
 	// Unreadable are backup files that could not be read.
 	Unreadable []string
+	// Rewrite, when set, is applied to every backup file before it is
+	// compared or written (see HomeRewriter).
+	Rewrite func([]byte) []byte
+}
+
+// backupContent reads an entry's file from the backup as it would be written.
+func (p Plan) backupContent(e Entry) ([]byte, error) {
+	raw, err := os.ReadFile(filepath.Join(p.BackupDir, e.BackupPath))
+	if err == nil && p.Rewrite != nil {
+		raw = p.Rewrite(raw)
+	}
+	return raw, err
 }
 
 // metaPath reports whether a backup file is the backup's own bookkeeping —
@@ -180,6 +195,37 @@ func BuildPlan(backupDir, home string, targets []registry.BackupTarget) (Plan, e
 
 // BuildPlanWith is BuildPlan with the ledger's memory of earlier runs.
 func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *Ledger) (Plan, error) {
+	return BuildPlanRewriting(backupDir, home, targets, lg, nil)
+}
+
+// HomeRewriter returns what rewrites the old machine's home folder to this
+// one's in a text file: a backup made as /Users/dogu restored where home is
+// /Users/dogu.yilmaz, or on Linux as /home/dogu. An absolute path into a
+// home that does not exist here is never what anyone wants — a PATH entry, an
+// editor setting, a hook command, `includeIf "gitdir:/Users/dogu/work/"`.
+// Only a whole path component matches (/Users/dogu, not /Users/doguyilmaz),
+// and binary files are left alone. nil when there is nothing to rewrite.
+func HomeRewriter(oldHome, newHome string) func([]byte) []byte {
+	old, nw := filepath.Clean(oldHome), filepath.Clean(newHome)
+	if !filepath.IsAbs(old) || old == "/" || old == nw {
+		return nil
+	}
+	re := regexp.MustCompile(regexp.QuoteMeta(old) + `($|[^A-Za-z0-9._-])`)
+	oldB := []byte(old)
+	return func(b []byte) []byte {
+		if !bytes.Contains(b, oldB) || scan.LooksBinary(b) {
+			return b
+		}
+		return re.ReplaceAllFunc(b, func(m []byte) []byte {
+			return append([]byte(nw), m[len(old):]...)
+		})
+	}
+}
+
+// BuildPlanRewriting is BuildPlanWith with each backup file passed through
+// rewrite (HomeRewriter) before it is compared and written, so hashes, the
+// ledger and diffs all see the content that would actually land.
+func BuildPlanRewriting(backupDir, home string, targets []registry.BackupTarget, lg *Ledger, rewrite func([]byte) []byte) (Plan, error) {
 	m := buildMap(targets)
 	dirDests := dirDestsByLength(m)
 	backupID := filepath.Base(filepath.Clean(backupDir))
@@ -208,6 +254,12 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 			unreadable = append(unreadable, rel)
 			return nil
 		}
+		rewritten := false
+		if rewrite != nil {
+			if r := rewrite(raw); !bytes.Equal(r, raw) {
+				raw, rewritten = r, true
+			}
+		}
 		exec := false
 		if fi, ierr := d.Info(); ierr == nil {
 			exec = fi.Mode().Perm()&0o111 != 0
@@ -215,7 +267,7 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 		tContent, exists := readLiveTarget(target)
 		status := classify(string(raw), exists, tContent)
 		catSet[category] = true
-		e := Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens, Exec: exec, BackupSHA: Hash(raw)}
+		e := Entry{BackupPath: rel, TargetPath: target, Category: category, Status: status, Sensitivity: sens, Exec: exec, BackupSHA: Hash(raw), Rewritten: rewritten}
 		if exists {
 			e.LiveSHA = Hash([]byte(tContent))
 		}
@@ -233,7 +285,7 @@ func BuildPlanWith(backupDir, home string, targets []registry.BackupTarget, lg *
 	}
 	sort.Strings(cats)
 	return Plan{Entries: entries, BackupDir: backupDir, BackupID: backupID, Categories: cats,
-		Unmatched: unmatched, Unreadable: unreadable}, nil
+		Unmatched: unmatched, Unreadable: unreadable, Rewrite: rewrite}, nil
 }
 
 // Filter narrows a plan's entries by category (skip wins; non-empty only restricts).
@@ -256,7 +308,7 @@ func Filter(p Plan, only, skip []string) Plan {
 	}
 	sort.Strings(cats)
 	return Plan{Entries: kept, BackupDir: p.BackupDir, BackupID: p.BackupID, Categories: cats,
-		Unmatched: p.Unmatched, Unreadable: p.Unreadable}
+		Unmatched: p.Unmatched, Unreadable: p.Unreadable, Rewrite: p.Rewrite}
 }
 
 // Counts tallies entries by status.
@@ -386,7 +438,7 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 		if differs {
 			overwrite := overwriteAll || (opts.Approved != nil && opts.Approved(e))
 			if !overwrite && !skipAll && opts.Resolve != nil {
-				backup, _ := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))
+				backup, _ := plan.backupContent(e)
 				live, _ := os.ReadFile(e.TargetPath)
 				switch opts.Resolve(e, string(backup), string(live)) {
 				case ActionOverwrite:
@@ -422,7 +474,7 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 			}
 			res.SnapshotDir = opts.SnapshotDir
 		}
-		raw, err := os.ReadFile(filepath.Join(plan.BackupDir, e.BackupPath))
+		raw, err := plan.backupContent(e)
 		if err != nil {
 			return res, err
 		}

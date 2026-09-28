@@ -162,3 +162,44 @@ func TestRestoreKeepsStricterPermissions(t *testing.T) {
 		t.Errorf("perm = %o, want 600", got)
 	}
 }
+
+// A backup made under another home folder lands with this machine's: in the
+// plan (so the hash and "already applied" agree with what is on disk) and in
+// the file written. Only whole path components change.
+func TestHomeRewriting(t *testing.T) {
+	rw := HomeRewriter("/Users/dogu", "/home/dogu.yilmaz")
+	in := "export PATH=/Users/dogu/bin:$PATH\nsrc=/Users/doguyilmaz/x\nend=/Users/dogu\n"
+	want := "export PATH=/home/dogu.yilmaz/bin:$PATH\nsrc=/Users/doguyilmaz/x\nend=/home/dogu.yilmaz\n"
+	if got := string(rw([]byte(in))); got != want {
+		t.Errorf("rewrite =\n%s\nwant\n%s", got, want)
+	}
+	if bin := []byte("\x00\x01/Users/dogu/x"); string(rw(bin)) != string(bin) {
+		t.Error("a binary file was rewritten")
+	}
+	if HomeRewriter("/Users/dogu", "/Users/dogu") != nil || HomeRewriter("", "/h") != nil {
+		t.Error("nothing to rewrite should give nil")
+	}
+
+	home := t.TempDir()
+	b := filepath.Join(t.TempDir(), "backup-box-1")
+	mustWriteT(t, filepath.Join(b, "shell", ".zshrc"), "export PATH=/Users/dogu/bin\n")
+	targets := []registry.BackupTarget{{Src: filepath.Join(home, ".zshrc"), Dest: "shell/.zshrc", Category: "shell"}}
+	lg := NewLedger()
+	plan, _ := BuildPlanRewriting(b, home, targets, lg, HomeRewriter("/Users/dogu", home))
+	if len(plan.Entries) != 1 || !plan.Entries[0].Rewritten {
+		t.Fatalf("plan = %+v", plan.Entries)
+	}
+	res, err := Execute(plan, ExecuteOptions{})
+	if err != nil || res.Restored != 1 {
+		t.Fatalf("restore: %+v %v", res, err)
+	}
+	got, _ := os.ReadFile(filepath.Join(home, ".zshrc"))
+	if string(got) != "export PATH="+home+"/bin\n" {
+		t.Errorf("written = %q", got)
+	}
+	lg.Record(plan.BackupID, res.Outcomes, time.Now())
+	plan, _ = BuildPlanRewriting(b, home, targets, lg, HomeRewriter("/Users/dogu", home))
+	if s := statuses(plan)["shell/.zshrc"]; s != StatusSame {
+		t.Errorf("second run = %s, want applied", s)
+	}
+}

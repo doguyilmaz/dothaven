@@ -44,7 +44,7 @@ func conflictAction(c tui.ConflictChoice) restore.ConflictAction {
 }
 
 func newRestoreCmd(env *sys.OS) *cobra.Command {
-	var dryRun, force, assumeYes bool
+	var dryRun, force, assumeYes, keepPaths bool
 	var only, skip []string
 	c := &cobra.Command{
 		Use:   "restore [backup]",
@@ -72,7 +72,7 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 				}
 				path = p
 			}
-			return runRestore(cmd, env, path, restoreOpts{dryRun: dryRun, force: force, yes: assumeYes, only: only, skip: skip})
+			return runRestore(cmd, env, path, restoreOpts{dryRun: dryRun, force: force, yes: assumeYes, keepPaths: keepPaths, only: only, skip: skip})
 		},
 	}
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "show what would change without writing")
@@ -80,12 +80,49 @@ func newRestoreCmd(env *sys.OS) *cobra.Command {
 	c.Flags().BoolVar(&assumeYes, "yes", false, "don't ask before writing")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories (comma-separated)")
 	c.Flags().StringSliceVar(&skip, "skip", nil, "skip these categories (comma-separated)")
+	c.Flags().BoolVar(&keepPaths, "keep-paths", false, "don't rewrite the old machine's home folder path to this one's")
 	return c
 }
 
 type restoreOpts struct {
 	dryRun, force, yes bool
+	keepPaths          bool // don't rewrite the old machine's home path
 	only, skip         []string
+}
+
+// manifestHome is the home folder a backup was made under, from its
+// MANIFEST ("" for backups older than the field).
+func manifestHome(dir string) string {
+	b, err := os.ReadFile(filepath.Join(dir, "MANIFEST.txt"))
+	if err != nil {
+		return ""
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "# home:"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// homeRewrite is the rewrite for a backup made under another home folder, and
+// that folder; nil when it is the same one, unknown, or keep is set.
+func homeRewrite(env *sys.OS, dir string, keep bool) (string, func([]byte) []byte) {
+	old := manifestHome(dir)
+	if keep || old == "" {
+		return old, nil
+	}
+	return old, restore.HomeRewriter(old, env.Home())
+}
+
+func countRewritten(p restore.Plan) int {
+	n := 0
+	for _, e := range p.Entries {
+		if e.Rewritten {
+			n++
+		}
+	}
+	return n
 }
 
 // ignoreAbort treats Esc / Ctrl-C at a prompt as "never mind".
@@ -146,7 +183,8 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 		return err
 	}
 	lg := restore.LoadLedger(ledgerPath(env))
-	plan, err := restore.BuildPlanWith(dir, env.Home(), restoreTargets(env), lg)
+	oldHome, rewrite := homeRewrite(env, dir, o.keepPaths)
+	plan, err := restore.BuildPlanRewriting(dir, env.Home(), restoreTargets(env), lg, rewrite)
 	if err != nil {
 		return err
 	}
@@ -164,6 +202,10 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	t := restore.Tally(plan.Entries)
 	fmt.Printf("  %s: %s\n", plural(len(plan.Entries), "file"), restoreBreakdown(t))
 	printUnplaced(plan, path)
+	if n := countRewritten(plan); n > 0 {
+		fmt.Printf("  %s %s %s, this machine's home is %s: %s %s the old path, written with the new one %s\n",
+			dim("↪"), "made under", oldHome, env.Home(), plural(n, "file"), pick(n, "mentions", "mention"), dim("(--keep-paths to leave them)"))
+	}
 
 	if o.dryRun {
 		printRestorePlan(env, plan, false)
@@ -453,7 +495,23 @@ func manifestLine(dir string) string {
 	if t, err := time.Parse(time.RFC3339, created); err == nil {
 		created = t.Format("2 Jan 2006 15:04")
 	}
-	return strings.TrimSpace(fmt.Sprintf("from %s, %s — %s", host, created, contents))
+	var where []string
+	for _, p := range []string{host, created} {
+		if p != "" {
+			where = append(where, p)
+		}
+	}
+	line := ""
+	if len(where) > 0 {
+		line = "from " + strings.Join(where, ", ")
+	}
+	if contents != "" {
+		if line != "" {
+			line += " — "
+		}
+		line += contents
+	}
+	return line
 }
 
 // printRedacted names the files a plaintext backup could not give back.
@@ -663,7 +721,8 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			plan, err := restore.BuildPlan(dir, env.Home(), restoreTargets(env))
+			_, rewrite := homeRewrite(env, dir, false)
+			plan, err := restore.BuildPlanRewriting(dir, env.Home(), restoreTargets(env), nil, rewrite)
 			if err != nil {
 				return err
 			}

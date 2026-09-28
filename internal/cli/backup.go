@@ -392,7 +392,7 @@ func fillBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOp
 		return backup.ErrNothingToWrite
 	}
 	manifest := backup.Manifest(backup.ManifestMeta{
-		Host: host, OS: runtime.GOOS, Version: cmd.Root().Version,
+		Host: host, Home: env.Home(), OS: runtime.GOOS, Version: cmd.Root().Version,
 		Created: time.Now().Format(time.RFC3339), Redacted: redact, Encrypted: o.encrypt, Split: o.split,
 	}, out.res)
 	return sink.Add("MANIFEST.txt", []byte(manifest), false)

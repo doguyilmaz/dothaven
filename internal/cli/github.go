@@ -798,6 +798,7 @@ func newGitHubPullCmd(env *sys.OS) *cobra.Command {
 	c.Flags().BoolVar(&o.yes, "yes", false, "don't ask before writing")
 	c.Flags().StringSliceVar(&o.only, "only", nil, "only these categories (comma-separated)")
 	c.Flags().StringSliceVar(&o.skip, "skip", nil, "skip these categories (comma-separated)")
+	c.Flags().BoolVar(&o.keepPaths, "keep-paths", false, "don't rewrite the old machine's home folder path to this one's")
 	return c
 }
 

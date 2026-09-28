@@ -1,0 +1,38 @@
+# A backup made under another home folder (another username, or macOS to
+# Linux) is restored with this machine's home in its paths: a PATH entry or a
+# hook command pointing into a home that does not exist here would just break.
+exec dothaven restore --dry-run backup-old-20240101000000
+stdout 'made under /Users/olduser'
+stdout '2 files mention the old path'
+
+exec dothaven restore backup-old-20240101000000
+stdout 'Restored 2 files'
+exec sh -c 'grep -c "$HOME/bin" .zshrc'
+stdout '^1$'
+! grep '/Users/olduser/' .zshrc
+# Only the whole path component: another user's folder is left alone.
+grep '/Users/olduser2/shared' .zshrc
+grep 'gitdir:' .gitconfig
+! grep '/Users/olduser/work' .gitconfig
+
+# Idempotent: the rewritten files read as applied, not as conflicts.
+exec dothaven restore backup-old-20240101000000
+stdout '2 already applied'
+
+# --keep-paths leaves them as they were.
+rm .zshrc
+exec dothaven restore --keep-paths backup-old-20240101000000
+grep '/Users/olduser/bin' .zshrc
+
+-- backup-old-20240101000000/MANIFEST.txt --
+# dothaven backup
+#
+# host:      oldmac
+# home:      /Users/olduser
+# os:        darwin
+-- backup-old-20240101000000/shell/.zshrc --
+export PATH=/Users/olduser/bin:$PATH
+source /Users/olduser2/shared/aliases
+-- backup-old-20240101000000/git/.gitconfig --
+[includeIf "gitdir:/Users/olduser/work/"]
+	path = ~/.gitconfig-work
