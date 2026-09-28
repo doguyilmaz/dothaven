@@ -1,3 +1,7 @@
+# A misspelled category is an error, not an empty restore.
+! exec dothaven restore Downloads/backup-box-20240101000000 --only shel
+stderr 'unknown category "shel"'
+
 # restore dry-run shows the plan without writing
 exec dothaven restore Downloads/backup-box-20240101000000 --dry-run
 stdout 'Dry run'

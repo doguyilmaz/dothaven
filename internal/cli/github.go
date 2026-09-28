@@ -796,6 +796,8 @@ func newGitHubPullCmd(env *sys.OS) *cobra.Command {
 	c.Flags().BoolVar(&o.dryRun, "dry-run", false, "show what would change without writing")
 	c.Flags().BoolVar(&o.force, "force", false, "overwrite differing files (a pre-restore snapshot is saved first)")
 	c.Flags().BoolVar(&o.yes, "yes", false, "don't ask before writing")
+	c.Flags().StringSliceVar(&o.only, "only", nil, "only these categories (comma-separated)")
+	c.Flags().StringSliceVar(&o.skip, "skip", nil, "skip these categories (comma-separated)")
 	return c
 }
 

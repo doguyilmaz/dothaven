@@ -135,6 +135,11 @@ func statusMark(s restore.Status) (string, string) {
 }
 
 func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) error {
+	// A misspelled category would otherwise restore nothing, which reads as
+	// "the backup is empty" rather than "no such category".
+	if err := validateCategories(restoreTargets(env), o.only, o.skip, registry.ExtraCategory, catInventory, catMacOS); err != nil {
+		return err
+	}
 	dir, cleanup, err := openBackup(cmd.Context(), env, path)
 	defer cleanup()
 	if err != nil {
@@ -647,10 +652,10 @@ func newDiffCmd(env *sys.OS) *cobra.Command {
 			if len(args) > 0 {
 				backupDir, _ = absBackupArg(args[0])
 			} else {
-				backupDir = latestBackup(env.DataDir())
+				backupDir = newestBackup(env)
 			}
 			if backupDir == "" {
-				fmt.Printf("No backup found in %s. Run %s first.\n", dim(env.DataDir()), kbd("dothaven backup"))
+				fmt.Printf("No backup found in %s, Downloads or on a drive. Run %s first.\n", dim(shortHome(env, env.DataDir())), kbd("dothaven backup"))
 				return nil
 			}
 			dir, cleanup, err := openBackup(cmd.Context(), env, backupDir)

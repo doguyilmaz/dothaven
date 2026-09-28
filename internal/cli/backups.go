@@ -47,6 +47,15 @@ func latestBackup(dir string) string {
 	return filepath.Join(dir, newest)
 }
 
+// newestBackup is the most recent backup of any kind — folder, archive or
+// encrypted file — in any place findBackups looks.
+func newestBackup(env *sys.OS) string {
+	if found := findBackups(env); len(found) > 0 {
+		return found[0].Path
+	}
+	return ""
+}
+
 // backupAge renders a backup directory's mtime as a coarse "Xm/Xh/Xd ago".
 func backupAge(path string) string {
 	info, err := os.Stat(path)

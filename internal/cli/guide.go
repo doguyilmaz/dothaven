@@ -55,7 +55,7 @@ func newGuideCmd(env *sys.OS) *cobra.Command {
 				chezmoiInstalled: state.ChezmoiInstalled,
 				sourceReady:      state.SourceInitialized,
 				ageReady:         state.AgeKeyConfigured,
-				latestBackup:     latestBackup(env.DataDir()),
+				latestBackup:     newestBackup(env),
 			}
 
 			p, err := runGuide(facts, tui.Ask)
