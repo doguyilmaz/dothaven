@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/doguyilmaz/dothaven/internal/backup"
@@ -68,12 +69,16 @@ type foundBackup struct {
 	Mod  time.Time
 	Size int64
 	Kind string // "folder" | "archive" | "encrypted"
+	real string // resolved path, so a backup reached twice is listed once
 }
 
 // readDirTimeout is os.ReadDir that gives up after d. A disconnected network
 // share under /Volumes can block a directory read for minutes; looking for
 // backups must never be the thing that hangs.
 func readDirTimeout(dir string, d time.Duration) []os.DirEntry {
+	if recentlyStalled(dir) {
+		return nil
+	}
 	ch := make(chan []os.DirEntry, 1) // buffered: a late reader never blocks
 	go func() {
 		e, _ := os.ReadDir(dir)
@@ -83,8 +88,22 @@ func readDirTimeout(dir string, d time.Duration) []os.DirEntry {
 	case e := <-ch:
 		return e
 	case <-time.After(d):
+		markStalled(dir)
 		return nil
 	}
+}
+
+// stalled remembers folders that did not answer in time — a network share
+// that went away, a disk spinning up. The goroutine stuck on one cannot be
+// stopped, so the next few minutes do not start another: the dashboard asks
+// every 20 seconds, and they would pile up.
+var stalled sync.Map // dir → time.Time
+
+func markStalled(dir string) { stalled.Store(dir, time.Now()) }
+
+func recentlyStalled(dir string) bool {
+	t, ok := stalled.Load(dir)
+	return ok && time.Since(t.(time.Time)) < 5*time.Minute
 }
 
 // backupSearchDirs are where a backup plausibly is on a machine you are
@@ -124,46 +143,93 @@ func looksLikeBackupName(name string) bool {
 	return strings.HasPrefix(name, "backup-") || strings.HasPrefix(name, "dothaven-")
 }
 
-// findBackups lists every backup it can find, newest first.
+// findBackups lists every backup it can find, newest first. Every folder is
+// looked at in parallel under one deadline, listing and file checks alike: a
+// stalled drive costs at most that long, and only its own results.
 func findBackups(env *sys.OS) []foundBackup {
+	dirs := backupSearchDirs(env)
+	results := make([][]foundBackup, len(dirs))
+	done := make([]bool, len(dirs))
+	type result struct {
+		i     int
+		found []foundBackup
+	}
+	ch := make(chan result, len(dirs)) // buffered: a late folder never blocks
+	pending := 0
+	for i, dir := range dirs {
+		if recentlyStalled(dir) {
+			continue
+		}
+		pending++
+		go func() { ch <- result{i, backupsIn(dir)} }()
+	}
+	deadline := time.After(3 * time.Second)
+wait:
+	for ; pending > 0; pending-- {
+		select {
+		case r := <-ch:
+			results[r.i], done[r.i] = r.found, true
+		case <-deadline:
+			for i, dir := range dirs {
+				if !done[i] && !recentlyStalled(dir) {
+					markStalled(dir)
+				}
+			}
+			break wait
+		}
+	}
+
 	seen := map[string]bool{}
 	var out []foundBackup
-	for _, dir := range backupSearchDirs(env) {
-		for _, e := range readDirTimeout(dir, 2*time.Second) {
-			if !looksLikeBackupName(e.Name()) || strings.HasSuffix(e.Name(), ".partial") {
-				continue
-			}
-			p := filepath.Join(dir, e.Name())
-			if real, err := filepath.EvalSymlinks(p); err == nil {
-				if seen[real] {
+	for _, found := range results {
+		for _, fb := range found {
+			if fb.real != "" {
+				if seen[fb.real] {
 					continue
 				}
-				seen[real] = true
-			}
-			info, err := e.Info()
-			if err != nil {
-				continue
-			}
-			fb := foundBackup{Path: p, Mod: info.ModTime(), Size: info.Size()}
-			switch backup.Detect(p) {
-			case backup.FormatDir:
-				if _, err := os.Stat(filepath.Join(p, "MANIFEST.txt")); err != nil {
-					if entries, _ := os.ReadDir(p); len(entries) == 0 {
-						continue
-					}
-				}
-				fb.Kind = "folder"
-			case backup.FormatTarGz:
-				fb.Kind = "archive"
-			case backup.FormatAge:
-				fb.Kind = "encrypted"
-			default:
-				continue
+				seen[fb.real] = true
 			}
 			out = append(out, fb)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Mod.After(out[j].Mod) })
+	return out
+}
+
+// backupsIn lists the backups directly inside dir.
+func backupsIn(dir string) []foundBackup {
+	entries, _ := os.ReadDir(dir)
+	var out []foundBackup
+	for _, e := range entries {
+		if !looksLikeBackupName(e.Name()) || strings.HasSuffix(e.Name(), ".partial") {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		fb := foundBackup{Path: p, Mod: info.ModTime(), Size: info.Size()}
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			fb.real = real
+		}
+		switch backup.Detect(p) {
+		case backup.FormatDir:
+			if _, err := os.Stat(filepath.Join(p, "MANIFEST.txt")); err != nil {
+				if entries, _ := os.ReadDir(p); len(entries) == 0 {
+					continue
+				}
+			}
+			fb.Kind = "folder"
+		case backup.FormatTarGz:
+			fb.Kind = "archive"
+		case backup.FormatAge:
+			fb.Kind = "encrypted"
+		default:
+			continue
+		}
+		out = append(out, fb)
+	}
 	return out
 }
 
