@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"encoding/base64"
 	"os/user"
 	"regexp"
 	"strings"
@@ -43,6 +44,18 @@ func meaningfulIP(m string) bool {
 	return !strings.HasPrefix(m, "127.") && m != "0.0.0.0" && !strings.HasPrefix(m, "255.")
 }
 
+// base64PrivateKey keeps the base64 PEM rule to private keys: a CA
+// certificate (certificate-authority-data) is encoded the same way and is
+// public.
+func base64PrivateKey(m string) bool {
+	n := len(m) / 4 * 4
+	if n > 64 {
+		n = 64 // the header is all that is needed
+	}
+	b, err := base64.StdEncoding.DecodeString(m[:n])
+	return err == nil && strings.Contains(string(b), "PRIVATE KEY")
+}
+
 func build() {
 	patterns = []Pattern{
 		// HIGH — private keys & certs (skip whole file)
@@ -51,17 +64,26 @@ func build() {
 		// GnuPG agent key material is a binary Libgcrypt s-expression, not PEM —
 		// e.g. "(21:protected-private-key" — so the PEM rule above misses it.
 		mk("gpg-sexp-private-key", "GnuPG private key", High, Skip, `\(\d{1,3}:(protected-|shadowed-)?private-key`),
+		// An age identity: what chezmoi and sops decrypt with. Losing it loses
+		// every file encrypted to it; leaking it opens all of them.
+		mk("age-secret-key", "age private key", High, Skip, `AGE-SECRET-KEY-1[0-9A-Z]{58}`),
+		// A PEM private key, base64-encoded once more — kubeconfig's
+		// client-key-data, CI variables. "LS0tLS1CRUdJTi" is "-----BEGIN".
+		checked(mk("private-key-pem-b64", "private key (base64)", High, Skip, `LS0tLS1CRUdJTi[A-Za-z0-9+/]{16,}`), base64PrivateKey),
 
 		// HIGH — generic env-style secrets. The `["']?` before the delimiter lets
 		// these fire on JSON (`"token": "v"`) as well as shell/ini (`TOKEN=v`); a
 		// quote between the keyword and the colon otherwise defeats the match.
-		kw("generic-secret", "secret value", High, Redact, `\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b["']?\s*[=:]\s*\S+`),
-		kw("generic-api-key", "API key", High, Redact, `(?i)(API_KEY|APIKEY)["']?\s*[=:]\s*\S+`),
-		kw("secret-keyword", "secret value", High, Redact, `(?i)\b(password|passwd|secret|token|client[_-]?secret|secret[_-]?key|api[_-]?key|apikey|api[_-]?secret|api[_-]?token|access[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|personal[_-]?access[_-]?token|private[_-]?key)\b["']?\s*[=:]\s*\S+`),
+		// Space around the delimiter is [ \t]*, never \s*: \s crosses a line
+		// break, and `token =` above `secret = x` would then mask the second
+		// line's key and leave its value in the file.
+		kw("generic-secret", "secret value", High, Redact, `\b([A-Z0-9]+_)*(TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIALS?)\b["']?[ \t]*[=:][ \t]*\S+`),
+		kw("generic-api-key", "API key", High, Redact, `(?i)(API_KEY|APIKEY)["']?[ \t]*[=:][ \t]*\S+`),
+		kw("secret-keyword", "secret value", High, Redact, `(?i)\b(password|passwd|secret|token|client[_-]?secret|secret[_-]?key|api[_-]?key|apikey|api[_-]?secret|api[_-]?token|access[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|session[_-]?token|personal[_-]?access[_-]?token|private[_-]?key)\b["']?[ \t]*[=:][ \t]*\S+`),
 
 		// HIGH — auth tokens & prefixed keys
-		kw("auth-token-npm", "npm auth token", High, Redact, `(?i)\b_(authToken|auth|password)\s*=\s*\S+`),
-		mk("bearer-token", "bearer token", High, Redact, `Bearer\s+[A-Za-z0-9\-._~+/]{20,}=*`),
+		kw("auth-token-npm", "npm auth token", High, Redact, `(?i)\b_(authToken|auth|password)[ \t]*=[ \t]*\S+`),
+		mk("bearer-token", "bearer token", High, Redact, `Bearer[ \t]+[A-Za-z0-9\-._~+/]{20,}=*`),
 		mk("github-token", "GitHub token", High, Redact, `\b(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|ghu_[A-Za-z0-9]{36,}|ghs_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b`),
 		mk("npm-token", "npm token", High, Redact, `\bnpm_[A-Za-z0-9]{36,}\b`),
 
@@ -71,8 +93,8 @@ func build() {
 
 		// HIGH — cloud provider keys
 		mk("aws-access-key", "AWS access key", High, Redact, `\bAKIA[0-9A-Z]{16}\b`),
-		mk("aws-secret-key", "AWS secret key", High, Redact, `(?i)aws_secret_access_key\s*=\s*.+`),
-		mk("aws-session-token", "AWS session token", High, Redact, `(?i)\b[a-z0-9_]*session[_-]?token\s*=\s*.+`),
+		mk("aws-secret-key", "AWS secret key", High, Redact, `(?i)aws_secret_access_key[ \t]*=[ \t]*.+`),
+		mk("aws-session-token", "AWS session token", High, Redact, `(?i)\b[a-z0-9_]*session[_-]?token[ \t]*=[ \t]*.+`),
 		mk("google-api-key", "Google API key", High, Redact, `\bAIza[A-Za-z0-9\-_]{35}\b`),
 		mk("google-oauth-token", "Google OAuth token", High, Redact, `\bya29\.[A-Za-z0-9\-_]+\b`),
 		mk("firebase-key", "Firebase key", High, Redact, `\bAAAA[A-Za-z0-9\-_:]{100,}\b`),

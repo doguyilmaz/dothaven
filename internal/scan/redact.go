@@ -11,35 +11,48 @@ import (
 // Marker replaces redacted values.
 const Marker = "[REDACTED]"
 
-// ApplyRedactions masks every redact-action finding's matches in content. Each
-// pattern's regex runs once (a global replace), so multiple same-pattern
-// secrets on one line are all masked.
+// ApplyRedactions masks every redact-action finding's matches in content, one
+// line at a time, the way the scan found them. A match can therefore never
+// run from one line into the next — which is how `token =` on one line could
+// otherwise swallow the key of `secret = x` on the next and leave x behind.
+// Every match on a line is masked, not just the first.
 func ApplyRedactions(content string, r Result) string {
 	if r.Action != Redact {
 		return content
 	}
 	seen := map[string]bool{}
-	out := content
+	var rules []Pattern
 	for _, f := range r.Findings {
 		if f.Pattern.Action != Redact || seen[f.Pattern.ID] {
 			continue
 		}
 		seen[f.Pattern.ID] = true
-		p := f.Pattern
-		out = p.re.ReplaceAllStringFunc(out, func(m string) string {
-			// Only what the scan would itself report is masked. A keyword rule
-			// also matches `token == x` in code, and masking that corrupts a
-			// file to hide nothing.
-			if !p.real(m) {
-				return m
-			}
-			if p.keyword {
-				return keepKey(m)
-			}
-			return Marker
-		})
+		rules = append(rules, f.Pattern)
 	}
-	return out
+	var b strings.Builder
+	b.Grow(len(content))
+	for line := range strings.SplitAfterSeq(content, "\n") {
+		body, nl := strings.CutSuffix(line, "\n")
+		for _, p := range rules {
+			body = p.re.ReplaceAllStringFunc(body, func(m string) string {
+				// Only what the scan would itself report is masked. A keyword
+				// rule also matches `token == x` in code, and masking that
+				// corrupts a file to hide nothing.
+				if !p.real(m) {
+					return m
+				}
+				if p.keyword {
+					return keepKey(m)
+				}
+				return Marker
+			})
+		}
+		b.WriteString(body)
+		if nl {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 // keepKey masks the value of a `key = value` match and keeps the key, so a
@@ -119,11 +132,11 @@ var (
 	ipRe = regexp.MustCompile(`\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`)
 	// npm auth lines: _authToken=, plus the legacy _auth= / _password= (base64)
 	// forms, with or without a //registry:-scoped prefix. Per line, any case.
-	npmAuthRe = regexp.MustCompile(`(?im)^(.*?(?:_authToken|_auth|_password)\s*=\s*).+$`)
+	npmAuthRe = regexp.MustCompile(`(?im)^(.*?(?:_authToken|_auth|_password)[ \t]*=[ \t]*).+$`)
 	// ssh_config keywords are case-insensitive, so the lowercase forms are valid
 	// syntax and must redact too. ${1} preserves the user's original casing.
-	sshHostRe = regexp.MustCompile(`(?i)(HostName\s+).+`)
-	sshIDRe   = regexp.MustCompile(`(?i)(IdentityFile\s+).+`)
+	sshHostRe = regexp.MustCompile(`(?i)(HostName[ \t]+).+`)
+	sshIDRe   = regexp.MustCompile(`(?i)(IdentityFile[ \t]+).+`)
 )
 
 func RedactIPs(text string) string { return ipRe.ReplaceAllString(text, Marker) }

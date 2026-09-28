@@ -403,3 +403,43 @@ func TestPreviewNeverShowsTheValue(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactionNeverCrossesLines(t *testing.T) {
+	// A key with an empty value above a real secret: a \s* that crossed the
+	// line break used to mask the second key and keep its value.
+	for _, content := range []string{
+		"token =\nsecret = hunter2hunter2hunter2\n",
+		"password:\n  token: s3cr3ts3cr3ts3cr3t\n",
+		"API_KEY=\nDB_PASSWORD=correcthorsebattery\n",
+	} {
+		r := ScanContent("config.toml", content)
+		if r.Action != Redact {
+			t.Fatalf("%q: action = %v, want redact", content, r.Action)
+		}
+		out := ApplyRedactions(content, r)
+		for _, v := range []string{"hunter2hunter2hunter2", "s3cr3ts3cr3ts3cr3t", "correcthorsebattery"} {
+			if strings.Contains(out, v) {
+				t.Errorf("%q redacted to %q — the value survived", content, out)
+			}
+		}
+		if strings.Count(out, "\n") != strings.Count(content, "\n") {
+			t.Errorf("%q: line count changed: %q", content, out)
+		}
+	}
+}
+
+func TestAgeAndBase64PrivateKeysAreSkipped(t *testing.T) {
+	age := "# created: 2026-01-01T00:00:00Z\n# public key: age1xyz\nAGE-SECRET-KEY-1QYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQYQSZQGPQY\n"
+	if r := ScanContentFull("key.txt", age); r.Action != Skip {
+		t.Errorf("age identity: action = %v, want skip", r.Action)
+	}
+	kube := "users:\n- name: admin\n  user:\n    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVB\n"
+	if r := ScanContentFull("config", kube); r.Action != Skip {
+		t.Errorf("base64 private key: action = %v, want skip", r.Action)
+	}
+	// A CA certificate is encoded the same way and is public.
+	ca := "clusters:\n- cluster:\n    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUMvakNDQWVhZ0F3SUJBZ0lC\n"
+	if r := ScanContentFull("config", ca); r.Action == Skip {
+		t.Errorf("CA certificate was treated as a private key")
+	}
+}
