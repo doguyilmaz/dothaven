@@ -443,3 +443,25 @@ func TestAgeAndBase64PrivateKeysAreSkipped(t *testing.T) {
 		t.Errorf("CA certificate was treated as a private key")
 	}
 }
+
+// One secret is one finding: GITHUB_TOKEN=ghp_… is the GitHub token, not
+// also a "secret value" beside it. Two secrets on a line are still two.
+func TestOverlappingFindingsCountOnce(t *testing.T) {
+	r := ScanContent(".zshrc", "export GITHUB_TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
+	if len(r.Findings) != 1 || r.Findings[0].Pattern.ID != "github-token" {
+		t.Errorf("findings = %+v", r.Findings)
+	}
+	if out := ApplyRedactions("export GITHUB_TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", r); strings.Contains(out, "ghp_") {
+		t.Errorf("still redacts: %q", out)
+	}
+	r = ScanContent(".env", "OPENAI=sk-proj-aaaaaaaaaaaaaaaaaaaaaaaa DB_PASSWORD=hunter2hunter2\n")
+	if len(r.Findings) != 2 {
+		t.Errorf("two secrets on one line = %d findings", len(r.Findings))
+	}
+	// The preview's tail is the value's, not an ellipsis from truncation.
+	long := "API_TOKEN=" + strings.Repeat("z", 60) + "Q9"
+	r = ScanContent(".env", long+"\n")
+	if len(r.Findings) != 1 || !strings.HasSuffix(Preview(r.Findings[0].Match), "Q9") {
+		t.Errorf("preview = %q", Preview(r.Findings[0].Match))
+	}
+}

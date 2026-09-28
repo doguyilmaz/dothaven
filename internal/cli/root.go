@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,10 +40,15 @@ func NewRoot(env *sys.OS, version string) *cobra.Command {
 			"Anything that changes files you already have asks first and takes --dry-run.",
 		Version: version,
 		// Subcommand errors are returned via RunE; don't dump usage on them.
+		// main prints every error once, as "error: …"; cobra printing it too
+		// showed each twice, and an empty "Error:" for a plain exit code.
 		SilenceUsage:  true,
-		SilenceErrors: false,
+		SilenceErrors: true,
 		Args:          cobra.NoArgs,
 	}
+	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		return fmt.Errorf("%w — see `%s --help`", err, c.CommandPath())
+	})
 	// Bare `dothaven` on a terminal opens the menu instead of printing help.
 	// Someone who cannot remember which of the verbs they want is exactly the
 	// person the menu is for, and help is what they get today. Off a terminal

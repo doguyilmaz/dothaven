@@ -147,9 +147,9 @@ func newScanCmd(env *sys.OS) *cobra.Command {
 				return nil
 			}
 			fmt.Println(formatDetailed(results))
-			fmt.Println(scan.FormatReport(scan.Summarize(results), scan.ReportOptions{Color: colorOn()}))
+			fmt.Println(scan.FormatReport(scan.Summarize(results), scan.ReportOptions{Color: colorOn(), Scan: true}))
 			if high > 0 && !noFail {
-				fmt.Fprintf(os.Stderr, "\n%s\n", danger(fmt.Sprintf("%d HIGH severity finding(s). Exiting 2 — pass --no-fail to ignore.", high)))
+				fmt.Fprintf(os.Stderr, "\n%s\n", danger(fmt.Sprintf("%s. Exiting 2 — pass --no-fail to ignore.", plural(high, "HIGH finding"))))
 				return ExitError{Code: 2}
 			}
 			return nil

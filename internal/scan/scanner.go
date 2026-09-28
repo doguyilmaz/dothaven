@@ -61,6 +61,8 @@ func scanContent(path, content string, maxLine int) Result {
 		if maxLine > 0 && len(line) > maxLine {
 			continue // minified/data line — not where secrets live, and costly to scan
 		}
+		lineStart := len(findings)
+		var spans [][2]int // where each of this line's findings matched
 		for _, p := range pats {
 			if binary && p.Action != Skip {
 				continue
@@ -77,9 +79,16 @@ func scanContent(path, content string, maxLine int) Result {
 					continue
 				}
 				match = firstReal(p, line)
+				if j := strings.Index(line, match); j >= 0 {
+					loc = []int{j, j + len(match)}
+				}
 			}
-			findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(match, 40)})
+			// Kept whole (within reason): Preview shows its last characters,
+			// and a match cut short would show "..".
+			findings = append(findings, Finding{Pattern: p, Line: i + 1, Match: truncate(match, 512)})
+			spans = append(spans, [2]int{loc[0], loc[1]})
 		}
+		findings = dedupeLine(findings, lineStart, spans)
 	}
 	action := Include
 	for _, f := range findings {
@@ -214,6 +223,35 @@ func Summarize(results []Result) Summary {
 		}
 	}
 	return s
+}
+
+// dedupeLine drops a keyword finding (`TOKEN=…`) that overlaps another on
+// the same line — a specific one (the ghp_… it assigns) or an earlier keyword
+// rule: one secret, reported once, by its most telling name.
+func dedupeLine(findings []Finding, start int, spans [][2]int) []Finding {
+	line := findings[start:]
+	if len(line) < 2 {
+		return findings
+	}
+	keep := findings[:start]
+	for i, f := range line {
+		dup := false
+		if f.Pattern.keyword {
+			for j, g := range line {
+				overlap := spans[i][0] < spans[j][1] && spans[j][0] < spans[i][1]
+				// A specific rule wins over a keyword one; of two keyword
+				// rules, the first listed.
+				if j != i && overlap && (!g.Pattern.keyword || j < i) {
+					dup = true
+					break
+				}
+			}
+		}
+		if !dup {
+			keep = append(keep, f)
+		}
+	}
+	return keep
 }
 
 func truncate(s string, n int) string {

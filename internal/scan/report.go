@@ -31,7 +31,12 @@ func topFinding(r Result) Finding {
 // rather than something this package detects, so the decision stays with the
 // layer that knows where the output is going — the same shape snapshot.Format
 // already uses.
-type ReportOptions struct{ Color bool }
+type ReportOptions struct {
+	Color bool
+	// Scan words the report for `dothaven scan`, which changes nothing: it
+	// says what a plaintext backup would do with each file.
+	Scan bool
+}
 
 // FormatReport renders the sensitivity report. Severity is the one thing worth
 // colouring here: it is why the report exists, and a HIGH in a list of thirty
@@ -73,22 +78,32 @@ func FormatReport(s Summary, o ReportOptions) string {
 		switch r.Action {
 		case Redact:
 			label = "redacted"
+			if o.Scan {
+				label = "redacted in a plaintext backup"
+			}
 		case Skip:
 			label = "skipped"
+			if o.Scan {
+				label = "left out of a plaintext backup"
+			}
 		}
 		sev := top.Pattern.Severity
 		lines = append(lines, fmt.Sprintf("  %s%-6s%s %-30s %s%s — %s%s",
 			severityColor(sev), sev, reset, r.Path, dim, top.Pattern.Label, label, reset))
 	}
+	if o.Scan {
+		lines = append(lines, "", "  An encrypted backup (dothaven backup --encrypt) keeps them as they are.")
+		return strings.Join(lines, "\n")
+	}
 	var parts []string
 	if s.Redacted > 0 {
-		parts = append(parts, fmt.Sprintf("%d items redacted", s.Redacted))
+		parts = append(parts, fmt.Sprintf("%d %s redacted", s.Redacted, plural(s.Redacted, "file", "files")))
 	}
 	if s.Skipped > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped", s.Skipped))
+		parts = append(parts, fmt.Sprintf("%d left out", s.Skipped))
 	}
 	if len(parts) > 0 {
-		lines = append(lines, "", fmt.Sprintf("  %s. Use --no-redact to include all.", strings.Join(parts, ", ")))
+		lines = append(lines, "", fmt.Sprintf("  %s. An encrypted backup (--encrypt) keeps them as they are.", strings.Join(parts, ", ")))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -151,4 +166,11 @@ func FormatSecurityReport(results []Result) string {
 		lines = append(lines, "")
 	}
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
