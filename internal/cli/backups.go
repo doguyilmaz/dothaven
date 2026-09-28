@@ -309,7 +309,7 @@ func openBackup(ctx context.Context, env *sys.OS, path string) (dir string, clea
 // touch the disk for a command that does not need them.
 func openBackupOnly(ctx context.Context, env *sys.OS, path string, dirs ...string) (dir string, cleanup func(), err error) {
 	if isGitHubSpec(path) {
-		return openGitHubBackup(ctx, env, path)
+		return openGitHubBackup(ctx, env, path, dirs...)
 	}
 	cleanup = func() {}
 	switch backup.Detect(path) {

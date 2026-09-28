@@ -112,10 +112,19 @@ func TestReinstallVSCodeExtensionsWithoutBrew(t *testing.T) {
 	if !strings.Contains(script, "code --install-extension 'ms-python.python'") {
 		t.Errorf("no VS Code install without a Brewfile:\n%s", script)
 	}
+	// Homebrew here: the Brewfile brings them, not twice.
 	bf := "vscode \"ms-python.python\"\n"
-	groups = planReinstall(snapshot.Snapshot{"editor.vscode.extensions": ext, "apps.brew.bundle": {Content: &bf}}, snapshot.Snapshot{})
+	withBrew := snapshot.Snapshot{"apps.brew.formulae": {Items: []snapshot.Item{{Raw: "git", Columns: []string{"git"}}}}}
+	groups = planReinstall(snapshot.Snapshot{"editor.vscode.extensions": ext, "apps.brew.bundle": {Content: &bf}}, withBrew)
 	script, _ = renderInstall(groups)
 	if strings.Contains(script, "code --install-extension") {
 		t.Errorf("installed twice (Brewfile and list):\n%s", script)
+	}
+	// A Mac backup restored on Linux without Homebrew: the Brewfile can't,
+	// so the list does.
+	groups = planReinstall(snapshot.Snapshot{"editor.vscode.extensions": ext, "apps.brew.bundle": {Content: &bf}}, snapshot.Snapshot{})
+	script, _ = renderInstall(groups)
+	if !strings.Contains(script, "code --install-extension 'ms-python.python'") {
+		t.Errorf("no VS Code install without Homebrew here:\n%s", script)
 	}
 }

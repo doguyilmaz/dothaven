@@ -847,7 +847,7 @@ func absBackupArg(a string) (string, error) {
 // unpacked into a private temporary directory; an encrypted part asks for the
 // passphrase. The directory is named for the repo and machine, so the apply
 // ledger recognises the same backup on the next pull.
-func openGitHubBackup(ctx context.Context, env *sys.OS, spec string) (string, func(), error) {
+func openGitHubBackup(ctx context.Context, env *sys.OS, spec string, dirs ...string) (string, func(), error) {
 	noop := func() {}
 	rest := strings.TrimPrefix(strings.TrimPrefix(spec, "github"), ":")
 	repo, machine, _ := strings.Cut(rest, "#")
@@ -915,7 +915,7 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string) (string, fu
 	// Encrypted mode: the machine folder holds one archive; open it as any
 	// local encrypted backup (with its passphrase retries).
 	if archive := filepath.Join(mdir, "backup.tar.gz.age"); fileExists(archive) {
-		dir, inner, err := openBackup(ctx, env, archive)
+		dir, inner, err := openBackupOnly(ctx, env, archive, dirs...)
 		if err != nil {
 			return fail(err)
 		}
@@ -928,7 +928,7 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string) (string, fu
 	}
 	// Split mode: merge the encrypted bundle back into the readable files.
 	if secretsPath := filepath.Join(stable, "secrets.tar.gz.age"); fileExists(secretsPath) {
-		sdir, inner, err := openBackup(ctx, env, secretsPath)
+		sdir, inner, err := openBackupOnly(ctx, env, secretsPath, dirs...)
 		if err != nil {
 			return fail(err)
 		}
@@ -947,6 +947,8 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string) (string, fu
 		if err != nil {
 			return fail(err)
 		}
+		// Merged: the bundle itself is not a file to restore anywhere.
+		_ = os.Remove(secretsPath)
 	}
 	return stable, cleanup, nil
 }

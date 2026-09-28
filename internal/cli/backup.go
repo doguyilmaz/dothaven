@@ -262,6 +262,11 @@ func validateCategories(targets []registry.BackupTarget, only, skip []string, ex
 	for _, t := range targets {
 		known[t.Category] = true
 	}
+	// A category is a name, not a promise that this OS has one: --skip
+	// schedule must not fail on Linux because launchd agents are macOS-only.
+	for _, e := range registry.Entries {
+		known[e.Category] = true
+	}
 	for _, e := range extra {
 		known[e] = true
 	}
@@ -289,6 +294,11 @@ func contains(list []string, s string) bool {
 
 // runBackup writes one backup and reports what went in.
 func runBackup(ctx context.Context, cmd *cobra.Command, env *sys.OS, o backupOpts) (backupOutcome, error) {
+	// Encrypted means one encrypted file: a folder written with the gate off
+	// would be plaintext with nothing redacted.
+	if o.encrypt {
+		o.archive = true
+	}
 	redact := o.redact()
 	out := backupOutcome{encrypted: o.encrypt, redacted: redact}
 

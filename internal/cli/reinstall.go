@@ -245,9 +245,12 @@ func planReinstall(want, have snapshot.Snapshot) []installGroup {
 		}
 	}
 
+	// The Brewfile brings VS Code extensions only where there is Homebrew;
+	// after a move to Linux without it, the extension list has to.
+	brewHere := len(have["apps.brew.formulae"].Items) > 0 || len(have["apps.brew.casks"].Items) > 0
 	brewVSCode := false
 	for _, g := range groups {
-		brewVSCode = brewVSCode || g.ID == "brew:vscode"
+		brewVSCode = brewVSCode || (g.ID == "brew:vscode" && brewHere)
 	}
 	for _, sg := range sectionGroups {
 		sec, ok := want[sg.id]

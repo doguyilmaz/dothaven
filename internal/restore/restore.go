@@ -80,7 +80,7 @@ func (p Plan) backupContent(e Entry) ([]byte, error) {
 // its manifest, inventory and settings — which restore does not map to a
 // config location (the next steps handle those).
 func metaPath(rel string) bool {
-	return rel == "MANIFEST.txt" || rel == "dothaven.json" || rel == "README.md" ||
+	return rel == "MANIFEST.txt" || rel == "dothaven.json" || rel == "README.md" || rel == "secrets.tar.gz.age" ||
 		strings.HasPrefix(rel, "inventory/") || strings.HasPrefix(rel, "macos-defaults/")
 }
 
