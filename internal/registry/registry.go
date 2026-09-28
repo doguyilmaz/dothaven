@@ -447,6 +447,15 @@ func Collect(ctx context.Context, env sys.Env, home string, redact bool, entries
 			if err != nil {
 				continue
 			}
+			// A credential file with no redactor is recorded as present, never
+			// copied: a snapshot is an inventory, read as plain JSON, and the
+			// scanner cannot promise to recognise an opaque token (Docker's
+			// base64 "auth", a cloud refresh token). Encrypted backups carry
+			// the file itself.
+			if e.Sensitivity == High && e.Redact == nil {
+				out[e.ID] = credentialSection(len(b))
+				continue
+			}
 			content := string(b)
 			if redact && e.Redact != nil {
 				content = e.Redact(content)
@@ -471,6 +480,10 @@ func Collect(ctx context.Context, env sys.Env, home string, redact bool, entries
 			if err != nil {
 				continue
 			}
+			if e.Sensitivity == High && e.Redact == nil {
+				out[e.ID] = credentialSection(len(b))
+				continue
+			}
 			var data map[string]any
 			if json.Unmarshal(b, &data) != nil {
 				continue
@@ -481,6 +494,15 @@ func Collect(ctx context.Context, env sys.Env, home string, redact bool, entries
 		}
 	}
 	return out
+}
+
+// credentialSection is what a snapshot records for a credential file: that it
+// exists, and how big it is.
+func credentialSection(size int) snapshot.Section {
+	return snapshot.Section{Pairs: map[string]string{
+		"exists": "true", "bytes": strconv.Itoa(size),
+		"note": "credential file: contents are never captured in a snapshot",
+	}}
 }
 
 func extractFields(data map[string]any, fields []string) map[string]string {

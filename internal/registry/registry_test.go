@@ -179,3 +179,30 @@ func TestNestedDestsAgreeOnSource(t *testing.T) {
 		}
 	}
 }
+
+// A snapshot is plain JSON: a credential file with no redactor is recorded as
+// present, and its contents never copied — whatever the scanner would make
+// of them.
+func TestCollectNeverCopiesCredentialFiles(t *testing.T) {
+	home := "/h"
+	env := &sys.Fake{HomeDir: home, Files: map[string]string{
+		home + "/.docker/config.json": `{"auths":{"ghcr.io":{"auth":"dXNlcjpzM2NyM3Q="}}}`,
+		home + "/.zshrc":              "alias ll=ls\n",
+	}}
+	snap := Collect(context.Background(), env, home, false, Entries)
+	sec, ok := snap["cloud.docker.config"]
+	if !ok {
+		t.Fatal("docker config not recorded at all")
+	}
+	if sec.Content != nil || sec.Pairs["exists"] != "true" {
+		t.Errorf("credential section = %+v", sec)
+	}
+	for _, v := range sec.Pairs {
+		if strings.Contains(v, "dXNlcjpzM2NyM3Q") {
+			t.Error("credential copied into the snapshot")
+		}
+	}
+	if c := snap["shell.zshrc"].Content; c == nil || *c != "alias ll=ls" {
+		t.Error("ordinary config should still be captured")
+	}
+}
