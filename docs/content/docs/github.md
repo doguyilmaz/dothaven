@@ -88,7 +88,7 @@ On a terminal, the first push asks how to store it. You can change it on any pus
 
 In the readable modes, `.git` folders (and the `.git` files of submodules) inside your config, such as Claude plugin marketplaces, are left out, because GitHub refuses a path named `.git`. The encrypted mode carries them inside its archive.
 
-**Age keys stay off GitHub in every mode.** The key chezmoi or sops decrypts with (`~/.config/chezmoi/key.txt`, sops' `keys.txt`, or any file containing `AGE-SECRET-KEY-1…`) opens every encrypted file in your dotfiles repo. Putting it in a second repository, even encrypted, would leave that passphrase as the only thing protecting all of them. The push lists what it kept back. Carry the key with `dothaven backup --encrypt`, or in your password manager.
+**Age keys stay off GitHub in every mode.** The key chezmoi or sops decrypts with (`~/.config/chezmoi/key.txt`, sops' `keys.txt`, or any file containing an age identity) opens every encrypted file in your dotfiles repo. Putting it in a second repository, even encrypted, would leave that passphrase as the only thing protecting all of them. The push lists what it kept back. Carry the key with `dothaven backup --encrypt`, or in your password manager.
 
 **Fonts stay out of pushes by default.** Your font folder is binaries, often hundreds of megabytes, and GitHub takes at most 100 MB per file. `dothaven backup --encrypt` carries them; to push them anyway, name the category: `--only fonts,shell,…`.
 

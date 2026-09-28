@@ -253,7 +253,7 @@ Other safeguards:
 - Files that were credentials or medium-sensitivity config are written owner-only (`0600`); other config gets `0644`. Executable files stay executable, so git hooks keep working. A file that is stricter on this machine (say, a `.zshrc` you made `0600`) keeps its permissions.
 - If the current version of a file cannot be read, it cannot be copied aside, so it is not replaced either; restore says which.
 - If the file on this machine is a symbolic link, restore skips it and says so, rather than writing through the link into whatever it points at.
-- A backup entry that tries to leave its folder (`../`, absolute paths) is refused. Archives are unpacked into a private temporary folder (`0700`) that is deleted afterwards, even on a forced exit (a second Ctrl-C). A folder left behind by a crash or `kill -9` is removed on the next run. Symbolic links and device files inside an archive are not extracted.
+- A backup entry that tries to leave its folder (`../`, absolute paths) is refused. Archives are unpacked into a private temporary folder (`0700`) that is deleted afterwards, even on a forced exit (a second Ctrl-C). A folder left behind by a crash or `kill -9` is removed by a later run once it is an hour old (only folders dothaven made, marked as such). Symbolic links and device files inside an archive are not extracted.
 - Commands that only read a backup's inventory or settings (`missing`, `reinstall`, `defaults import`) unpack just that part. The rest of an encrypted archive, keys included, is decrypted in memory and read past, never written.
 
 ### Flags

@@ -76,7 +76,7 @@ When a file triggers several rules, the strongest action wins: `skip`, then `red
 
 ### What it detects
 
-- **Private keys** (`HIGH`, skip): PEM private keys (`-----BEGIN … PRIVATE KEY-----`, which covers OpenSSH and RSA keys), the same base64-encoded once more (kubeconfig's `client-key-data`; a base64 CA certificate is left alone), PGP private key blocks, GnuPG's binary key format, and age identities (`AGE-SECRET-KEY-1…`, the key chezmoi and sops decrypt with).
+- **Private keys** (`HIGH`, skip): PEM private keys (`-----BEGIN … PRIVATE KEY-----`, which covers OpenSSH and RSA keys), the same base64-encoded once more (kubeconfig's `client-key-data`; a base64 CA certificate is left alone), PGP private key blocks, GnuPG's binary key format, and age identities (`AGE-SECRET-KEY-1…` and the post-quantum `AGE-SECRET-KEY-PQ-1…`, the keys chezmoi and sops decrypt with). A key's preview shows its kind (`-----BEGIN PRIVATE KEY-----`), never its body.
 - **Provider tokens** (`HIGH`, redact): AWS access, secret and session keys; Google API keys and OAuth tokens; Firebase; Azure SAS tokens; Cloudflare; DigitalOcean; Fly.io; GitHub (`ghp_`, `gho_`, `github_pat_`, …); npm tokens and `_authToken`; OpenAI; Anthropic; Stripe; Twilio; SendGrid; Mapbox; Slack; Discord; Supabase; Vercel; Pulumi; Vault; JWTs and bearer tokens; database connection strings (`postgres://`, `mysql://`, `mongodb://`, `redis://`); `.pgpass` lines; URLs with `user:password@` in them.
 - **Generic secrets** (`HIGH`, redact): assignments whose name looks like a secret (`TOKEN`, `API_KEY`, `SECRET`, `PASSWORD`, `client_secret`, `access_token`, `refresh_token`, …), in shell, ini and JSON forms. These rules check the value first, so shell code that merely mentions a word (`token=$tokens[1]`, `if [[ $token == … ]]`) and placeholders (`your_token`, `xxx`) are not flagged.
 - **IP addresses** (`MEDIUM`, redact), except loopback, `0.0.0.0` and netmasks, which every machine has. **Email addresses** (`MEDIUM`, include).
@@ -118,7 +118,7 @@ The scanner uses Go's RE2 regular expressions, which run in time linear in the i
 - **Passphrase input.** The prompt reads from the terminal directly (`/dev/tty`) without echoing. `DOTHAVEN_PASSPHRASE` is supported for scripts, but the prompt is the default because an environment variable is visible to every program the shell starts. dothaven reads it (and `DOTHAVEN_GITHUB_TOKEN`) once at startup and removes it from its environment, so the tools it runs never inherit it. Set but empty, or shorter than 10 characters, it is an error, never "no encryption".
 - **Encrypted is checked, not assumed.** Writing a plain and an encrypted archive are separate functions, and the encrypted one refuses an empty passphrase. Before a GitHub push uploads a `.age` file, it checks the file really starts with an age header.
 
-When you restore an encrypted backup, it is decrypted into a private temporary folder (`0700`), the files are written to their places, and the folder is deleted, also on a forced exit (a second Ctrl-C). A folder left behind by a crash or `kill -9` is removed the next time dothaven runs. Commands that only need a backup's inventory or settings (`missing`, `reinstall`, `defaults import`) write only that part; the rest, keys included, is decrypted in memory and never written.
+When you restore an encrypted backup, it is decrypted into a private temporary folder (`0700`), the files are written to their places, and the folder is deleted, also on a forced exit (a second Ctrl-C). A folder left behind by a crash or `kill -9` is removed by a later run once it is an hour old; only folders dothaven made, with its marker inside, are ever touched. Commands that only need a backup's inventory or settings (`missing`, `reinstall`, `defaults import`) write only that part; the rest, keys included, is decrypted in memory and never written.
 
 ## Restoring safely
 
@@ -129,6 +129,10 @@ When you restore an encrypted backup, it is decrypted into a private temporary f
 - **No writing through links.** If the file on this machine is a symbolic link, it is skipped and reported, instead of changing whatever the link points to.
 - **No escaping.** An archive entry with an absolute path or `..` is refused; symbolic links and device files in an archive are never extracted; a single entry over 256 MiB is refused.
 - **The ledger holds hashes.** `state/applied.json`, which remembers what was applied and what you declined, stores SHA-256 hashes and paths, never file contents.
+
+## Reinstalling safely
+
+`dothaven reinstall` turns a backup's app list into an install script. A readable GitHub copy can be edited by anyone with write access to the repository, so nothing from it reaches a shell unchecked: package names must look like package names and are single-quoted, and each Brewfile line must match the grammar `brew bundle dump` writes. That means known option keys only (no `postinstall:`, which brew runs as a command), no Ruby interpolation, and `https` URLs only for a tap's remote. Anything else is left out, and the plan says how many entries were. What it installs is shown before it runs.
 
 ## Where tokens and passphrases are kept
 

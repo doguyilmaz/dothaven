@@ -67,7 +67,7 @@ Then add the age settings (`encryption = "age"`, the identity file and your reci
 dothaven treats the key as the most sensitive file you have:
 
 - **An encrypted file backup carries it.** `dothaven backup --encrypt` includes `~/.config/chezmoi/key.txt` (and sops' `keys.txt`), so the new machine gets it back with everything else.
-- **A plaintext backup never does.** The key is a credential file, and the scanner recognises `AGE-SECRET-KEY-1…` under any name. A file holding one is left out of a plaintext backup even if you `include` its folder.
+- **A plaintext backup never does.** The key is a credential file, and the scanner recognises an age identity (`AGE-SECRET-KEY-1…`, or `AGE-SECRET-KEY-PQ-1…`) under any name. A file holding one is left out of a plaintext backup even if you `include` its folder.
 - **GitHub never gets it, not even encrypted.** The key opens the encrypted files in your chezmoi repo, and those files already sit in a repository. Putting the key in another repository, even behind a passphrase, would make that passphrase the only thing protecting all of them. Every `github push` leaves out any file containing an age identity, and says so.
 {{< /callout >}}
 
