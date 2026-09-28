@@ -4,7 +4,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -63,9 +62,9 @@ func SelectCategories(title string, groups []Group) ([]string, error) {
 		Title(title).
 		Description("Everything is selected. space toggles · a toggles all · enter continues").
 		Options(opts...).
-		Height(min(len(groups)+4, 22)).
+		Height(listHeight(len(groups))).
 		Value(&selected)
-	if err := huh.NewForm(huh.NewGroup(field)).Run(); err != nil {
+	if err := run(field); err != nil {
 		return nil, err
 	}
 	return selected, nil
@@ -97,9 +96,9 @@ func MultiPick(title, description string, items []PickItem) ([]string, error) {
 		Description(description).
 		Options(opts...).
 		Filterable(len(items) > 12).
-		Height(min(len(items)+4, 24)).
+		Height(listHeight(len(items))).
 		Value(&picked)
-	if err := huh.NewForm(huh.NewGroup(field)).Run(); err != nil {
+	if err := run(field); err != nil {
 		return nil, err
 	}
 	return picked, nil
@@ -119,66 +118,12 @@ func PickSome(title, description string, items []string) ([]string, error) {
 		Title(title).
 		Description(description).
 		Options(opts...).
-		Height(min(len(items)+4, 20)).
+		Height(listHeight(len(items))).
 		Value(&picked)
-	if err := huh.NewForm(huh.NewGroup(field)).Run(); err != nil {
+	if err := run(field); err != nil {
 		return nil, err
 	}
 	return picked, nil
-}
-
-// MenuItem is one line of a menu. A Heading groups the lines under it and
-// cannot be chosen.
-type MenuItem struct {
-	Label, Value, Hint string
-	Heading            bool
-}
-
-var headingStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-
-// headingValue marks a heading; choosing one just shows the menu again.
-const headingValue = "\x00heading"
-
-// Menu shows a list of actions under headings and returns the chosen value.
-// Esc or Ctrl-C returns "quit".
-func Menu(title, description string, items []MenuItem) (string, error) {
-	// A heading in the first row would take the cursor, and Enter on it does
-	// nothing, so the first keypress of the session looks ignored. It goes
-	// above the list instead; the cursor starts on a real choice. (Starting
-	// the cursor further down is not an option: huh then hides the rows above
-	// it until a key is pressed — huh#679.)
-	if len(items) > 0 && items[0].Heading {
-		if description != "" {
-			description += "\n\n"
-		}
-		description += headingStyle.Render(items[0].Label)
-		items = items[1:]
-	}
-	opts := make([]huh.Option[string], 0, len(items))
-	for i, it := range items {
-		if it.Heading {
-			opts = append(opts, huh.NewOption(headingStyle.Render(it.Label), fmt.Sprintf("%s%d", headingValue, i)))
-			continue
-		}
-		opts = append(opts, menuOption("  "+it.Label, it.Value, it.Hint))
-	}
-	for {
-		// The bound value must NOT match any option's value, or huh fails to
-		// render the options before the matched one until a keypress (huh#679).
-		var choice string
-		sel := huh.NewSelect[string]().Title(title).Description(description).
-			Options(opts...).Height(min(len(opts)+2, 30)).Value(&choice)
-		if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
-			if errors.Is(err, huh.ErrUserAborted) {
-				return "quit", nil
-			}
-			return "", err
-		}
-		if len(choice) >= len(headingValue) && choice[:len(headingValue)] == headingValue {
-			continue
-		}
-		return choice, nil
-	}
 }
 
 // Choice is one answer to a guided question. Hint is the muted line beside it,
@@ -199,7 +144,7 @@ func Ask(title, description string, choices []Choice) (string, error) {
 	// options before the matched one until a keypress (huh#679).
 	var choice string
 	sel := huh.NewSelect[string]().Title(title).Description(description).Options(opts...).Value(&choice)
-	if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+	if err := run(sel); err != nil {
 		return "", err
 	}
 	return choice, nil
@@ -208,7 +153,7 @@ func Ask(title, description string, choices []Choice) (string, error) {
 // Confirm asks a yes/no question.
 func Confirm(prompt string) (bool, error) {
 	var v bool
-	if err := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(prompt).Value(&v))).Run(); err != nil {
+	if err := run(huh.NewConfirm().Title(prompt).Value(&v)); err != nil {
 		return false, err
 	}
 	return v, nil
@@ -217,7 +162,7 @@ func Confirm(prompt string) (bool, error) {
 // Input asks for a line of text, returning def if left blank.
 func Input(prompt, def string) (string, error) {
 	v := def
-	if err := huh.NewForm(huh.NewGroup(huh.NewInput().Title(prompt).Value(&v))).Run(); err != nil {
+	if err := run(huh.NewInput().Title(prompt).Value(&v)); err != nil {
 		return "", err
 	}
 	if v == "" {

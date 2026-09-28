@@ -82,7 +82,7 @@ func ResolveConflict(path, backupContent, liveContent string) (ConflictChoice, e
 				huh.NewOption("Skip all remaining", "sa"),
 			).
 			Value(&choice)
-		if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+		if err := run(sel); err != nil {
 			// Ctrl-C at a prompt aborts the whole restore (skip every remaining
 			// conflict), not just this one file — otherwise the user has to
 			// interrupt once per conflict.
