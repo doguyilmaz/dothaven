@@ -85,7 +85,7 @@ Nothing is fetched, so it is fast and works offline, which also means it judges 
 
   ✓ Newest backup is 2 hours old (encrypted, /Volumes/MyDrive/backup-mymac-….tar.gz.age).
 
-❌ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
+✗ Not safe to wipe yet: 2 repositories hold work that exists nowhere else.
 ```
 
 ---
@@ -539,15 +539,15 @@ Check the chezmoi + age prerequisites for export.
 dothaven init
 ```
 
-Checks three things and prints each as done (`✓`) or with the command that fixes it (`→`): chezmoi is installed, age encryption is configured in `~/.config/chezmoi/chezmoi.toml`, and your chezmoi source is an initialized git repository. On a terminal it offers to run the safe steps for you (installing chezmoi with Homebrew, `chezmoi init <url>`). It never creates your age key: that is yours to make and back up. No flags.
+Checks three things and prints each as done (`✓`) or with the command that fixes it (`→`): chezmoi is installed, age encryption is configured in `~/.config/chezmoi/chezmoi.toml`, and your chezmoi source is an initialized git repository. On a terminal it offers to run the safe steps for you (installing chezmoi with Homebrew, adding an existing age key to `chezmoi.toml`, `chezmoi init <url>`), then checks again. It never creates your age key: that is yours to make and back up. No flags.
 
 ```text
-dothaven init: chezmoi + age bootstrap
+dothaven init: chezmoi + age setup
 
   ✓ chezmoi installed
   → age encryption key configured
       age-keygen -o ~/.config/chezmoi/key.txt
-      ⚠ Back this key up offline (password manager). Lose it and encrypted files are unrecoverable.
+      Back this key up offline (password manager). Lose it and encrypted files are unrecoverable.
   → chezmoi source (private dotfiles repo) initialized
       chezmoi init git@github.com:you/dotfiles.git
 ```
@@ -560,11 +560,11 @@ Plan (or apply) adding configs to chezmoi, encrypting secrets.
 dothaven chezmoi-export [flags]
 ```
 
-Builds a plan of `chezmoi add` calls, one file at a time: plain for ordinary config, `--encrypt` for credentials and any file with a secret in it, `--template` for config that names your home folder. It also builds a `run_onchange` install script that reinstalls your packages when chezmoi applies. **Dry run by default**; `--apply` executes it (needs chezmoi, and age configured when anything is encrypted). On a terminal with no `--only`/`--skip`, it asks which categories and install groups (`brew`, `packages`) to export. Details: [Encryption & chezmoi](../encryption#chezmoi-export).
+Builds a plan of `chezmoi add` calls, one file at a time: plain for ordinary config, `--encrypt` for credentials and any file with a secret in it, `--template` for config that names your home folder. It also builds a `run_onchange` install script that reinstalls your packages when chezmoi applies. It shows the plan first. On a terminal it then asks whether to carry it out; off a terminal it changes nothing unless you pass `--apply` (needs chezmoi, and age configured when anything is encrypted). On a terminal with no `--only`/`--skip`, it asks which categories and install groups (`brew`, `packages`) to export. Details: [Encryption & chezmoi](../encryption#chezmoi-export).
 
 | Flag | Meaning |
 | --- | --- |
-| `--apply` | Execute the plan (default: dry-run) |
+| `--apply` | Carry out the plan without asking (off a terminal the default is a dry run) |
 | `--only strings` | Only these categories/groups (comma-separated) |
 | `--pin` | Pin global packages to their captured version |
 | `--skip strings` | Skip these categories/groups (comma-separated) |

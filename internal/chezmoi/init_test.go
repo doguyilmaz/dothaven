@@ -51,3 +51,38 @@ func TestPlanInitNoneDone(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanInitKeyWithoutConfig(t *testing.T) {
+	steps := PlanInit(InitState{ChezmoiInstalled: true, AgeKeyExists: true, SourceInitialized: true})
+	if IsReady(steps) {
+		t.Fatal("a key that chezmoi.toml does not use is not ready")
+	}
+	age := steps[1]
+	if age.Command != "" {
+		t.Errorf("the key exists; making another one would be wrong: %q", age.Command)
+	}
+	if !strings.Contains(age.Note, "chezmoi.toml") {
+		t.Errorf("the note should say what is missing: %q", age.Note)
+	}
+}
+
+func TestAgeConfig(t *testing.T) {
+	const id, rcpt = "/Users/me/.config/chezmoi/key.txt", "age1abc"
+	got, ok := AgeConfig("", id, rcpt)
+	want := "encryption = \"age\"\n[age]\n    identity = \"/Users/me/.config/chezmoi/key.txt\"\n    recipient = \"age1abc\"\n"
+	if !ok || got != want {
+		t.Errorf("new file:\n%s", got)
+	}
+
+	// A table already in the file: the top-level key must come before it.
+	got, ok = AgeConfig("[data]\n    email = \"me@example.com\"", id, rcpt)
+	if !ok || !strings.HasPrefix(got, "encryption = \"age\"\n[data]\n") || !strings.HasSuffix(got, "recipient = \"age1abc\"\n") {
+		t.Errorf("existing table:\n%s", got)
+	}
+
+	for _, existing := range []string{"encryption = \"gpg\"\n", "[age]\n    identity = \"x\"\n", "  encryption=\"age\""} {
+		if _, ok := AgeConfig(existing, id, rcpt); ok {
+			t.Errorf("changed a file that already sets encryption:\n%s", existing)
+		}
+	}
+}

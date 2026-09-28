@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+
+	"filippo.io/age"
 
 	"github.com/doguyilmaz/dothaven/internal/chezmoi"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -18,13 +23,13 @@ func runShown(ctx context.Context, name string, args ...string) {
 	fmt.Printf("  $ %s %s\n", name, strings.Join(args, " "))
 	out, err := runShell(ctx, name, args...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ✗ %v\n%s\n", err, out)
+		fmt.Fprintf(os.Stderr, "  %s %v\n%s\n", danger("✗"), err, out)
 		return
 	}
 	if out != "" {
 		fmt.Println(out)
 	}
-	fmt.Println("  ✔ done")
+	fmt.Printf("  %s done\n", good("✓"))
 }
 
 var ageEncryptionRe = regexp.MustCompile(`encryption\s*=\s*"age"`)
@@ -42,6 +47,7 @@ func probeInitState(ctx context.Context, env *sys.OS) chezmoi.InitState {
 	if b, err := os.ReadFile(env.Home() + "/.config/chezmoi/chezmoi.toml"); err == nil {
 		ageKeyConfigured = ageEncryptionRe.Match(b)
 	}
+	_, keyErr := os.Stat(env.Home() + "/.config/chezmoi/key.txt")
 
 	// source is initialized when chezmoi reports a path that is a git repo.
 	sourceInitialized := false
@@ -58,6 +64,7 @@ func probeInitState(ctx context.Context, env *sys.OS) chezmoi.InitState {
 	return chezmoi.InitState{
 		ChezmoiInstalled:  chezmoiInstalled,
 		AgeKeyConfigured:  ageKeyConfigured,
+		AgeKeyExists:      keyErr == nil,
 		SourceInitialized: sourceInitialized,
 		User:              user,
 	}
@@ -73,35 +80,20 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 			state := probeInitState(ctx, env)
 			steps := chezmoi.PlanInit(state)
 
-			fmt.Print("dothaven init: chezmoi + age bootstrap\n\n")
-			for _, s := range steps {
-				mark, title := warn("→"), s.Title
-				if s.Done {
-					mark, title = good("✓"), dim(s.Title)
-				}
-				fmt.Printf("  %s %s\n", mark, title)
-				if !s.Done && s.Command != "" {
-					fmt.Printf("      %s\n", kbd(s.Command))
-				}
-				if s.Note != "" {
-					fmt.Printf("      ⚠ %s\n", s.Note)
-				}
-			}
-
+			fmt.Print("dothaven init: chezmoi + age setup\n\n")
+			printInitSteps(steps)
 			if chezmoi.IsReady(steps) {
-				fmt.Print("\n✓ Setup complete. Next:\n  dothaven chezmoi-export          # dry-run: review the plan\n  dothaven chezmoi-export --apply  # execute\n")
+				printInitReady()
 				return nil
 			}
-
-			// Non-interactive (piped/CI): print guidance only.
 			if !tui.Interactive() {
-				fmt.Printf("\nRun the commands above, then re-run %s.\n", kbd("dothaven init"))
+				fmt.Printf("\nRun the commands above, then run %s again.\n", kbd("dothaven init"))
 				return nil
 			}
 
-			// Guided: offer to run the safe steps. The age key step only prints
-			// instructions: generating and placing key material is the user's
-			// responsibility.
+			// Guided: offer the safe steps. The age key itself is never made
+			// here: it is yours to create and back up. Once it exists, adding it
+			// to chezmoi.toml is safe, and without that the step never passes.
 			fmt.Println()
 			for _, s := range steps {
 				if s.Done {
@@ -109,32 +101,115 @@ func newInitCmd(env *sys.OS) *cobra.Command {
 				}
 				switch s.ID {
 				case "chezmoi":
-					if ok, err := tui.Confirm("Install chezmoi via Homebrew now?"); err != nil {
-						return err
+					if ok, err := tui.Confirm("Install chezmoi with Homebrew now?"); err != nil {
+						return ignoreAbort(err)
 					} else if ok {
 						runShown(ctx, "brew", "install", "chezmoi")
 					}
 				case "age-key":
-					fmt.Println("  → Generate your age key yourself, then re-run init:")
-					fmt.Printf("      %s\n", s.Command)
-					fmt.Println(warn("    ⚠ Back it up offline. Without it, encrypted files can't be decrypted."))
+					if !state.AgeKeyExists {
+						fmt.Println("  Make the age key with the command above and back it up, then run init again.")
+						continue
+					}
+					if ok, err := tui.Confirm("Add your age key to ~/.config/chezmoi/chezmoi.toml now?"); err != nil {
+						return ignoreAbort(err)
+					} else if ok {
+						if err := writeAgeConfig(env); err != nil {
+							fmt.Fprintf(os.Stderr, "  %s %v\n", danger("✗"), err)
+						} else {
+							fmt.Printf("  %s chezmoi.toml now uses your age key.\n", good("✓"))
+						}
+					}
 				case "source":
-					fallback := chezmoi.RepoURL(state.User)
-					url, err := tui.Input("Private repo URL", fallback)
+					if !probeInitState(ctx, env).ChezmoiInstalled {
+						fmt.Println("  chezmoi is not installed yet, so the repository step waits for the next run.")
+						continue
+					}
+					url, err := tui.Input("Private repo URL", chezmoi.RepoURL(state.User))
 					if err != nil {
-						return err
+						return ignoreAbort(err)
 					}
 					if strings.Contains(url, "<you>") {
-						fmt.Println("    Set your repo URL and re-run, or run: chezmoi init <url>")
+						fmt.Println("  Set your repo URL, or run: chezmoi init <url>")
 					} else if ok, err := tui.Confirm("Run `chezmoi init " + url + "`?"); err != nil {
-						return err
+						return ignoreAbort(err)
 					} else if ok {
 						runShown(ctx, "chezmoi", "init", url)
 					}
 				}
 			}
-			fmt.Printf("\nWhen every step is %s, run: %s\n", good("✓"), kbd("dothaven chezmoi-export"))
+
+			steps = chezmoi.PlanInit(probeInitState(ctx, env))
+			fmt.Println("\nNow:")
+			printInitSteps(steps)
+			if chezmoi.IsReady(steps) {
+				printInitReady()
+			} else {
+				fmt.Printf("\nWhen every step shows %s, run: %s\n", good("✓"), kbd("dothaven chezmoi-export"))
+			}
 			return nil
 		},
 	}
+}
+
+func printInitSteps(steps []chezmoi.InitStep) {
+	for _, s := range steps {
+		if s.Done {
+			fmt.Printf("  %s %s\n", good("✓"), s.Title)
+			continue
+		}
+		fmt.Printf("  %s %s\n", warn("→"), s.Title)
+		if s.Command != "" {
+			fmt.Printf("      %s\n", kbd(s.Command))
+		}
+		if s.Note != "" {
+			fmt.Printf("      %s\n", dim(s.Note))
+		}
+	}
+}
+
+func printInitReady() {
+	fmt.Printf("\n%s Setup complete. Next:\n  %s          %s\n  %s  %s\n", good("✓"),
+		kbd("dothaven chezmoi-export"), dim("# shows the plan, then asks"),
+		kbd("dothaven chezmoi-export --apply"), dim("# carries it out"))
+}
+
+// writeAgeConfig points chezmoi at the age key: encryption = "age" plus an
+// [age] table with the key file and its public recipient. The old file is
+// kept next to it.
+func writeAgeConfig(env *sys.OS) error {
+	dir := filepath.Join(env.Home(), ".config", "chezmoi")
+	keyFile, tomlFile := filepath.Join(dir, "key.txt"), filepath.Join(dir, "chezmoi.toml")
+	kb, err := os.ReadFile(keyFile)
+	if err != nil {
+		return err
+	}
+	ids, err := age.ParseIdentities(bytes.NewReader(kb))
+	if err != nil {
+		return fmt.Errorf("%s is not an age key: %w", shortHome(env, keyFile), err)
+	}
+	var recipient string
+	for _, id := range ids {
+		if x, ok := id.(*age.X25519Identity); ok {
+			recipient = x.Recipient().String()
+			break
+		}
+	}
+	if recipient == "" {
+		return fmt.Errorf("%s holds no X25519 key; add the [age] settings by hand", shortHome(env, keyFile))
+	}
+	old, err := os.ReadFile(tomlFile)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	cfg, ok := chezmoi.AgeConfig(string(old), keyFile, recipient)
+	if !ok {
+		return fmt.Errorf("%s already sets encryption or [age]; check it by hand", shortHome(env, tomlFile))
+	}
+	if len(old) > 0 {
+		if err := sys.WriteFileSecure(tomlFile+".before-dothaven", string(old)); err != nil {
+			return err
+		}
+	}
+	return sys.WriteFileSecure(tomlFile, cfg)
 }
