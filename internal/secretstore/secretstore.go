@@ -96,11 +96,20 @@ func decode(v string) string {
 
 // Get returns the secret stored under account.
 func (s *Store) Get(account string) (string, error) {
+	v, _, err := s.GetExact(account)
+	return v, err
+}
+
+// GetExact is Get, also saying whether the value was stored encoded — and so
+// is certain to be exactly what was saved. A value an older version stored
+// raw may not be: the Keychain prints a password it considers unprintable (ş,
+// ğ) as hex.
+func (s *Store) GetExact(account string) (string, bool, error) {
 	v, err := s.raw(account)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	return decode(v), nil
+	return decode(v), strings.HasPrefix(v, encPrefix), nil
 }
 
 func (s *Store) raw(account string) (string, error) {

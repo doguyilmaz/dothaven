@@ -57,3 +57,19 @@ func TestFileBackendRoundTrip(t *testing.T) {
 		t.Error("deleting twice should not fail")
 	}
 }
+
+func TestGetExactTellsLegacyValuesApart(t *testing.T) {
+	t.Setenv("DOTHAVEN_SECRET_STORE", "file")
+	dir := t.TempDir()
+	s := Open(dir)
+	if err := s.Set("p", "şifre çok gizli"); err != nil {
+		t.Fatal(err)
+	}
+	if v, exact, err := s.GetExact("p"); err != nil || !exact || v != "şifre çok gizli" {
+		t.Errorf("new value = %q exact=%v %v", v, exact, err)
+	}
+	os.WriteFile(filepath.Join(dir, "credentials", "old"), []byte("c59f6966726520\n"), 0o600)
+	if _, exact, _ := s.GetExact("old"); exact {
+		t.Error("a raw value from an older version reported as exact")
+	}
+}

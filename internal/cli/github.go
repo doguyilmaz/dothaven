@@ -658,11 +658,18 @@ func pushPassphrase(env *sys.OS) (string, error) {
 		return p, err
 	}
 	st := secrets(env)
-	if p, err := st.Get(accountPassphrase); err == nil && len([]rune(p)) >= minPassphrase {
+	p, exact, err := st.GetExact(accountPassphrase)
+	if err == nil && !exact {
+		// Saved by an older version, in a form that may not read back as
+		// typed. A wrong remembered passphrase would silently encrypt the
+		// copy on GitHub with something you don't know; ask once instead.
+		fmt.Println(dim("Your remembered passphrase was saved by an older dothaven — type it once more so it is stored exactly."))
+	}
+	if err == nil && exact && len([]rune(p)) >= minPassphrase {
 		fmt.Println(dim("Using your remembered backup passphrase (forget it with `dothaven github logout`)."))
 		return p, nil
 	}
-	p, err := newPassphrase()
+	p, err = newPassphrase()
 	if err != nil {
 		return "", err
 	}
