@@ -52,7 +52,7 @@ The name is `backup-<host>-<UTC timestamp>`, with `.tar.gz` or `.tar.gz.age` for
 `--only` and `--skip` take category names. `--skip` wins over `--only`. A name that is not a category is an error that lists the real ones, rather than a backup that quietly holds nothing:
 
 ```text
-error: unknown category "shel" — choose from: ai, apps, build, bun, cloud, db, dev, devops, dothaven, editor, extra, git, inventory, lang, macos, mobile, net, npm, schedule, secrets, shell, ssh, terminal, vm
+error: unknown category "shel"; choose from: ai, apps, build, bun, cloud, db, dev, devops, dothaven, editor, extra, git, inventory, lang, macos, mobile, net, npm, schedule, secrets, shell, ssh, terminal, vm
 ```
 
 | Category | What is in it |
@@ -227,7 +227,7 @@ Restore keeps a ledger at `~/.local/share/dothaven/state/applied.json` of what i
 
 ```text
   9 files: 1 skipped last time, 5 already applied, 3 redacted
-✓ Nothing new to restore — everything here is applied or was left out on purpose.
+✓ Nothing new to restore. Everything here is applied or was left out on purpose.
 ```
 
 The ledger holds file hashes, never file contents. Only a decision is remembered: a file you were shown and said no to. A category you did not pick, or a file kept off a terminal because nobody was there to ask, is still on offer next time. What you declined is remembered per backup: restoring a different (for example, newer) backup asks about those files again.
@@ -254,7 +254,7 @@ Other safeguards:
 - If the current version of a file cannot be read, it cannot be copied aside, so it is not replaced either; restore says which.
 - If the file on this machine is a symbolic link, restore skips it and says so, rather than writing through the link into whatever it points at.
 - A backup entry that tries to leave its folder (`../`, absolute paths) is refused. Archives are unpacked into a private temporary folder (`0700`) that is deleted afterwards, even on a forced exit (a second Ctrl-C). A folder left behind by a crash or `kill -9` is removed by a later run once it is an hour old (only folders dothaven made, marked as such). Symbolic links and device files inside an archive are not extracted.
-- Commands that only read a backup's inventory or settings (`missing`, `reinstall`, `defaults import`) unpack just that part. The rest of an encrypted archive, keys included, is decrypted in memory and read past, never written.
+- Commands that only read a backup's inventory or settings (`missing`, `reinstall`, `defaults import`) unpack only that part. The rest of an encrypted archive, keys included, is decrypted in memory and read past, never written.
 
 ### Flags
 

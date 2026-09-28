@@ -66,7 +66,7 @@ dothaven github push
 - **Signed when your git signs.** If git signs your commits, dothaven signs each push with the same key, and GitHub marks it **Verified**; see [Verified commits](#verified-commits).
 - **It refuses public repositories.** If the repository is public, `push` stops with an error and writes nothing. Even an encrypted backup reveals which services you use; a plain one is your config for anyone to read.
 - **Nothing changes if nothing changed.** dothaven fingerprints what went into the backup (paths, content hashes, executable bits; not timestamps). If it matches the last push, you get `✓ Already up to date` and no new commit. If nothing changed but you are pushing with a different passphrase, the copy on GitHub is replaced anyway, so the passphrase you now know is the one that opens it.
-- **Encrypted means encrypted.** Before uploading, dothaven checks that every `.age` file it is about to send really is age-encrypted, and refuses to upload otherwise.
+- **Encryption is checked.** Before uploading, dothaven checks that every `.age` file it is about to send is age-encrypted, and refuses to upload otherwise.
 - **Your choices are remembered.** The repository and mode are saved in `~/.config/dothaven/github.json`, so later pushes do not ask again.
 
 ```text
@@ -154,9 +154,7 @@ dothaven-backup/
         └── secrets.tar.gz.age
 ```
 
-Each push is one commit with a message such as `dothaven: mymac — encrypted backup, 214 files`. The machine's folder is rebuilt each time, so a file you deleted locally disappears from the latest version too; earlier versions stay in git history.
-
-Commits appear as your GitHub account. dothaven has no server of its own, so there is no bot identity to commit as.
+Each push is one commit with a message such as `dothaven: mymac (encrypted backup, 214 files)`. The machine's folder is rebuilt each time, so a file you deleted locally disappears from the latest version too; earlier versions stay in git history.
 
 ## Restoring from GitHub
 
@@ -224,7 +222,7 @@ This removes dothaven's stored token and remembered passphrase. If you are still
 - **Encrypted by default.** In `encrypted` and `split` modes, credentials are only ever uploaded inside age-encrypted archives, written in a private temporary folder that is removed afterwards.
 - **The token never touches a command line or git.** It lives in your keychain (or `gh`, or the environment), and is sent only to the GitHub API over HTTPS.
 - **Narrow access if you want it.** A fine-grained token can be limited to the one repository.
-- **Your history is yours.** git history keeps every push. If you ever pushed something you regret, deleting it from the latest version is not enough; treat anything that was in a readable push as exposed to whoever can read the repository.
+- **Old pushes stay in history.** git keeps every push. If you ever pushed something you regret, deleting it from the latest version is not enough; treat anything that was in a readable push as exposed to whoever can read the repository.
 
 ## Environment variables
 

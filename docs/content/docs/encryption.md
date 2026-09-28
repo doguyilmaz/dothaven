@@ -80,7 +80,7 @@ dothaven chezmoi-export
 This is a dry run. On a terminal with no `--only`/`--skip` it first asks which categories to export, plus two install groups: `brew` (Homebrew formulae and casks) and `packages` (global npm, pnpm, bun, pipx, cargo and other packages).
 
 ```text
-chezmoi-export plan — 13 files, 5 encrypted:
+chezmoi-export plan (13 files, 5 encrypted):
 
      add            ~/.claude/settings.json  (plain)
   🔒 add --encrypt  ~/.claude.json  (secret detected)
@@ -94,7 +94,7 @@ chezmoi-export plan — 13 files, 5 encrypted:
   + run_onchange install script (brew)
 
 🔒 Encrypted paths are recoverable only with your age key (~/.config/chezmoi/key.txt).
-   Back it up offline before you rely on this — a lost key means those files are gone for good.
+   Back it up offline before you rely on this. If you lose the key, those files are lost with it.
 
 Dry-run. Re-run with --apply to execute.
 ```
@@ -111,7 +111,7 @@ What decides each line:
 
 Folders are judged **file by file**: one token in one file of your Neovim config encrypts that file, not the whole folder. The plan line then says, for example, `folder, 40 files, 1 encrypted: secret detected`. A credential folder (`~/.ssh`, `~/.gnupg`) is encrypted as a whole.
 
-**Templated (`📝 add --template`)** for a single config file in the `shell`, `git`, `terminal`, `editor`, `dev` or `vm` categories that actually contains your home folder path. After adding it, dothaven rewrites every `/Users/you/` (or `/home/you/`) in the chezmoi copy to `{{ .chezmoi.homeDir }}/`, so the file works on a machine with a different username. Only that exact prefix is replaced, so a path such as `/Users/youtube` is left alone. Anything in the file that looks like template syntax (`{{` and `}}`, as in WezTerm key tables or Go format strings in a git alias) is escaped first, so `chezmoi apply` on the new machine does not fail on it. Files that do not mention your home folder are added as plain copies, since a template that did not need to be one is just one more thing that can fail to parse.
+**Templated (`📝 add --template`)** for a single config file in the `shell`, `git`, `terminal`, `editor`, `dev` or `vm` categories that contains your home folder path. After adding it, dothaven rewrites every `/Users/you/` (or `/home/you/`) in the chezmoi copy to `{{ .chezmoi.homeDir }}/`, so the file works on a machine with a different username. Only that exact prefix is replaced, so a path such as `/Users/youtube` is left alone. Anything in the file that looks like template syntax (`{{` and `}}`, as in WezTerm key tables or Go format strings in a git alias) is escaped first, so `chezmoi apply` on the new machine does not fail on it. Files that do not mention your home folder are added as plain copies, since an unneeded template is one more thing that can fail to parse.
 
 **Plain (`add`)** for everything else.
 

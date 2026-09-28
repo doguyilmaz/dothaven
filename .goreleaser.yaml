@@ -1,4 +1,4 @@
-# GoReleaser config — single static binary, released to a Homebrew tap.
+# GoReleaser config: a single static binary, released to a Homebrew tap.
 # Validate locally with: goreleaser check
 version: 2
 
@@ -83,8 +83,8 @@ homebrew_casks:
       # A PAT with contents:write on the tap repo (the default GITHUB_TOKEN can't push cross-repo).
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     # The binary itself is self-contained. The chezmoi-export --apply and init
-    # paths shell out to chezmoi (and age) — not pulled in as a hard cask
-    # dependency, so flag them as optional installs.
+    # paths shell out to chezmoi (and age). They are not hard cask
+    # dependencies, so the caveats list them as optional installs.
     caveats: |
       dothaven runs standalone; encrypted backups need nothing else.
       Start with `dothaven` (a menu) or `dothaven doctor` (checks this machine).

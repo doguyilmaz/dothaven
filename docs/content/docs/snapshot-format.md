@@ -58,11 +58,11 @@ An `Item` keeps both the original line (`raw`) and its split form (`columns`).
 `Content` is a `*string`, not a plain `string`, so three states stay
 distinguishable in JSON:
 
-- **absent** — the field is `nil` and omitted entirely (the section has no
+- **absent**: the field is `nil` and omitted entirely (the section has no
   content block).
-- **empty** — the field points at `""` and serializes as `"content": ""`
+- **empty**: the field points at `""` and serializes as `"content": ""`
   (a content block that exists but is empty).
-- **non-empty** — the field points at the text.
+- **non-empty**: the field points at the text.
 
 A plain `string` would collapse the first two cases together. The pointer keeps
 "no content" and "empty content" apart.
@@ -88,11 +88,11 @@ enc.SetIndent("", "  ")
 - **HTML escaping disabled.** Go's encoder escapes `<`, `>`, and `&` by default
   (a safe choice for HTML embedding, useless here). dothaven turns it off so
   values like URLs (`?a=1&b=2`), version constraints (`node>=18`), and shell
-  snippets stay readable instead of being mangled into `<` / `&`.
+  snippets stay readable instead of turning into `<` / `&`.
 
 {{< callout type="info" >}}
 Snapshots are plain JSON. You can read, `grep`, `jq`, and version-control them
-directly — nothing about the format is dothaven-specific beyond the section
+directly. Nothing about the format is specific to dothaven beyond the section
 naming convention.
 {{< /callout >}}
 
@@ -129,14 +129,14 @@ A trimmed snapshot with one section of each shape:
 
 Note the ordering: section ids (`meta`, `packages.npm.global`, `runtimes.go`,
 `shell.zshrc`) and pair keys (`date`, `host`, `os`) are alphabetical, regardless
-of the order the collectors ran in. Empty fields never appear — `meta` has only
+of the order the collectors ran in. Empty fields never appear: `meta` has only
 `pairs`, so no `items` or `content` keys are emitted.
 
-## Parsing is fail-loud
+## Parsing fails on bad input
 
 `Parse` decodes a snapshot with `json.Unmarshal`. Missing section fields default
 to their zero values (`nil` map, slice, or pointer), so a section that only
-defines `pairs` round-trips cleanly. But anything structurally wrong is a loud
+defines `pairs` round-trips cleanly. But anything structurally wrong is an
 error rather than a silent coercion:
 
 ```go
@@ -174,10 +174,10 @@ dothaven compare
 
 The diff is oriented around the **left** (first) snapshot:
 
-- **added** (`+`) — present only in the left snapshot.
-- **removed** (`-`) — present only in the right snapshot.
-- **changed** (`~`) — present in both, but with differing contents.
-- **equal** — present in both and identical.
+- **added** (`+`): present only in the left snapshot.
+- **removed** (`-`): present only in the right snapshot.
+- **changed** (`~`): present in both, but with differing contents.
+- **equal**: present in both and identical.
 
 Every added or removed line also names the snapshot it is only in, so the output
 reads correctly whichever order you pass the files in.
@@ -193,9 +193,8 @@ For a section present on both sides, the three fields are diffed independently:
 - **Content** is compared by value, treating `nil` as distinct from `""`.
 
 A both-present section is reported as **changed** if there is any item add or
-remove, any pair add, remove, or change, or a content change. Items that merely
-exist on both sides do not, on their own, make a section changed — common
-content is not noise.
+remove, any pair add, remove, or change, or a content change. Items that exist
+on both sides do not, on their own, make a section changed.
 
 ### Output
 

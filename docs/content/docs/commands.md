@@ -25,7 +25,7 @@ With no command, on a terminal, `dothaven` opens the [menu](../interactive). Off
 
 ### tui
 
-Interactive menu — pick what to do.
+Interactive menu: pick what to do.
 
 ```text
 dothaven tui
@@ -77,7 +77,7 @@ Nothing is fetched, so it is fast and works offline, which also means it judges 
 **Exit code:** 2 if anything is at risk, or if there is no backup newer than 7 days. So it can gate a wipe script: `dothaven ready && …`.
 
 ```text
-1 repository with no remote — these exist ONLY on this machine:
+1 repository with no remote. These exist ONLY on this machine:
   ✗ ~/code/prototype                              12 commits, 1 file uncommitted
 
 1 repository with work not pushed anywhere:
@@ -94,7 +94,7 @@ Nothing is fetched, so it is fast and works offline, which also means it judges 
 
 ### backup
 
-Save your config — a folder here, or one encrypted file to carry.
+Save your config: a folder here, or one encrypted file to carry.
 
 ```text
 dothaven backup [flags]
@@ -287,7 +287,7 @@ dothaven restore github --only ai,shell
 
 ### reinstall
 
-Install the apps & packages a backup recorded — only what's missing.
+Install the apps & packages a backup recorded (only what's missing).
 
 ```text
 dothaven reinstall [backup] [flags]
@@ -308,7 +308,7 @@ The argument can be a backup (any kind, or `github`) or a `collect` snapshot. Wi
 
 ### status
 
-Latest backup vs this machine — one-screen summary.
+Latest backup vs this machine: a one-screen summary.
 
 ```text
 dothaven status
@@ -318,7 +318,7 @@ Compares the newest backup folder in `~/.local/share/dothaven` with this machine
 
 ### diff
 
-Backup vs this machine — file by file.
+Backup vs this machine, file by file.
 
 ```text
 dothaven diff [backup-path] [flags]
@@ -346,7 +346,7 @@ This used to be `dothaven doctor <backup>`. That spelling still works and says w
 
 ### check
 
-Are my config files still valid? — parses each one.
+Are my config files still valid? Parses each one.
 
 ```text
 dothaven check [flags]
@@ -374,7 +374,7 @@ Checks that dothaven can do its job on this machine, and says what to fix when i
 
 ### compare
 
-Snapshot vs snapshot — what changed between two.
+Snapshot vs snapshot: what changed between two.
 
 ```text
 dothaven compare [file1] [file2]
@@ -425,7 +425,7 @@ With no path, scans every config file dothaven tracks: the ones a backup would c
 | --- | --- |
 | `--no-fail` | Always exit 0, even with HIGH findings |
 
-**Exit code:** 2 when anything HIGH turns up, so this can gate a commit hook or a CI job. A scanner that always exits 0 can only ever be read by a human.
+**Exit code:** 2 when anything HIGH turns up, so this can gate a commit hook or a CI job. Without it, a finding would only be noticed by someone reading the output.
 
 ```text
 ~/.aws/credentials
@@ -542,7 +542,7 @@ dothaven init
 Checks three things and prints each as done (`✓`) or with the command that fixes it (`→`): chezmoi is installed, age encryption is configured in `~/.config/chezmoi/chezmoi.toml`, and your chezmoi source is an initialized git repository. On a terminal it offers to run the safe steps for you (installing chezmoi with Homebrew, `chezmoi init <url>`). It never creates your age key: that is yours to make and back up. No flags.
 
 ```text
-dothaven init — chezmoi + age bootstrap
+dothaven init: chezmoi + age bootstrap
 
   ✓ chezmoi installed
   → age encryption key configured
@@ -623,7 +623,7 @@ dothaven completion bash|zsh|fish|powershell
 At most once a day, dothaven checks whether a newer release exists and prints one line on **stderr** when there is one:
 
 ```text
-⇡ dothaven 0.5.0 is available (you have 0.4.0) — run `dothaven upgrade`
+⇡ dothaven 0.5.0 is available (you have 0.4.0). Run `dothaven upgrade`
 ```
 
 Nothing is added to stdout. The check is skipped when stderr is not a terminal, when `CI` is set, for development builds, during `upgrade` itself, and when `DOTHAVEN_NO_UPDATE_CHECK` is set to anything.

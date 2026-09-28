@@ -22,7 +22,7 @@ The `Ctx` holds the context, the `sys.Env` seam, your home folder and whether to
 - **Concurrent.** Every collector runs in its own goroutine, so a run costs about as long as the slowest one.
 - **Failure-isolated.** A collector returns what it could, even nothing. A panic is recovered and logged, and the others carry on.
 
-Collectors call external tools (`brew`, `npm`, `go`, …) through `Env.Run`, each with a time limit. A tool that is not installed simply produces no section: you get sections for the tools you have. A non-zero exit, such as `npm ls` exiting 1 on a peer warning, is tolerated and its output still parsed.
+Collectors call external tools (`brew`, `npm`, `go`, …) through `Env.Run`, each with a time limit. A tool that is not installed produces no section: you get sections for the tools you have. A non-zero exit, such as `npm ls` exiting 1 on a peer warning, is tolerated and its output still parsed.
 
 ## The pipeline
 

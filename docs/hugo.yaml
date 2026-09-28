@@ -34,7 +34,7 @@ menu:
         icon: github
 
 params:
-  description: "Move your whole dev setup to a new machine — dotfiles, AI tools, keys, apps and settings — encrypted, selective, and checked."
+  description: "Move your dev setup to a new machine: dotfiles, AI tools, keys, apps and settings, in one encrypted backup that you restore selectively."
   navbar:
     displayTitle: true
     displayLogo: true

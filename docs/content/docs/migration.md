@@ -39,7 +39,7 @@ Config can be rebuilt. Uncommitted changes, unpushed commits and stashes cannot,
 - how old your **newest backup** is.
 
 ```text
-1 repository with no remote — these exist ONLY on this machine:
+1 repository with no remote. These exist ONLY on this machine:
   ✗ ~/code/prototype                              12 commits, 1 file uncommitted
 
 1 repository with gitignored files a fresh clone won't bring back:
@@ -84,13 +84,13 @@ The result is one file, `backup-<host>-<timestamp>.tar.gz.age`, holding:
 - your macOS settings: trackpad, keyboard, Finder, hot corners, keyboard shortcuts and layouts, language order, and the apps in your Dock.
 
 ```text
-✓ Encrypted backup saved — 194 files, 3.1 MB
+✓ Encrypted backup saved: 194 files, 3.1 MB
   /Volumes/MyDrive/backup-mymac-20260927232938.tar.gz.age
   ai (58), cloud (6), editor (97), git (9), npm (1), shell (14), ssh (5), terminal (4)
   + installed apps & packages list, 214 macOS settings
 
 Next:
-  Copy this file off this machine — a USB drive, cloud storage, another computer.
+  Copy this file off this machine: to a USB drive, cloud storage or another computer.
   It lives on the disk you are about to replace.
   On the new machine: dothaven restore backup-mymac-20260927232938.tar.gz.age
   You will need the passphrase. Nothing can open this file without it.

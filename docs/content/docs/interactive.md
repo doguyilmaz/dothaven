@@ -93,9 +93,9 @@ Encrypted backups ask for the passphrase on the terminal itself (`/dev/tty`), so
 ```text
 What to back up
 Everything is selected. space toggles · a toggles all · enter continues
-> [x] ai         Claude, Codex, Cursor, Gemini… skills, agents, MCP, plugins  🔑 credentials — left out unless --encrypt
+> [x] ai         Claude, Codex, Cursor, Gemini… skills, agents, MCP, plugins  🔑 credentials, left out unless --encrypt
   [x] apps       Karabiner, Hammerspoon, window managers…
-  [x] build      Maven and Gradle settings  🔑 credentials — left out unless --encrypt
+  [x] build      Maven and Gradle settings  🔑 credentials, left out unless --encrypt
   [x] bun        bun config
   …
 ```
@@ -103,7 +103,7 @@ Everything is selected. space toggles · a toggles all · enter continues
 ### A file that differs
 
 ```text
-Conflict — ~/.zshrc
+Conflict: ~/.zshrc
 the live file differs from the backup
 > Overwrite with backup
   Skip (keep live file)
@@ -125,7 +125,7 @@ Refusing to continue without a terminal to confirm on.
 Re-run with --yes if you meant it, or --dry-run to see what would change.
 ```
 
-A pipe cannot answer a question, and silence is not consent. The exception is writing *new* files: `restore` off a terminal writes files that do not exist yet, and keeps any that differ.
+A pipe cannot answer a question, so dothaven never takes the lack of an answer as a yes. The exception is writing *new* files: `restore` off a terminal writes files that do not exist yet, and keeps any that differ.
 
 - **Passphrases** come from `DOTHAVEN_PASSPHRASE` when it is set.
 
