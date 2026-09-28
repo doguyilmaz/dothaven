@@ -53,21 +53,39 @@ func ScanContent(path, content string) Result { return scanContent(path, content
 func ScanContentFull(path, content string) Result { return scanContent(path, content, 0) }
 
 func scanContent(path, content string, maxLine int) Result {
-	pats := Patterns() // hoisted out of the line loop
 	// Binary content is matched only against key-material rules; see looksBinary.
 	binary := looksBinary(content)
+	// Only the rules whose required text appears somewhere in the file can
+	// match any of its lines.
+	lower := foldLower(content)
+	var pats []*Pattern
+	all := Patterns()
+	for i := range all {
+		p := &all[i]
+		if (!binary || p.Action == Skip) && (noPrefilter || p.possible(content, lower)) {
+			pats = append(pats, p)
+		}
+	}
+	if len(pats) == 0 {
+		return Result{Path: path, Action: Include}
+	}
 	var findings []Finding
 	action := Include
 	var redact []Pattern
 	seenRedact := map[string]bool{}
 	for i, line := range strings.Split(content, "\n") {
 		if maxLine > 0 && len(line) > maxLine {
-			continue // minified/data line — not where secrets live, and costly to scan
+			continue // minified/data line: not where secrets live, and costly to scan
 		}
 		lineStart := len(findings)
 		var spans [][2]int // where each of this line's findings matched
-		for _, p := range pats {
-			if binary && p.Action != Skip {
+		lowerLine := ""
+		for _, pp := range pats {
+			p := *pp
+			if p.fold && lowerLine == "" {
+				lowerLine = foldLower(line)
+			}
+			if !noPrefilter && !p.possible(line, lowerLine) {
 				continue
 			}
 			loc := p.re.FindStringIndex(line)
@@ -198,6 +216,20 @@ func ScanDir(ctx context.Context, dir string, progress *int64, prune bool) ([]Re
 		return out, walkErr
 	}
 	return out, nil
+}
+
+// noPrefilter runs every rule on every line, for the test that proves the
+// prefilter never changes a result.
+var noPrefilter = false
+
+// foldLower lowercases s the way a case-insensitive regexp compares it: Go's
+// (?i) also equates the long s (U+017F) with s, which ToLower leaves alone.
+func foldLower(s string) string {
+	l := strings.ToLower(s)
+	if strings.Contains(l, "\u017f") {
+		l = strings.ReplaceAll(l, "\u017f", "s")
+	}
+	return l
 }
 
 func anyReal(p Pattern, line string) bool { return firstReal(p, line) != "" }

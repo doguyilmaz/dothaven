@@ -2,7 +2,10 @@
 // snapshot sections.
 package scan
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 type Severity string
 
@@ -36,6 +39,35 @@ type Pattern struct {
 	// shape also fits things that are not secret (127.0.0.1 is an IP address
 	// and tells nobody anything).
 	check func(match string) bool
+	// need lists text every match contains (lowercase when fold is set, for a
+	// case-insensitive rule). A file or line with none of it cannot match, so
+	// the regex is not run: most config files hold no secret, and running
+	// every rule over every line made a large readable backup take minutes.
+	// pre is the same test for a rule no single piece of text captures.
+	need []string
+	fold bool
+	pre  func(s string) bool
+}
+
+// possible reports whether s could hold a match. lower is s lowercased, for
+// case-insensitive rules.
+func (p *Pattern) possible(s, lower string) bool {
+	if p.pre != nil {
+		return p.pre(s)
+	}
+	if len(p.need) == 0 {
+		return true
+	}
+	hay := s
+	if p.fold {
+		hay = lower
+	}
+	for _, n := range p.need {
+		if strings.Contains(hay, n) {
+			return true
+		}
+	}
+	return false
 }
 
 // real reports whether a match survives the rule's own vetting.
