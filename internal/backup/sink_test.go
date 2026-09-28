@@ -460,3 +460,27 @@ func TestExtractOnlyWritesWhatWasAskedFor(t *testing.T) {
 		t.Errorf("wrote %v, want only the inventory", written)
 	}
 }
+
+// A registry folder (not an include) holding a link into a credential folder
+// does not carry the credential into a plaintext backup either.
+func TestRegistryDirLinkIntoCredentialRoot(t *testing.T) {
+	home, dest := t.TempDir(), t.TempDir()
+	mustWrite(t, filepath.Join(home, ".aws", "credentials"), "[default]\nopaque = zzzzzzzz\n")
+	mustWrite(t, filepath.Join(home, ".config", "tool", "settings.json"), "{}\n")
+	if err := os.Symlink(filepath.Join(home, ".aws", "credentials"), filepath.Join(home, ".config", "tool", "creds")); err != nil {
+		t.Fatal(err)
+	}
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".aws", "credentials"), Dest: "cloud/aws/credentials", Category: "cloud", Sensitivity: registry.High},
+		{Src: filepath.Join(home, ".config", "tool"), Dest: "apps/tool", Category: "apps", IsDir: true, Sensitivity: registry.Low},
+	}
+	if _, err := Run(targets, dest, Options{Redact: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "apps", "tool", "creds")); !os.IsNotExist(err) {
+		t.Error("credentials reached a plaintext backup through a link in a registry folder")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "apps", "tool", "settings.json")); err != nil {
+		t.Error("the folder's own config should still be carried")
+	}
+}

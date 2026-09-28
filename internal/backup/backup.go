@@ -234,7 +234,10 @@ func reachesGuarded(t registry.BackupTarget, file string, roots []string) bool {
 			if !under(file, r) {
 				continue
 			}
-			if t.Category == registry.ExtraCategory || (src != r && under(r, src)) {
+			// Reached from outside the root: an include, an entry wrapping
+			// it, or (resolved) any entry whose files are links into it. Only
+			// an entry that is itself inside the root knows how to treat it.
+			if t.Category == registry.ExtraCategory || !under(src, r) {
 				return true
 			}
 		}
