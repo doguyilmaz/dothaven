@@ -186,8 +186,12 @@ func computeStatus(d SectionDiff) Status {
 
 // FormatOptions controls how a diff is rendered.
 type FormatOptions struct {
-	LeftLabel   string
-	RightLabel  string
+	LeftLabel  string
+	RightLabel string
+	// Timeline reads left as older and right as newer: what only the newer
+	// one has is marked + (added since), what only the older one has - .
+	// Changes still read left → right, old → new.
+	Timeline    bool
 	Color       bool
 	ChangesOnly bool // skip equal sections and the dim "=" common lines
 }
@@ -206,6 +210,13 @@ func (d SnapshotDiff) Format(o FormatOptions) string {
 	if o.Color {
 		green, red, yellow, dim, reset = "\x1b[32m", "\x1b[31m", "\x1b[33m", "\x1b[2m", "\x1b[0m"
 	}
+	// Left-only is "+" by default (what left has that right lacks — the
+	// parity reading); on a timeline it is what went away.
+	lp, rp := "+", "-"
+	if o.Timeline {
+		lp, rp = "-", "+"
+		green, red = red, green
+	}
 
 	var lines []string
 	for _, name := range sortedDiffKeys(d) {
@@ -215,17 +226,17 @@ func (d SnapshotDiff) Format(o FormatOptions) string {
 		}
 		switch s.Status {
 		case StatusAdded:
-			lines = append(lines, fmt.Sprintf("%s+ [%s]%s  (only in %s)", green, name, reset, left))
+			lines = append(lines, fmt.Sprintf("%s%s [%s]%s  (only in %s)", green, lp, name, reset, left))
 		case StatusRemoved:
-			lines = append(lines, fmt.Sprintf("%s- [%s]%s  (only in %s)", red, name, reset, right))
+			lines = append(lines, fmt.Sprintf("%s%s [%s]%s  (only in %s)", red, rp, name, reset, right))
 		default:
 			lines = append(lines, fmt.Sprintf("[%s]", name))
 		}
 		for _, it := range s.Items.Added {
-			lines = append(lines, fmt.Sprintf("  %s+ %s%s  (only in %s)", green, it, reset, left))
+			lines = append(lines, fmt.Sprintf("  %s%s %s%s  (only in %s)", green, lp, it, reset, left))
 		}
 		for _, it := range s.Items.Removed {
-			lines = append(lines, fmt.Sprintf("  %s- %s%s  (only in %s)", red, it, reset, right))
+			lines = append(lines, fmt.Sprintf("  %s%s %s%s  (only in %s)", red, rp, it, reset, right))
 		}
 		if !o.ChangesOnly {
 			for _, it := range s.Items.Common {
@@ -233,10 +244,10 @@ func (d SnapshotDiff) Format(o FormatOptions) string {
 			}
 		}
 		for _, k := range sortedKeys(s.Pairs.Added) {
-			lines = append(lines, fmt.Sprintf("  %s+ %s = %s%s  (only in %s)", green, k, s.Pairs.Added[k], reset, left))
+			lines = append(lines, fmt.Sprintf("  %s%s %s = %s%s  (only in %s)", green, lp, k, s.Pairs.Added[k], reset, left))
 		}
 		for _, k := range sortedKeys(s.Pairs.Removed) {
-			lines = append(lines, fmt.Sprintf("  %s- %s = %s%s  (only in %s)", red, k, s.Pairs.Removed[k], reset, right))
+			lines = append(lines, fmt.Sprintf("  %s%s %s = %s%s  (only in %s)", red, rp, k, s.Pairs.Removed[k], reset, right))
 		}
 		for _, k := range sortedChangeKeys(s.Pairs.Changed) {
 			c := s.Pairs.Changed[k]
@@ -252,9 +263,9 @@ func (d SnapshotDiff) Format(o FormatOptions) string {
 			case s.Content.Left != nil && s.Content.Right != nil:
 				lines = append(lines, fmt.Sprintf("  %s~ content changed%s", yellow, reset))
 			case s.Content.Left != nil:
-				lines = append(lines, fmt.Sprintf("  %s+ content%s  (only in %s)", green, reset, left))
+				lines = append(lines, fmt.Sprintf("  %s%s content%s  (only in %s)", green, lp, reset, left))
 			default:
-				lines = append(lines, fmt.Sprintf("  %s- content%s  (only in %s)", red, reset, right))
+				lines = append(lines, fmt.Sprintf("  %s%s content%s  (only in %s)", red, rp, reset, right))
 			}
 		}
 	}

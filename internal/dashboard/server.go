@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,12 +43,16 @@ type Source func(ctx context.Context) (any, error)
 
 // Server is a running dashboard.
 type Server struct {
-	URL   string // with the one-time token, to open in a browser
-	ctx   context.Context
-	token string
-	addr  string
-	srv   *http.Server
-	ln    net.Listener
+	URL string // with the one-time link key, to open in a browser
+	ctx context.Context
+	// linkKey is in the printed link and works once; session is what the
+	// browser that used it gets as a cookie. Separate, so a link seen later
+	// (scrollback, browser history, a screen share) opens nothing.
+	linkKey, session string
+	linkUsed         atomic.Bool
+	addr             string
+	srv              *http.Server
+	ln               net.Listener
 
 	mu    sync.Mutex
 	cache map[string]cached
@@ -78,20 +83,21 @@ func Start(ctx context.Context, sources map[string]Source) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := make([]byte, 24)
+	b := make([]byte, 48)
 	if _, err := rand.Read(b); err != nil {
 		ln.Close()
 		return nil, err
 	}
 	s := &Server{
-		ctx:   ctx,
-		token: hex.EncodeToString(b),
-		addr:  ln.Addr().String(),
-		ln:    ln,
-		cache: map[string]cached{},
-		calls: map[string]*call{},
+		ctx:     ctx,
+		linkKey: hex.EncodeToString(b[:24]),
+		session: hex.EncodeToString(b[24:]),
+		addr:    ln.Addr().String(),
+		ln:      ln,
+		cache:   map[string]cached{},
+		calls:   map[string]*call{},
 	}
-	s.URL = "http://" + s.addr + "/?k=" + s.token
+	s.URL = "http://" + s.addr + "/?k=" + s.linkKey
 
 	static, _ := fs.Sub(web, "web")
 	mux := http.NewServeMux()
@@ -172,17 +178,27 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(w, "read-only", http.StatusMethodNotAllowed)
 			return
 		}
+		hasSession := false
+		if c, err := r.Cookie(cookieName); err == nil && equal(c.Value, s.session) {
+			hasSession = true
+		}
 		if k := r.URL.Query().Get("k"); k != "" {
-			if !s.valid(k) {
+			switch {
+			case !equal(k, s.linkKey):
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
+			case hasSession:
+				// The browser that used the link, opening it again.
+			case !s.linkUsed.CompareAndSwap(false, true):
+				http.Error(w, "This link has been used already. Open the dashboard in the browser that first opened it, or run `dothaven ui` again for a new link.", http.StatusForbidden)
+				return
+			default:
+				http.SetCookie(w, &http.Cookie{Name: cookieName, Value: s.session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 			}
-			http.SetCookie(w, &http.Cookie{Name: cookieName, Value: s.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		c, err := r.Cookie(cookieName)
-		if err != nil || !s.valid(c.Value) {
+		if !hasSession {
 			http.Error(w, "Open the link dothaven printed (it carries a one-time key).", http.StatusForbidden)
 			return
 		}
@@ -190,8 +206,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) valid(k string) bool {
-	return subtle.ConstantTimeCompare([]byte(k), []byte(s.token)) == 1
+func equal(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 // get returns a panel's JSON, from cache when fresh, and never runs the same

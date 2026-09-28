@@ -235,10 +235,14 @@ func backupsIn(dir string) []foundBackup {
 
 // shortHome writes a path under home as ~/…, which is how people read them.
 func shortHome(env *sys.OS, p string) string {
-	if rel, err := filepath.Rel(env.Home(), p); err == nil && !strings.HasPrefix(rel, "..") {
-		return "~/" + rel
+	rel, err := filepath.Rel(env.Home(), p)
+	switch {
+	case err != nil || strings.HasPrefix(rel, ".."):
+		return p
+	case rel == ".":
+		return "~"
 	}
-	return p
+	return "~/" + rel
 }
 
 // pickBackup asks which backup to use. It lists what it found and always

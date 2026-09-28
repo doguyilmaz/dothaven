@@ -16,6 +16,7 @@ func newCompareCmd(env *sys.OS) *cobra.Command {
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			var files []string
+			timeline := false
 			if len(args) >= 2 {
 				files = args[:2]
 				for _, f := range files {
@@ -30,8 +31,10 @@ func newCompareCmd(env *sys.OS) *cobra.Command {
 					fmt.Println("Run `dothaven collect` on each machine, or: dothaven compare <a.json> <b.json>")
 					return nil
 				}
-				// Oldest on the left, so "+" reads as "added since".
+				// Oldest on the left, so a change reads old → new; the
+				// timeline format marks what the newer one added with +.
 				files[0], files[1] = files[1], files[0]
+				timeline = true
 			}
 			left, err := parseSnapshotFile(env, files[0])
 			if err != nil {
@@ -46,6 +49,7 @@ func newCompareCmd(env *sys.OS) *cobra.Command {
 				RightLabel:  label(files[1]),
 				Color:       stdoutIsTTY(),
 				ChangesOnly: true,
+				Timeline:    timeline,
 			})
 			if strings.TrimSpace(out) == "" {
 				fmt.Println("No differences found.")

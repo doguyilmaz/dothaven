@@ -64,6 +64,18 @@ func TestKeyExchangeAndGuards(t *testing.T) {
 	if session == nil {
 		t.Fatal("no session cookie")
 	}
+	// The link is spent: another browser (no session) cannot use it again;
+	// the one that used it can reopen it.
+	if resp, _ := http.Get(s.URL); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("a used link opened for another browser: %d", resp.StatusCode)
+	}
+	if resp, _ := c.Get(s.URL); resp.StatusCode != 200 {
+		t.Errorf("reopening the link in the same browser: %d", resp.StatusCode)
+	}
+	// The session is not the link key: the key from the URL is no cookie.
+	if session.Value == u.Query().Get("k") {
+		t.Error("the cookie is the link key")
+	}
 	resp, _ = c.Get(base + "/api/summary")
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 || !strings.Contains(string(body), `"files":3`) {

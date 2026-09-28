@@ -159,18 +159,22 @@ func newScanCmd(env *sys.OS) *cobra.Command {
 	return c
 }
 
-func newSecurityCmd(_ *sys.OS) *cobra.Command {
+func newSecurityCmd(env *sys.OS) *cobra.Command {
 	var out string
 	c := &cobra.Command{
 		Use:   "security [path]",
-		Short: "Write a Markdown security report (default SECURITY.md)",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Write a Markdown report of the secrets in your config (default SECURITY.md)",
+		Long: "The same scan as `dothaven scan` — your tracked config, or the path given —\n" +
+			"written as a Markdown report. It names files, rules and line numbers, never values.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			target := "."
+			var results []scan.Result
+			var err error
 			if len(args) > 0 {
-				target = args[0]
+				results, err = scanTarget(c.Context(), args[0])
+			} else {
+				results, err = scanTracked(c.Context(), env, false)
 			}
-			results, err := scanTarget(c.Context(), target)
 			if errors.Is(err, context.Canceled) {
 				fmt.Fprintln(os.Stderr, "scan cancelled.")
 				return ExitError{Code: 130} // aborted ≠ clean; surface 130 for scripts/CI

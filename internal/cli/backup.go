@@ -171,7 +171,7 @@ func newBackupCmd(env *sys.OS) *cobra.Command {
 	c.Flags().BoolVar(&o.archive, "archive", false, "one .tar.gz file instead of a folder (still redacted, not encrypted)")
 	c.Flags().BoolVar(&o.noRedact, "no-redact", false, "keep raw secret values in a plaintext backup (prefer --encrypt)")
 	c.Flags().StringVarP(&o.output, "output", "o", "", "where to write it, e.g. a USB drive (default: ~/.local/share/dothaven)")
-	c.Flags().StringSliceVar(&o.only, "only", nil, "only these categories (comma-separated; see `dothaven backup --help`)")
+	c.Flags().StringSliceVar(&o.only, "only", nil, "only these categories, comma-separated (listed in the help above)")
 	c.Flags().StringSliceVar(&o.skip, "skip", nil, "skip these categories, e.g. --skip inventory,macos")
 	return c
 }

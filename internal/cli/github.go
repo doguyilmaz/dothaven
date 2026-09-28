@@ -434,7 +434,7 @@ func newGitHubPushCmd(env *sys.OS) *cobra.Command {
 			return githubPush(cmd, env, pushOpts{mode: mode, repo: repo, machine: machine, only: only, skip: skip, yes: assumeYes})
 		},
 	}
-	c.Flags().StringVar(&mode, "mode", "", "encrypted (default), split, or plain — see `dothaven github --help`")
+	c.Flags().StringVar(&mode, "mode", "", "encrypted (default), split, or plain — explained in dothaven github --help")
 	c.Flags().StringVar(&repo, "repo", "", "owner/name (default: <you>/"+defaultRepoName+")")
 	c.Flags().StringVar(&machine, "machine", "", "folder name for this machine in the repo (default: hostname)")
 	c.Flags().StringSliceVar(&only, "only", nil, "only these categories")

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/doguyilmaz/dothaven/internal/registry"
 	"github.com/doguyilmaz/dothaven/internal/sys"
@@ -40,8 +41,19 @@ func allEntries(env *sys.OS) []registry.Entry {
 		fi, err := os.Stat(p)
 		return err == nil && fi.IsDir()
 	}
-	return append(append([]registry.Entry(nil), registry.Entries...),
-		registry.IncludeEntries(loadIncludes(env).Paths, isDir, env.Home())...)
+	entries := append([]registry.Entry(nil), registry.Entries...)
+	// The include list follows XDG_CONFIG_HOME; the registry names the
+	// default place. Point its entry at wherever the list really is, so a
+	// relocated list is still carried (a copy: the registry is shared).
+	if rel, err := filepath.Rel(env.Home(), includePath(env)); err == nil && !strings.HasPrefix(rel, "..") {
+		for i := range entries {
+			if entries[i].ID == "dothaven.include" {
+				p := "~/" + filepath.ToSlash(rel)
+				entries[i].Paths = map[string]string{"darwin": p, "linux": p}
+			}
+		}
+	}
+	return append(entries, registry.IncludeEntries(loadIncludes(env).Paths, isDir, env.Home())...)
 }
 
 // uncovered lists what looks like config and nothing covers yet (declined

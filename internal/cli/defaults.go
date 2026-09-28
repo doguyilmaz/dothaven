@@ -49,9 +49,17 @@ func defaultsHasKeys(plist string) bool { return strings.Contains(plist, "<key>"
 func newDefaultsCmd(env *sys.OS) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "defaults",
-		Short: "Capture and restore curated macOS app preferences",
-		Long:  "Exports a curated set of macOS app preference domains (iTerm2, Terminal,\nwindow managers, …) to plist files, and re-imports them on a new machine via\n`defaults import` — the safe round-trip for cfprefsd-managed prefs. System\ndomains (Dock/Finder/keyboard) are out of scope for now (host-specific keys).",
-		Args:  cobra.NoArgs,
+		Short: "Capture and restore macOS settings and app preferences",
+		Long: "Carries your Mac's settings to a new one, two ways:\n\n" +
+			"  • system settings, key by key: trackpad and scrolling, key repeat, Dock (and\n" +
+			"    its apps), hot corners, Finder, screenshots, menu bar, keyboard shortcuts,\n" +
+			"    keyboard layouts and language order. Keys that only make sense on the old\n" +
+			"    Mac (display and hardware IDs, window positions) are left out.\n" +
+			"  • a curated set of app domains (iTerm2, window managers, …) as whole plists.\n\n" +
+			"Every backup includes them. `import` shows what is already set, lets you pick\n" +
+			"which domains to write, and restarts the Dock/Finder/menu bar so changes show\n" +
+			"at once. Other apps' preferences are captured too, and written with --all.",
+		Args: cobra.NoArgs,
 	}
 	c.AddCommand(newDefaultsExportCmd(env), newDefaultsImportCmd(env))
 	return c
