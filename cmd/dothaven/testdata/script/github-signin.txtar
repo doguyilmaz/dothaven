@@ -1,0 +1,35 @@
+# A build with a sign-in app never picks up a GitHub CLI login by itself:
+# `login --gh` opts in, and logout opts out again. Without a sign-in app, the
+# gh login is the way in.
+env DOTHAVEN_GITHUB_CLIENT_ID=oauth-client
+chmod 755 bin/gh
+env PATH=$WORK/bin${:}$PATH
+
+exec dothaven github status
+stdout 'Not signed in to GitHub'
+! stdout 'Signed in as'
+
+exec dothaven github login --gh
+stdout 'now uses your GitHub CLI login'
+exec dothaven github status
+stdout 'Signed in as tester .*GitHub CLI'
+
+exec dothaven github logout
+exec dothaven github status
+stdout 'Not signed in to GitHub'
+
+env DOTHAVEN_GITHUB_CLIENT_ID=
+exec dothaven github status
+stdout 'Signed in as tester .*GitHub CLI'
+
+# gh signed out: --gh says what to do.
+env GH_FAKE_SIGNED_OUT=1
+env DOTHAVEN_GITHUB_CLIENT_ID=oauth-client
+! exec dothaven github login --gh
+stdout 'gh auth login'
+
+-- bin/gh --
+#!/bin/sh
+[ -n "$GH_FAKE_SIGNED_OUT" ] && exit 1
+[ "$1 $2" = "auth token" ] && echo test-token && exit 0
+exit 1

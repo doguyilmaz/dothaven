@@ -462,17 +462,18 @@ Pushes this machine's backup to a private repository on your GitHub account (cre
 
 #### github login
 
-Sign in to GitHub (browser, gh CLI, or a token on stdin).
+Sign in to GitHub (browser, a token on stdin, or your gh login).
 
 ```text
 dothaven github login [flags]
 ```
 
-Opens github.com in your browser with a one-time code when your build includes its sign-in app; approve it and the terminal carries on by itself. The token is kept in your system keychain. If you are signed in to the GitHub CLI (`gh`), dothaven uses that login and stores nothing of its own. Most locked down: a fine-grained token limited to the one repository (Contents: read & write, Administration: read & write to create it).
+Opens github.com in your browser with a one-time code. Approve it there and the terminal carries on by itself. The token is kept in your system keychain. Most locked down: a fine-grained token limited to one repository (Contents: read and write; Administration: read and write to create it).
 
 | Flag | Meaning |
 | --- | --- |
 | `--with-token` | Read a token from stdin instead of opening the browser |
+| `--gh` | Use the GitHub CLI's login instead, and store no token of dothaven's own |
 
 ```bash
 dothaven github login --with-token < token.txt

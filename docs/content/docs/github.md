@@ -21,10 +21,10 @@ dothaven restore github
 dothaven github login
 ```
 
-There are three ways to sign in. Without `--with-token`, `login` tries the first, then the second:
+There are three ways to sign in:
 
-1. **Browser sign-in.** When your build of dothaven includes its sign-in app, `login` shows a one-time code, copies it to your clipboard and opens github.com. Approve it there and the terminal carries on by itself. Nothing else to set up: the first push creates your private repository. The permission this needs (GitHub's `repo`) reaches all your repositories, as the GitHub CLI's login does; for one repository only, use a token (option 3).
-2. **The GitHub CLI.** Without a built-in app, dothaven uses your `gh` login (`gh auth login`), and stores nothing of its own.
+1. **Browser sign-in** (the usual one). `login` shows a one-time code, copies it to your clipboard and opens github.com. Approve it there and the terminal carries on by itself. Nothing else to set up: the first push creates your private repository. The permission this needs (GitHub's `repo`) reaches all your repositories, as the GitHub CLI's login does. For one repository only, use a token (option 3).
+2. **Your GitHub CLI login**, only if you ask for it: `dothaven github login --gh`. dothaven then stores no token of its own. A build without a sign-in app uses the `gh` login without asking, since it has no other way in.
 3. **A token on stdin**, the most locked-down option:
 
    ```bash
@@ -47,7 +47,7 @@ A token dothaven stores (from the browser or `--with-token`) goes to your system
 
 The file fallback works, but `dothaven doctor` flags it with a warning, because a keyring is safer. Secrets are passed to the keychain on stdin, never on a command line where other processes could read them.
 
-When looking for a token, dothaven checks, in order: the `DOTHAVEN_GITHUB_TOKEN` environment variable, its own stored token, then `gh auth token`.
+When looking for a token, dothaven checks, in order: the `DOTHAVEN_GITHUB_TOKEN` environment variable, its own stored token, then `gh auth token` if you chose `--gh`. `dothaven github logout` forgets the token and the `--gh` choice.
 
 ### Staying signed in
 

@@ -57,6 +57,10 @@ type githubConfig struct {
 	Repo   string `json:"repo,omitempty"`
 	Branch string `json:"branch,omitempty"`
 	Mode   string `json:"mode,omitempty"`
+	// UseGH is set by `github login --gh`: sign in with the GitHub CLI's
+	// login instead of dothaven's own. Never assumed when the build has a
+	// sign-in app, so a gh login is not picked up without asking.
+	UseGH bool `json:"use_gh,omitempty"`
 }
 
 func githubConfigPath(env *sys.OS) string { return filepath.Join(configDir(env), "github.json") }
@@ -101,12 +105,24 @@ func resolveToken(ctx context.Context, env *sys.OS, renew bool) (string, string,
 		t, err = renewToken(ctx, st, t)
 		return t.Access, st.Name(), err
 	}
-	if _, err := exec.LookPath("gh"); err == nil {
-		if t, err := runShell(ctx, "gh", "auth", "token"); err == nil && strings.TrimSpace(t) != "" {
-			return strings.TrimSpace(t), "the GitHub CLI (gh)", nil
+	if github.ClientIDFromEnv() == "" || loadGitHubConfig(env).UseGH {
+		if t := ghToken(ctx); t != "" {
+			return t, "the GitHub CLI (gh)", nil
 		}
 	}
 	return "", "", nil
+}
+
+// ghToken is the GitHub CLI's login, or "".
+func ghToken(ctx context.Context) string {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return ""
+	}
+	t, err := runShell(ctx, "gh", "auth", "token")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(t)
 }
 
 var (
@@ -239,25 +255,48 @@ func newGitHubCmd(env *sys.OS) *cobra.Command {
 }
 
 func newGitHubLoginCmd(env *sys.OS) *cobra.Command {
-	var withToken bool
+	var withToken, useGH bool
 	c := &cobra.Command{
 		Use:   "login",
-		Short: "Sign in to GitHub (browser, gh CLI, or a token on stdin)",
-		Long: "Opens github.com in your browser with a one-time code; approve it and the\n" +
-			"terminal carries on by itself. The token is kept in your system keychain.\n\n" +
-			"Already signed in to the GitHub CLI (gh)? dothaven uses that login and stores\n" +
-			"nothing of its own.\n\n" +
-			"Most locked down: a fine-grained token that can only touch the one repository\n" +
-			"(Contents: read & write, Administration: read & write to create it):\n" +
+		Short: "Sign in to GitHub (browser, a token on stdin, or your gh login)",
+		Long: "Opens github.com in your browser with a one-time code. Approve it there and\n" +
+			"the terminal carries on by itself. The token is kept in your system keychain.\n\n" +
+			"To use the GitHub CLI's login instead, and store nothing of dothaven's own:\n" +
+			"  dothaven github login --gh\n\n" +
+			"Most locked down: a fine-grained token that can only touch one repository\n" +
+			"(Contents: read and write; Administration: read and write to create it):\n" +
 			"  dothaven github login --with-token < token.txt",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if useGH {
+				return githubLoginGH(cmd.Context(), env)
+			}
 			return githubLogin(cmd.Context(), env, withToken)
 		},
 	}
 	c.Flags().BoolVar(&withToken, "with-token", false, "read a token from stdin instead of opening the browser")
+	c.Flags().BoolVar(&useGH, "gh", false, "use the GitHub CLI's login instead of signing in")
+	c.MarkFlagsMutuallyExclusive("with-token", "gh")
 	return c
+}
+
+// githubLoginGH switches to the GitHub CLI's login, on request only.
+func githubLoginGH(ctx context.Context, env *sys.OS) error {
+	if ghToken(ctx) == "" {
+		fmt.Println("The GitHub CLI is not signed in. Sign in there first:")
+		fmt.Printf("  %s\n", kbd("gh auth login"))
+		return ExitError{Code: 1}
+	}
+	cfg := loadGitHubConfig(env)
+	cfg.UseGH = true
+	if err := saveGitHubConfig(env, cfg); err != nil {
+		return err
+	}
+	_ = secrets(env).Delete(accountToken)
+	fmt.Printf("%s dothaven now uses your GitHub CLI login and stores no token of its own.\n", good("✓"))
+	fmt.Println(dim("  To sign in with dothaven itself again: dothaven github logout, then dothaven github login"))
+	return nil
 }
 
 func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
@@ -273,6 +312,10 @@ func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
 		}
 		if err := st.Set(accountToken, encodeToken(tok)); err != nil {
 			return fmt.Errorf("could not save the token: %w", err)
+		}
+		if cfg := loadGitHubConfig(env); cfg.UseGH {
+			cfg.UseGH = false
+			_ = saveGitHubConfig(env, cfg)
 		}
 		fmt.Printf("%s Signed in as %s. Token kept in %s.\n", good("✓"), bold(me.Login), st.Name())
 		if github.IsAppToken(tok.Access) {
@@ -298,11 +341,11 @@ func githubLogin(ctx context.Context, env *sys.OS, withToken bool) error {
 	clientID := github.ClientIDFromEnv()
 	if clientID == "" {
 		if _, err := exec.LookPath("gh"); err == nil {
-			if t, err := runShell(ctx, "gh", "auth", "token"); err == nil && strings.TrimSpace(t) != "" {
-				fmt.Printf("%s Using your GitHub CLI login — dothaven stores nothing of its own.\n", good("✓"))
+			if ghToken(ctx) != "" {
+				fmt.Printf("%s Using your GitHub CLI login. dothaven stores nothing of its own.\n", good("✓"))
 				return nil
 			}
-			fmt.Println("Sign in with the GitHub CLI first — dothaven will use that login:")
+			fmt.Println("This build has no sign-in app. Sign in with the GitHub CLI, and dothaven uses that:")
 			fmt.Printf("  %s\n", kbd("gh auth login"))
 			return ExitError{Code: 1}
 		}
@@ -374,6 +417,10 @@ func newGitHubLogoutCmd(env *sys.OS) *cobra.Command {
 			st := secrets(env)
 			_ = st.Delete(accountToken)
 			_ = st.Delete(accountPassphrase)
+			if cfg := loadGitHubConfig(env); cfg.UseGH {
+				cfg.UseGH = false
+				_ = saveGitHubConfig(env, cfg)
+			}
 			fmt.Printf("%s Removed dothaven's GitHub token and remembered passphrase from %s.\n", good("✓"), st.Name())
 			if _, src, _ := resolveToken(cmd.Context(), env, false); src != "" {
 				fmt.Printf("  %s still signed in through %s.\n", dim("•"), src)
@@ -445,10 +492,19 @@ func githubStatus(ctx context.Context, env *sys.OS) error {
 		repo = me.Login + "/" + defaultRepoName
 	}
 	fmt.Printf("%s %s %s\n", bold("Signed in as"), me.Login, dim("(via "+src+")"))
+	by := me.Login
+	if slug := github.AppSlugFromEnv(); slug != "" {
+		if bot, err := c.Bot(ctx, slug); err == nil {
+			by = bot.Name + ", committed by " + me.Login
+		} else {
+			by = me.Login + " " + warn("(GitHub has no bot "+slug+"[bot]; check the app's name)")
+		}
+	}
+	fmt.Printf("%s authored by %s\n", bold("Commits:"), by)
 	if g, ok := loadGitSigning(ctx); ok {
-		fmt.Printf("%s %s %s\n", bold("Commits:"), "signed with "+g.describe(), dim("(from your git config)"))
+		fmt.Printf("         signed with %s %s\n", g.describe(), dim("(from your git config)"))
 	} else {
-		fmt.Printf("%s %s\n", bold("Commits:"), dim("unsigned; for GitHub's Verified badge, have git sign commits (GitHub sync docs → Verified commits)"))
+		fmt.Printf("         %s\n", dim("unsigned. To get GitHub's Verified badge, have git sign commits (see Verified commits in the GitHub docs)."))
 	}
 	r, err := c.GetRepo(ctx, repo)
 	if errors.Is(err, github.ErrNotFound) {

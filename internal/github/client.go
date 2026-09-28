@@ -333,11 +333,12 @@ func (c *Client) GetRepo(ctx context.Context, fullName string) (Repo, error) {
 	return r, err
 }
 
-// CreatePrivateRepo creates a private repository under the signed-in user,
-// with an initial commit so it has a branch to write to.
+// CreatePrivateRepo creates an empty private repository under the signed-in
+// user. Empty on purpose: GitHub's own first commit would name the account as
+// its author; dothaven's first push makes the first commit instead.
 func (c *Client) CreatePrivateRepo(ctx context.Context, name, description string) (Repo, error) {
 	b, err := jsonBody(map[string]any{
-		"name": name, "description": description, "private": true, "auto_init": true,
+		"name": name, "description": description, "private": true, "auto_init": false,
 		"has_issues": false, "has_projects": false, "has_wiki": false,
 	})
 	if err != nil {

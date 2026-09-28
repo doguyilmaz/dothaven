@@ -26,7 +26,8 @@ exists .config/dothaven/github.json
 # email. With no GitHub App in this build, it is author and committer both.
 signedby 'tester <1001+tester@users.noreply.github.com>' 'tester <1001+tester@users.noreply.github.com>'
 exec dothaven github status
-stdout 'Commits: unsigned'
+stdout 'Commits: authored by tester'
+stdout 'unsigned'
 
 # Same machine, nothing changed: no second copy in the history.
 exec dothaven github push --only shell,ssh --machine oldmac
@@ -114,7 +115,7 @@ stdout 'Already up to date'
 [exec:ssh-keygen] [exec:git] exec git config --global gpg.ssh.program ssh-keygen
 [exec:ssh-keygen] [exec:git] exec git config --global user.signingkey $WORK/signkey.pub
 [exec:ssh-keygen] [exec:git] exec dothaven github status
-[exec:ssh-keygen] [exec:git] stdout 'Commits: signed with SSH key .*signkey.pub'
+[exec:ssh-keygen] [exec:git] stdout 'signed with SSH key .*signkey.pub'
 [exec:ssh-keygen] [exec:git] exec dothaven github push --mode plain --only shell --machine signed
 [exec:ssh-keygen] [exec:git] stdout 'Pushed 1 file as machines/signed .*Verified'
 [exec:ssh-keygen] [exec:git] signedby 'tester <1001+tester@users.noreply.github.com>' 'tester <1001+tester@users.noreply.github.com>' signed

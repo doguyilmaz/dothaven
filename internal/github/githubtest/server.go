@@ -247,8 +247,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"login": s.AppSlug + "[bot]", "id": BotID, "type": "Bot"})
 	case r.URL.Path == "/user/repos" && r.Method == http.MethodPost:
 		var req struct {
-			Name    string `json:"name"`
-			Private bool   `json:"private"`
+			Name     string `json:"name"`
+			Private  bool   `json:"private"`
+			AutoInit bool   `json:"auto_init"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		full := s.Login + "/" + req.Name
@@ -256,7 +257,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 422, map[string]string{"message": "name already exists on this account"})
 			return
 		}
-		s.repos[full] = s.newRepo(req.Private)
+		if req.AutoInit {
+			s.repos[full] = s.newRepo(req.Private)
+		} else {
+			s.repos[full] = &repo{private: req.Private, refs: map[string]string{}}
+		}
 		writeJSON(w, 201, s.repoJSON(full))
 	case len(parts) >= 3 && parts[0] == "repos":
 		full := parts[1] + "/" + parts[2]
