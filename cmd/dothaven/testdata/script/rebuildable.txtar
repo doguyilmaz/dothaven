@@ -1,0 +1,23 @@
+# Dependencies, caches and build output inside a backed-up folder are left
+# out, listed, and named in the MANIFEST; the config beside them is carried.
+exec dothaven backup -o out --only ai
+stdout '3 folders left out, rebuilt on the new machine \(build output, cache, dependencies\)'
+stdout 'ai/claude/skills/pdf/node_modules'
+globpath DIR out/backup-*
+exists $DIR/ai/claude/skills/pdf/SKILL.md
+exists $DIR/ai/claude/skills/pdf/package.json
+! exists $DIR/ai/claude/skills/pdf/node_modules
+! exists $DIR/ai/claude/skills/pdf/dist
+! exists $DIR/ai/claude/skills/pdf/__pycache__
+grep 'ai/claude/skills/pdf/node_modules \(dependencies\)' $DIR/MANIFEST.txt
+
+-- .claude/skills/pdf/SKILL.md --
+# pdf
+-- .claude/skills/pdf/package.json --
+{"name": "pdf"}
+-- .claude/skills/pdf/node_modules/pdfjs/index.js --
+module.exports = 1
+-- .claude/skills/pdf/dist/index.js --
+built
+-- .claude/skills/pdf/__pycache__/x.pyc --
+x

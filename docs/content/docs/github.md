@@ -110,11 +110,11 @@ In the readable modes, `.git` folders (and the `.git` files of submodules) insid
 
 **Age keys stay off GitHub in every mode.** The key chezmoi or sops decrypts with (`~/.config/chezmoi/key.txt`, sops' `keys.txt`, or any file containing an age identity) opens every encrypted file in your dotfiles repo. Putting it in a second repository, even encrypted, would leave that passphrase as the only thing protecting all of them. The push lists what it kept back. Carry the key with `dothaven backup --encrypt`, or in your password manager.
 
-**Fonts stay out of pushes by default.** Your font folder is binaries, often hundreds of megabytes, and GitHub takes at most 100 MB per file. `dothaven backup --encrypt` carries them; to push them anyway, name the category: `--only fonts,shell,…`.
+**Fonts stay out of pushes by default.** Your font folder is binaries, often hundreds of megabytes, and every push that changes them would store them again. `dothaven backup --encrypt` carries them; to push them anyway, name the category: `--only fonts,shell,…`.
 
 After the upload, the push lists everything it left out, as a file backup does: credential files in `plain` mode, age keys, and files over the size cap or that could not be read.
 
-GitHub accepts at most 100 MB per file. If the encrypted backup is larger, `push` stops and suggests leaving something large out with `--skip`, or using `--mode split`.
+**Large backups go up in parts.** GitHub takes at most 100 MB per file (and warns from 50 MB). An encrypted backup over 48 MB is uploaded as `backup.tar.gz.age.001`, `.002` and so on, and restoring joins them back; `dothaven.json` records how many there are, so a missing part is reported instead of failing to decrypt. The push says how large the backup is and which folders make up most of it. Folders the new machine rebuilds (`node_modules`, caches, build output) are never in it; see [Backup & restore](../backup-restore#what-is-left-out-and-how-you-are-told).
 
 ### The passphrase
 

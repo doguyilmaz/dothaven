@@ -3,6 +3,7 @@ package scan
 import (
 	"encoding/base64"
 	"os/user"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -67,6 +68,23 @@ func atLeast(c byte, n int) func(string) bool {
 }
 
 // checked attaches a vetting function to a rule.
+func (p Pattern) inConfigOnly() Pattern {
+	p.configOnly = true
+	return p
+}
+
+// codeExts are source code and web assets: files a person does not keep
+// settings in by hand.
+var codeExts = map[string]bool{
+	".js": true, ".mjs": true, ".cjs": true, ".jsx": true, ".ts": true, ".tsx": true, ".mts": true, ".cts": true,
+	".map": true, ".svg": true, ".css": true, ".scss": true, ".sass": true, ".less": true, ".html": true, ".htm": true,
+	".vue": true, ".svelte": true, ".astro": true, ".py": true, ".pyi": true, ".rb": true, ".go": true, ".rs": true,
+	".java": true, ".kt": true, ".scala": true, ".swift": true, ".c": true, ".h": true, ".cc": true, ".cpp": true,
+	".hpp": true, ".cs": true, ".php": true, ".dart": true, ".ex": true, ".exs": true, ".snap": true,
+}
+
+func isCode(path string) bool { return codeExts[strings.ToLower(filepath.Ext(path))] }
+
 func checked(p Pattern, check func(string) bool) Pattern {
 	p.check = check
 	return p
@@ -167,8 +185,8 @@ func build() {
 		mk("pgpass-line", "pgpass credentials", High, Redact, `(?m)^[^:#\s]+:(?:\d+|\*):[^:]*:[^:]*:.+$`).prefilter(atLeast(':', 4)),
 
 		// MEDIUM
-		checked(mk("ip-address", "IP address", Medium, Redact, `\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`), meaningfulIP).prefilter(hasDottedQuad),
-		mk("email-address", "email address", Medium, Include, `\b[\w.+-]+@[\w-]+\.[\w.]+\b`).needs("@"),
+		checked(mk("ip-address", "IP address", Medium, Redact, `\b(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b`), meaningfulIP).prefilter(hasDottedQuad).inConfigOnly(),
+		mk("email-address", "email address", Medium, Include, `\b[\w.+-]+@[\w-]+\.[\w.]+\b`).needs("@").inConfigOnly(),
 	}
 
 	if u := username(); u != "" {

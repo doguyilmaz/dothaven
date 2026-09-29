@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -265,6 +266,22 @@ func TestScripts(t *testing.T) {
 				if ok == neg {
 					ts.Fatalf("newest commit: author %q, committer %q, signed %v", last.Author, last.Committer, last.Signed)
 				}
+			},
+			// randfile writes a file of n MiB that does not compress, for a
+			// backup too large for one GitHub file.
+			"randfile": func(ts *testscript.TestScript, neg bool, args []string) {
+				if len(args) != 2 {
+					ts.Fatalf("usage: randfile <path> <MiB>")
+				}
+				n, err := strconv.Atoi(args[1])
+				if err != nil {
+					ts.Fatalf("bad size %q", args[1])
+				}
+				p := ts.MkAbs(args[0])
+				ts.Check(os.MkdirAll(filepath.Dir(p), 0o755))
+				b := make([]byte, n<<20)
+				_, _ = rand.NewChaCha8([32]byte{1}).Read(b)
+				ts.Check(os.WriteFile(p, b, 0o644))
 			},
 			// ghunverified makes the fake GitHub refuse to verify signatures,
 			// giving this reason.

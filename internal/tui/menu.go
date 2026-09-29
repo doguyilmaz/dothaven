@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/term"
 )
 
 // Node is one entry of the menu: a group that opens more entries, or an action
@@ -46,21 +49,86 @@ type menuModel struct {
 	cursor   int
 	width    int
 	height   int
+	sized    bool
 	chosen   string
 	done     bool
 }
 
-// RunMenu shows the menu on the full screen and returns the action picked, or
-// "" when the menu was left. status, run once in the background, fills the
-// top right corner (who is signed in, which machine).
-func RunMenu(title string, status func() string, root []Node, at Place) (string, Place, error) {
+// Picked is what the menu was left with: the action ("" when it was left),
+// where it was, and what a page for the action shows at its top.
+type Picked struct {
+	Value  string
+	At     Place
+	Crumb  []string // Home, the groups opened, the entry picked
+	Status string
+}
+
+// RunMenu shows the menu at the top of a fresh page and returns what was
+// picked. status, run once in the background, fills the top right corner
+// (which machine, whether GitHub is signed in).
+//
+// The menu is not on the terminal's alternate screen: switching back to the
+// normal screen for each action would drop the reader at the bottom of their
+// shell history every time. The session is one page instead: the menu is
+// wiped when an action starts, the action runs from the top of the window
+// under the same header, and its output scrolls into the terminal's history
+// when the menu comes back, where it can still be read.
+func RunMenu(title string, status func() string, root []Node, at Place) (Picked, error) {
+	NewPage()
 	m := newMenu(title, status, root, at)
-	out, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
+	out, err := tea.NewProgram(m).Run()
+	ClearPage()
 	if err != nil {
-		return "", at, err
+		return Picked{At: at}, err
 	}
 	fm := out.(menuModel)
-	return fm.chosen, fm.place(), nil
+	return Picked{Value: fm.chosen, At: fm.place(), Crumb: fm.crumb(true), Status: fm.status}, nil
+}
+
+// NewPage starts a fresh page: what is on the screen scrolls up into the
+// terminal's history (still there to scroll back to), and the cursor goes to
+// the top left corner.
+func NewPage() {
+	if !isTTY(os.Stdout) {
+		return
+	}
+	fmt.Print(strings.Repeat("\n", termRows()) + "\x1b[H\x1b[J")
+}
+
+// ClearPage wipes the screen without keeping it, for the menu itself.
+func ClearPage() {
+	if isTTY(os.Stdout) {
+		fmt.Print("\x1b[H\x1b[J")
+	}
+}
+
+func termRows() int {
+	if _, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil && h > 0 {
+		return h
+	}
+	return 24
+}
+
+// PageTop is the top of every page in the session, the menu's and each
+// action's: the title with the status on the right, then where you are.
+func PageTop(title, status string, crumb []string, width int) string {
+	w := max(width, 30)
+	var b strings.Builder
+	line := func(s string) {
+		b.WriteString(ansi.Truncate(s, w-1, "…"))
+		b.WriteByte('\n')
+	}
+	left := " " + titleSty.Render(title)
+	right := mutedSty.Render(status) + " "
+	if gap := w - 1 - lipgloss.Width(left) - lipgloss.Width(right); gap < 2 || status == "" {
+		line(left)
+	} else {
+		line(left + strings.Repeat(" ", gap) + right)
+	}
+	b.WriteByte('\n')
+	line(" " + crumbSty.Render(strings.Join(crumb, " › ")))
+	b.WriteByte('\n')
+	return b.String()
 }
 
 func newMenu(title string, status func() string, root []Node, at Place) menuModel {
@@ -77,6 +145,21 @@ func newMenu(title string, status func() string, root []Node, at Place) menuMode
 		m.cursor = at.Cursor
 	}
 	return m
+}
+
+// crumb is Home and the groups opened, and with picked, the entry under the
+// cursor.
+func (m menuModel) crumb(picked bool) []string {
+	crumb := []string{"Home"}
+	level := m.root
+	for _, i := range m.path {
+		crumb = append(crumb, level[i].Label)
+		level = level[i].Children
+	}
+	if picked && m.cursor < len(level) {
+		crumb = append(crumb, level[m.cursor].Label)
+	}
+	return crumb
 }
 
 func (m menuModel) place() Place {
@@ -104,6 +187,12 @@ func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		// A resize reflows what is on screen; drawing afresh from the top
+		// keeps the page in place.
+		if m.sized {
+			return m, tea.ClearScreen
+		}
+		m.sized = true
 	case statusMsg:
 		m.status = string(msg)
 	case tea.KeyMsg:
@@ -176,25 +265,8 @@ func (m menuModel) View() string {
 		b.WriteString(ansi.Truncate(s, w-1, "…"))
 		b.WriteByte('\n')
 	}
-
-	left := " " + titleSty.Render(m.title)
-	right := mutedSty.Render(m.status) + " "
-	gap := w - 1 - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 2 {
-		line(left)
-	} else {
-		line(left + strings.Repeat(" ", gap) + right)
-	}
-	b.WriteByte('\n')
-
-	crumb := []string{"Home"}
-	level := m.root
-	for _, i := range m.path {
-		crumb = append(crumb, level[i].Label)
-		level = level[i].Children
-	}
-	line(" " + crumbSty.Render(strings.Join(crumb, " › ")))
-	b.WriteByte('\n')
+	b.WriteString(PageTop(m.title, m.status, m.crumb(false), w))
+	level := m.items()
 
 	for i, n := range level {
 		label := n.Label

@@ -266,7 +266,7 @@ func checkSettings(env *sys.OS) []checkRow {
 }
 
 func checkTargets(env *sys.OS) []checkRow {
-	var present, files, credentials int
+	var present, files, credentials, rebuilt int
 	var unreadable, large []string
 	for _, t := range registry.BackupTargets(env.Home(), allEntries(env)) {
 		walked, skipped := backup.Walk(t, backup.WalkOptions{})
@@ -278,9 +278,12 @@ func checkTargets(env *sys.OS) []checkRow {
 			credentials += len(walked)
 		}
 		for _, s := range skipped {
-			if s.Reason == "too large" {
+			switch {
+			case s.Reason == "too large":
 				large = append(large, fmt.Sprintf("%s (%s)", s.Dest, humanBytes(s.Size)))
-			} else {
+			case backup.IsRebuildable(s):
+				rebuilt++
+			default:
 				unreadable = append(unreadable, s.Dest)
 			}
 		}
@@ -293,6 +296,9 @@ func checkTargets(env *sys.OS) []checkRow {
 		}
 	}
 	rows := []checkRow{{Name: "tracked", Status: statusOK, Detail: fmt.Sprintf("%s from %d sources on this machine (%d with credentials)", plural(files, "file"), present, credentials)}}
+	if rebuilt > 0 {
+		rows = append(rows, checkRow{Name: "rebuildable", Status: statusInfo, Detail: fmt.Sprintf("%s left out (node_modules, caches, build output); reinstalled on the new machine", plural(rebuilt, "folder"))})
+	}
 	if len(unreadable) > 0 {
 		rows = append(rows, checkRow{Name: "unreadable", Status: statusWarn, Detail: fmt.Sprintf("%s: %s", plural(len(unreadable), "file"), preview(unreadable, 3)),
 			Fix: "these would be left out of a backup; check their owner and permissions"})

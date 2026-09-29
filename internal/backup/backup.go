@@ -54,6 +54,9 @@ type Result struct {
 	TotalFiles  int
 	TotalBytes  int64
 	PerCategory map[string]int
+	// SourceBytes is how much each entry's folder or file added, by its path
+	// on this machine, so a large backup can say what made it large.
+	SourceBytes map[string]int64
 	ScanResults []scan.Result
 	// SkippedSensitive lists dests excluded because they are high-sensitivity
 	// with no guaranteed redactor. They belong in an encrypted backup, not a
@@ -78,6 +81,9 @@ type Result struct {
 	// KeptLocal lists files a remote run left on this machine on purpose (see
 	// Options.Remote): keys that protect other copies.
 	KeptLocal []string
+	// Rebuildable lists folders left out because the new machine rebuilds
+	// them: dependencies, caches, virtual environments, build output.
+	Rebuildable []Skipped
 }
 
 // Run copies every selected target into destRoot.
@@ -135,9 +141,12 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 		}
 		files, skipped := Walk(t, WalkOptions{MaxSize: opts.MaxFileSize, SkipVCS: opts.SkipVCS})
 		for _, s := range skipped {
-			if s.Reason == "too large" {
+			switch {
+			case s.Reason == "too large":
 				res.TooLarge = append(res.TooLarge, s)
-			} else {
+			case IsRebuildable(s):
+				res.Rebuildable = append(res.Rebuildable, s)
+			default:
 				res.ReadErrors = append(res.ReadErrors, s.Dest)
 			}
 		}
@@ -203,6 +212,10 @@ func RunTo(targets []registry.BackupTarget, sink Sink, opts Options) (Result, er
 			res.PerCategory[t.Category]++
 			res.TotalFiles++
 			res.TotalBytes += int64(len(data))
+			if res.SourceBytes == nil {
+				res.SourceBytes = map[string]int64{}
+			}
+			res.SourceBytes[t.Src] += int64(len(data))
 		}
 	}
 	if !opts.Redact {
@@ -382,6 +395,12 @@ func Manifest(meta ManifestMeta, res Result) string {
 	}
 	list("# Left out: over the per-file size cap.\n", big)
 	list("# Left out: exist but could not be read.\n", res.ReadErrors)
+	var rebuilt []string
+	for _, r := range res.Rebuildable {
+		rebuilt = append(rebuilt, fmt.Sprintf("%s (%s)", r.Dest, RebuildKind(r)))
+	}
+	list("# Left out: rebuilt on the new machine by the tool that made them\n"+
+		"# (npm install, pip, your build).\n", rebuilt)
 	if !left {
 		b.WriteString("# Left out: nothing.\n")
 	}

@@ -46,6 +46,64 @@ var vcsDirs = map[string]bool{".git": true, ".hg": true, ".svn": true}
 // alwaysSkip are entries no config backup wants: Finder litter and editor swap.
 var alwaysSkip = map[string]bool{".DS_Store": true}
 
+// Rebuildable folders are left out of every walk: dependencies a package
+// manager installs, caches, virtual environments. They are large (one
+// node_modules can hold tens of thousands of files), none of it is config,
+// and the manifest beside them brings them back. The rule goes by name, not
+// by .gitignore: people keep AI tool folders in ignored paths on purpose.
+var rebuildableDirs = map[string]string{
+	"node_modules": "dependencies", "bower_components": "dependencies", "jspm_packages": "dependencies", ".pnpm-store": "dependencies",
+	".venv": "virtual environment", "__pycache__": "cache", ".pytest_cache": "cache", ".mypy_cache": "cache", ".ruff_cache": "cache",
+	".tox": "cache", ".nox": "cache", ".hypothesis": "cache", ".ipynb_checkpoints": "cache",
+	".cache": "cache", ".parcel-cache": "cache", ".turbo": "cache", ".next": "cache", ".nuxt": "cache", ".svelte-kit": "cache",
+	".angular": "cache", ".gradle": "cache", ".terraform": "cache", ".terragrunt-cache": "cache", "DerivedData": "cache",
+	// Electron apps (VS Code, Cursor, Slack…) keep these beside their settings.
+	"Cache": "cache", "Code Cache": "cache", "GPUCache": "cache", "CachedData": "cache", "DawnCache": "cache",
+	"DawnGraphiteCache": "cache", "DawnWebGPUCache": "cache", "ShaderCache": "cache", "GrShaderCache": "cache",
+}
+
+// buildDirs are build output, left out only where the manifest that rebuilds
+// them sits beside them. A JavaScript project's output also needs its
+// node_modules there: a plugin that ships a built dist/ and no dependencies
+// runs from that dist/, and nothing would bring it back.
+var buildDirs = map[string][]string{
+	"dist":     {"package.json+", "pyproject.toml", "setup.py"},
+	"build":    {"package.json+", "pyproject.toml", "setup.py", "build.gradle", "build.gradle.kts", "CMakeLists.txt"},
+	"out":      {"package.json+"},
+	".output":  {"package.json+"},
+	"coverage": {"package.json+"},
+	"target":   {"Cargo.toml", "pom.xml"},
+}
+
+// rebuildable says what kind of rebuildable folder dir is ("" when it is
+// not). siblings are the names beside it.
+func rebuildable(dir, name string, siblings map[string]bool) string {
+	if kind := rebuildableDirs[name]; kind != "" {
+		return kind
+	}
+	for _, m := range buildDirs[name] {
+		if js, ok := strings.CutSuffix(m, "+"); ok {
+			if siblings[js] && siblings["node_modules"] {
+				return "build output"
+			}
+		} else if siblings[m] {
+			return "build output"
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pyvenv.cfg")); err == nil {
+		return "virtual environment"
+	}
+	return ""
+}
+
+// IsRebuildable reports a Skipped entry for a rebuildable folder.
+func IsRebuildable(s Skipped) bool { return strings.HasPrefix(s.Reason, rebuildablePrefix) }
+
+// RebuildKind is what a rebuildable folder holds ("dependencies", "cache"…).
+func RebuildKind(s Skipped) string { return strings.TrimPrefix(s.Reason, rebuildablePrefix) }
+
+const rebuildablePrefix = "rebuilt on the new machine: "
+
 // Walk resolves a target into the files it would carry.
 //
 // Symlinks are followed, both at the root and inside it. Dotfiles managed by
@@ -108,6 +166,10 @@ func (w *walker) dir(p, dest, rel string) {
 		w.skipped = append(w.skipped, Skipped{Dest: dest, Reason: "unreadable"})
 		return
 	}
+	siblings := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		siblings[e.Name()] = true
+	}
 	for _, e := range entries {
 		name := e.Name()
 		childRel := name
@@ -126,6 +188,11 @@ func (w *walker) dir(p, dest, rel string) {
 		switch {
 		case info.IsDir():
 			if w.opts.SkipVCS && vcsDirs[name] {
+				continue
+			}
+			// Never the target itself: a folder named on purpose is carried.
+			if kind := rebuildable(childPath, name, siblings); kind != "" {
+				w.skipped = append(w.skipped, Skipped{Dest: childDest, Reason: rebuildablePrefix + kind})
 				continue
 			}
 			w.dir(childPath, childDest, childRel)

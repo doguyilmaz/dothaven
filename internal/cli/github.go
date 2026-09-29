@@ -454,6 +454,58 @@ type machineMeta struct {
 	// whether this push's passphrase is the one that copy was made with. It
 	// reveals nothing the encrypted file beside it does not.
 	AgeHeader string `json:"ageHeader,omitempty"`
+	// Parts is how many parts each file too large for one GitHub file was
+	// split into (see splitLarge), so a pull can tell a part is missing.
+	Parts map[string]int `json:"parts,omitempty"`
+}
+
+// splitLarge splits the encrypted files this push made (in tmp) that are
+// over github.PartSize into parts: GitHub takes at most 100 MB per file,
+// and pull joins them back. It says so, with what made the backup large.
+func splitLarge(env *sys.OS, files []github.File, tmp string, res backup.Result) ([]github.File, map[string]int) {
+	var out []github.File
+	var parts map[string]int
+	for _, f := range files {
+		ours := (f.Path == "backup.tar.gz.age" || f.Path == "secrets.tar.gz.age") && filepath.Dir(f.Src) == tmp
+		if !ours || f.Size <= github.PartSize {
+			out = append(out, f)
+			continue
+		}
+		p := github.Parts(f, github.PartSize)
+		if parts == nil {
+			parts = map[string]int{}
+		}
+		parts[f.Path] = len(p)
+		out = append(out, p...)
+		what := "encrypted backup"
+		if f.Path == "secrets.tar.gz.age" {
+			what = "encrypted bundle"
+		}
+		fmt.Printf("%s The %s is %s, so it goes up in %d parts. Restoring joins them back.\n", dim("·"), what, humanBytes(f.Size), len(p))
+		if big := largestSources(env, res, 3); big != "" {
+			fmt.Printf("  %s\n", dim("Most of it: "+big))
+		}
+	}
+	return out, parts
+}
+
+// largestSources names the n folders or files that added the most to a
+// backup, with their sizes, largest first.
+func largestSources(env *sys.OS, res backup.Result, n int) string {
+	type src struct {
+		path string
+		size int64
+	}
+	var all []src
+	for p, s := range res.SourceBytes {
+		all = append(all, src{p, s})
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].size > all[j].size })
+	var names []string
+	for _, s := range all[:min(n, len(all))] {
+		names = append(names, fmt.Sprintf("%s (%s)", shortHome(env, s.path), humanBytes(s.size)))
+	}
+	return strings.Join(names, ", ")
 }
 
 func githubStatus(ctx context.Context, env *sys.OS) error {
@@ -764,13 +816,14 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	defer done()
 
 	digest := &backup.DigestSink{}
-	// Fonts are binaries, often hundreds of megabytes, and GitHub takes at most
-	// 100 MB per file: pushed only when asked for by name. File backups carry them.
+	// Fonts are binaries, often hundreds of megabytes, and every push that
+	// changes them stores them again: pushed only when asked for by name. File
+	// backups carry them.
 	skip := o.skip
 	if !contains(o.only, "fonts") && !contains(skip, "fonts") {
 		skip = append(append([]string(nil), skip...), "fonts")
 		if dirHasFiles(filepath.Join(env.Home(), fontsDir())) {
-			fmt.Println(dim("Your fonts stay out of GitHub pushes (large binaries). `dothaven backup --encrypt` carries them, or add --only fonts,…"))
+			fmt.Println(dim("Your fonts stay out of GitHub pushes, since they are large. An encrypted file backup carries them: dothaven backup --encrypt"))
 		}
 	}
 	runlog.stepf("push %s as %s, mode %s", r.FullName, machine, mode)
@@ -803,6 +856,7 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 			}
 		}
 	}
+	files, parts := splitLarge(env, files, tmp, out.res)
 	// The version is part of the fingerprint: a newer dothaven may carry more,
 	// or classify a file as sensitive that an older one left readable.
 	fp := mode + ":" + cmd.Root().Version + ":" + digest.Sum()
@@ -823,7 +877,7 @@ func githubPush(cmd *cobra.Command, env *sys.OS, o pushOpts) error {
 	meta, _ := json.MarshalIndent(machineMeta{
 		Machine: machine, Host: hostname(), OS: runtime.GOOS, Mode: mode,
 		Created: time.Now().UTC().Format(time.RFC3339), Files: out.res.TotalFiles, Dothaven: cmd.Root().Version,
-		Fingerprint: fp, AgeHeader: headerB64,
+		Fingerprint: fp, AgeHeader: headerB64, Parts: parts,
 	}, "", "  ")
 	metaPath := filepath.Join(tmp, "dothaven.json")
 	if err := os.WriteFile(metaPath, append(meta, '\n'), 0o600); err != nil {
@@ -979,9 +1033,6 @@ func buildPushFiles(ctx context.Context, cmd *cobra.Command, env *sys.OS, tmp, m
 		fi, err := os.Stat(res.path)
 		if err != nil {
 			return nil, res, err
-		}
-		if fi.Size() > github.MaxFile {
-			return nil, res, fmt.Errorf("the encrypted backup is %s, and GitHub takes at most 100 MB per file. Leave out something large with --skip, or use --mode split", humanBytes(fi.Size()))
 		}
 		return []github.File{{Path: "backup.tar.gz.age", Src: res.path, Size: fi.Size()}}, res, nil
 
@@ -1194,6 +1245,9 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string, dirs ...str
 		return fail(err)
 	}
 	mdir := filepath.Join(root, "machines", machine)
+	if err := joinPushedParts(mdir); err != nil {
+		return fail(err)
+	}
 
 	// Encrypted mode: the machine folder holds one archive; open it as any
 	// local encrypted backup (with its passphrase retries).
@@ -1234,6 +1288,26 @@ func openGitHubBackup(ctx context.Context, env *sys.OS, spec string, dirs ...str
 		_ = os.Remove(secretsPath)
 	}
 	return stable, cleanup, nil
+}
+
+// joinPushedParts puts back together the files a push uploaded in parts
+// (see splitLarge), and refuses a set with a part missing.
+func joinPushedParts(mdir string) error {
+	var meta machineMeta
+	if b, err := os.ReadFile(filepath.Join(mdir, "dothaven.json")); err == nil {
+		_ = json.Unmarshal(b, &meta)
+	}
+	for _, name := range []string{"backup.tar.gz.age", "secrets.tar.gz.age"} {
+		whole := fileExists(filepath.Join(mdir, name))
+		n, err := github.JoinParts(mdir, name)
+		if err != nil {
+			return err
+		}
+		if want := meta.Parts[name]; want > 0 && !whole && n != want {
+			return fmt.Errorf("the backup on GitHub is incomplete: %s has %d of its %d parts. Push it again from the old machine", name, n, want)
+		}
+	}
+	return nil
 }
 
 func fileExists(p string) bool {

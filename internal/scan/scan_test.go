@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -508,6 +509,56 @@ func TestPreviewOfKeysShowsNoKeyMaterial(t *testing.T) {
 	for _, f := range r.Findings {
 		if p := Preview(f.Match); strings.Contains(p, "QPZRY") {
 			t.Errorf("preview shows the age key: %q", p)
+		}
+	}
+}
+
+// IP and email rules are for config: in code and images the same shapes are
+// versions, OIDs, coordinates and author credits, and redacting them would
+// break the file. Secrets are still found in code.
+func TestConfigOnlyRulesSkipCode(t *testing.T) {
+	content := "server = 10.20.30.40\nauthor = dev@example.com\n"
+	ids := func(r Result) string {
+		var out []string
+		for _, f := range r.Findings {
+			out = append(out, f.Pattern.ID)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := ids(ScanContent("config.toml", content)); got != "ip-address,email-address" {
+		t.Errorf("config.toml: %q", got)
+	}
+	for _, p := range []string{"lib/util.js", "dist/index.mjs", "icon.svg", "types.d.ts", "app.js.map"} {
+		if r := ScanContent(p, content); len(r.Findings) != 0 || r.Action != Include {
+			t.Errorf("%s: %q, action %s", p, ids(r), r.Action)
+		}
+	}
+	hook := ScanContent("hooks/notify.js", "const token = 'ghp_"+strings.Repeat("a1B2", 9)+"'\n")
+	if hook.Action != Redact || !strings.Contains(ids(hook), "github-token") {
+		t.Errorf("a token in a .js file was missed: %q, %s", ids(hook), hook.Action)
+	}
+}
+
+// A report stays readable when a folder holds hundreds of findings: every
+// HIGH has its own line, MEDIUM ones in one folder share a line, and the
+// rest is counted, not listed.
+func TestReportGroupsMinorFindings(t *testing.T) {
+	var results []Result
+	results = append(results, ScanContent("~/.ssh/id_ed25519", "-----BEGIN OPENSSH PRIVATE KEY-----\n"))
+	for i := range 40 {
+		results = append(results, ScanContent(fmt.Sprintf("~/.claude/plugins/x/docs/f%d.md", i), "by dev@example.com\n"))
+	}
+	for i := range 20 {
+		results = append(results, ScanContent(fmt.Sprintf("~/.config/t%d/a.conf", i), "by dev@example.com\n"))
+	}
+	out := FormatReport(Summarize(results), ReportOptions{})
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) > 25 {
+		t.Errorf("report has %d lines:\n%s", len(lines), out)
+	}
+	for _, want := range []string{"~/.ssh/id_ed25519", "~/.claude/plugins/x/docs/ (40 files)", "…and 6 more MEDIUM or LOW findings"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report lacks %q:\n%s", want, out)
 		}
 	}
 }
