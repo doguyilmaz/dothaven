@@ -58,10 +58,14 @@ func scanContent(path, content string, maxLine int) Result {
 	// Only the rules whose required text appears somewhere in the file can
 	// match any of its lines.
 	lower := foldLower(content)
+	code := isCode(path)
 	var pats []*Pattern
 	all := Patterns()
 	for i := range all {
 		p := &all[i]
+		if p.configOnly && code {
+			continue
+		}
 		if (!binary || p.Action == Skip) && (noPrefilter || p.possible(content, lower)) {
 			pats = append(pats, p)
 		}

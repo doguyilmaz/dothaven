@@ -2,6 +2,7 @@ package scan
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -39,6 +40,9 @@ type ReportOptions struct {
 // FormatReport renders the inline sensitivity report printed after
 // collect/backup, or "" when there are no findings. Only severity is
 // coloured: a HIGH in a list of thirty LOWs is what the reader is looking for.
+// maxMinorLines bounds the MEDIUM and LOW lines of a report.
+const maxMinorLines = 15
+
 func FormatReport(s Summary, o ReportOptions) string {
 	if len(s.Results) == 0 {
 		return ""
@@ -69,24 +73,73 @@ func FormatReport(s Summary, o ReportOptions) string {
 	}
 
 	lines := []string{"\n⚠ Sensitivity report:"}
+	actionLabel := func(a Action) string {
+		switch a {
+		case Redact:
+			if o.Scan {
+				return "redacted in a plaintext backup"
+			}
+			return "redacted"
+		case Skip:
+			if o.Scan {
+				return "left out of a plaintext backup"
+			}
+			return "skipped"
+		}
+		return "included"
+	}
+	// Every HIGH finding gets its own line. MEDIUM and LOW ones in the same
+	// folder, of the same kind, share one, and there are at most
+	// maxMinorLines of those: a folder of third-party files can hold
+	// hundreds, and a report that long is not read.
+	type group struct {
+		sev        Severity
+		dir, label string
+		action     Action
+		paths      []string
+	}
+	var groups []*group
+	byKey := map[string]*group{}
 	for _, r := range rows {
 		top := topFinding(r)
-		label := "included"
-		switch r.Action {
-		case Redact:
-			label = "redacted"
-			if o.Scan {
-				label = "redacted in a plaintext backup"
-			}
-		case Skip:
-			label = "skipped"
-			if o.Scan {
-				label = "left out of a plaintext backup"
-			}
-		}
 		sev := top.Pattern.Severity
-		lines = append(lines, fmt.Sprintf("  %s%-6s%s %-30s %s%s (%s)%s",
-			severityColor(sev), sev, reset, r.Path, dim, top.Pattern.Label, label, reset))
+		if sev == High {
+			groups = append(groups, &group{sev: sev, label: top.Pattern.Label, action: r.Action, paths: []string{r.Path}})
+			continue
+		}
+		key := string(sev) + "\x00" + filepath.Dir(r.Path) + "\x00" + top.Pattern.Label + "\x00" + string(r.Action)
+		g := byKey[key]
+		if g == nil {
+			g = &group{sev: sev, dir: filepath.Dir(r.Path), label: top.Pattern.Label, action: r.Action}
+			byKey[key] = g
+			groups = append(groups, g)
+		}
+		g.paths = append(g.paths, r.Path)
+	}
+	minor, hidden := 0, 0
+	for _, g := range groups {
+		if g.sev != High {
+			if minor == maxMinorLines {
+				hidden += len(g.paths)
+				continue
+			}
+			minor++
+		}
+		where := g.paths
+		if len(g.paths) >= 3 {
+			where = []string{fmt.Sprintf("%s/ (%d files)", g.dir, len(g.paths))}
+		}
+		for _, w := range where {
+			lines = append(lines, fmt.Sprintf("  %s%-6s%s %-30s %s%s (%s)%s",
+				severityColor(g.sev), g.sev, reset, w, dim, g.label, actionLabel(g.action), reset))
+		}
+	}
+	if hidden > 0 {
+		more := "dothaven scan lists each one"
+		if o.Scan {
+			more = "each is listed above"
+		}
+		lines = append(lines, fmt.Sprintf("  %s…and %d more MEDIUM or LOW %s (%s)%s", dim, hidden, plural(hidden, "finding", "findings"), more, reset))
 	}
 	if o.Scan {
 		lines = append(lines, "", "  An encrypted backup (dothaven backup --encrypt) keeps them as they are.")

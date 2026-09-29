@@ -47,6 +47,10 @@ type Pattern struct {
 	need []string
 	fold bool
 	pre  func(s string) bool
+	// configOnly rules skip source code and images (see isCode): in those an
+	// IP-shaped number is a version, an OID or a coordinate, an email is an
+	// author credit, and redacting either breaks the file.
+	configOnly bool
 }
 
 // possible reports whether s could hold a match. lower is s lowercased, for
