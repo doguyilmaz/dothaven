@@ -186,6 +186,36 @@ func TestExecuteInteractiveResolver(t *testing.T) {
 	}
 }
 
+// Stop at a conflict writes nothing from there on, the new file after it
+// included, and remembers nothing about them: they are offered next time.
+func TestExecuteStopsWhenAsked(t *testing.T) {
+	home := t.TempDir()
+	backup := t.TempDir()
+	write(t, filepath.Join(backup, "editor/.vimrc"), "backup\n")
+	write(t, filepath.Join(backup, "git/.gitconfig"), "backup\n")
+	write(t, filepath.Join(home, ".vimrc"), "live\n")
+	targets := []registry.BackupTarget{
+		{Src: filepath.Join(home, ".vimrc"), Dest: "editor/.vimrc", Category: "editor"},
+		{Src: filepath.Join(home, ".gitconfig"), Dest: "git/.gitconfig", Category: "git"},
+	}
+	plan, _ := BuildPlan(backup, home, targets)
+	res, err := Execute(plan, ExecuteOptions{
+		Resolve: func(Entry, string, string) ConflictAction { return ActionStop },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Stopped || res.Restored != 0 || len(res.Outcomes) != 0 {
+		t.Errorf("stopped %v, restored %d, outcomes %d", res.Stopped, res.Restored, len(res.Outcomes))
+	}
+	if _, err := os.Stat(filepath.Join(home, ".gitconfig")); !os.IsNotExist(err) {
+		t.Error("a file after the stop was written")
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, ".vimrc")); string(b) != "live\n" {
+		t.Errorf("the file at the stop was changed: %q", b)
+	}
+}
+
 func TestExecuteSkipsSymlinkTargets(t *testing.T) {
 	home := t.TempDir()
 	backup := t.TempDir()

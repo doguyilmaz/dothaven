@@ -59,17 +59,18 @@ func theme() *huh.Theme {
 
 // run shows one group of fields in dothaven's look.
 func run(fields ...huh.Field) error {
-	return huh.NewForm(huh.NewGroup(fields...)).WithTheme(theme()).Run()
+	wrapped := make([]huh.Field, len(fields))
+	for i, f := range fields {
+		wrapped[i] = withBack{f}
+	}
+	return ask(huh.NewForm(huh.NewGroup(wrapped...)).WithTheme(theme()).WithKeyMap(keys(false)))
 }
 
 // runList shows a list prompt. Typing / to search it is offered only on a
 // list taller than the window: on one that fits, a search box is one more
 // thing that looks like another program taking over.
 func runList(search bool, field huh.Field) error {
-	km := huh.NewDefaultKeyMap()
-	km.Select.Filter.SetEnabled(search)
-	km.MultiSelect.Filter.SetEnabled(search)
-	return huh.NewForm(huh.NewGroup(field)).WithTheme(theme()).WithKeyMap(km).Run()
+	return ask(huh.NewForm(huh.NewGroup(withBack{field})).WithTheme(theme()).WithKeyMap(keys(search)))
 }
 
 // listHeight is the height to give a list prompt with n choices under its
