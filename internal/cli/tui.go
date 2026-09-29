@@ -106,14 +106,25 @@ func newTUICmd(env *sys.OS) *cobra.Command {
 				// menu comes back (see CancelAction).
 				ctx, cancel := context.WithCancel(root)
 				startAction(cancel)
+				tui.BeginAction(cancel)
 				cmd.SetContext(ctx)
 				rerr := runTUIAction(cmd, env, action)
+				left, atFirst := tui.EndAction()
 				cancelled := ctx.Err() != nil
 				cmd.SetContext(root)
 				endAction()
 				cancel()
+				// Esc on the first question: nothing happened, so straight back.
+				// Later on, the page shows how far the action got.
+				if left && atFirst {
+					continue
+				}
 				var ee ExitError
 				switch {
+				case left && errors.As(rerr, &ee):
+					// The command said it stopped.
+				case left:
+					fmt.Fprintln(cmd.ErrOrStderr(), "Stopped.")
 				case action == "ui" && rerr == nil:
 					// Ctrl-C is how the dashboard is stopped; it says so itself.
 				case errors.As(rerr, &ee) && ee.Code == 130:

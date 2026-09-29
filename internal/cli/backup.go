@@ -228,6 +228,9 @@ func reviewUncovered(env *sys.OS, force bool) (int, error) {
 			"(add it later with: dothaven include <path>).",
 		pending)
 	if errors.Is(err, tui.ErrAborted) {
+		if tui.Left() {
+			return 0, err // the whole action was left, not only this question
+		}
 		fmt.Println("Skipped for now. dothaven will ask again next time.")
 		return 0, nil
 	}

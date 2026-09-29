@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"golang.org/x/term"
+	"github.com/doguyilmaz/dothaven/internal/tui"
 )
 
 // passphraseEnv lets a script supply the archive passphrase. It is how restic
@@ -45,22 +45,18 @@ func lookupSecretEnv(name string) (string, bool) {
 	return os.LookupEnv(name)
 }
 
-// readSecret reads one line from the terminal without echoing it. It opens
-// /dev/tty rather than trusting stdin, so it still works when stdin or stdout
-// is redirected (`dothaven restore x.age | tee log`).
-func readSecret(prompt string) (string, error) {
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+// readSecret reads one line from the terminal without echoing it, on
+// /dev/tty, so it still works when stdin or stdout is redirected
+// (`dothaven restore x.age | tee log`). Esc or Ctrl-C leaves the question.
+func readSecret(label string) (string, error) {
+	p, err := tui.ReadSecret(fmt.Sprintf("  %s %s ", label, dim("(esc to "+tui.BackVerb()+"):")))
+	if errors.Is(err, tui.ErrAborted) {
+		return "", err
+	}
 	if err != nil {
 		return "", errNoTerminal
 	}
-	defer tty.Close()
-	fmt.Fprint(tty, prompt)
-	b, err := term.ReadPassword(int(tty.Fd()))
-	fmt.Fprintln(tty)
-	if err != nil {
-		return "", errNoTerminal
-	}
-	return strings.TrimRight(string(b), "\r\n"), nil
+	return strings.TrimRight(p, "\r\n"), nil
 }
 
 // envPassphrase is DOTHAVEN_PASSPHRASE for a new archive, held to the same
@@ -85,7 +81,7 @@ func newPassphrase() (string, error) {
 	fmt.Fprintln(os.Stderr, dim("Choose a passphrase for this backup. You will need it on the new machine,"))
 	fmt.Fprintln(os.Stderr, dim("and nothing can recover the backup without it. Store it in a password manager."))
 	for range 3 {
-		p, err := readSecret("  Passphrase: ")
+		p, err := readSecret("Passphrase")
 		if err != nil {
 			return "", err
 		}
@@ -93,7 +89,7 @@ func newPassphrase() (string, error) {
 			fmt.Fprintf(os.Stderr, "  %s at least %d characters, please. This file can hold your SSH keys.\n", warn("⚠"), minPassphrase)
 			continue
 		}
-		again, err := readSecret("  Again:      ")
+		again, err := readSecret("Again")
 		if err != nil {
 			return "", err
 		}
@@ -113,6 +109,6 @@ func askPassphrase() func() (string, error) {
 		if p, ok := lookupSecretEnv(passphraseEnv); ok {
 			return p, nil
 		}
-		return readSecret("  Passphrase for this backup: ")
+		return readSecret("Passphrase for this backup")
 	}
 }

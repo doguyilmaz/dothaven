@@ -241,7 +241,8 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 		opts.Resolve = func(e restore.Entry, backup, live string) restore.ConflictAction {
 			choice, err := tui.ResolveConflict(shortHome(env, e.TargetPath), backup, live)
 			if err != nil {
-				return restore.ActionSkip
+				// Esc or Ctrl-C: stop the restore, not only this file.
+				return restore.ActionStop
 			}
 			return conflictAction(choice)
 		}
@@ -258,6 +259,9 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 		return err
 	}
 
+	if res.Stopped {
+		fmt.Println("\nStopped. The files after that one were not looked at, and will be offered next time.")
+	}
 	if res.Restored > 0 {
 		fmt.Printf("\n%s %s %s\n", good("✓"), bold(fmt.Sprintf("Restored %s:", plural(res.Restored, "file"))), dim(formatCategories(res.PerCategory)))
 	} else {
@@ -296,6 +300,9 @@ func runRestore(cmd *cobra.Command, env *sys.OS, path string, o restoreOpts) err
 	printRedacted(plan)
 	if res.Restored > 0 {
 		printBrewPaths(checkBrewPaths(env))
+	}
+	if res.Stopped {
+		return ExitError{Code: 130} // stopped on purpose: no next steps offered
 	}
 	return offerExtras(cmd, env, path, dir, extras)
 }

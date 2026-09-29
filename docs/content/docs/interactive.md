@@ -41,7 +41,9 @@ The menu and its actions are one page. Picking an entry starts it at the top of 
 
 Lists that fit the window are picked with the arrow keys; a list taller than the window can also be searched by typing `/`.
 
-Ctrl-C during an action stops that action and brings the menu back; a second Ctrl-C quits dothaven at once.
+Every question in an action can be left with Esc (or Ctrl-C), passphrases included, and each one's help line says so (`esc back`). At an action's first question, Esc goes straight back to the menu. Later on, it stops the action: no further questions are asked, its work stops, and the page says how far it got before Enter brings the menu back. Nothing is written after that point. A restore stopped at a file that differs leaves that file and the rest alone, and offers them again next time.
+
+Ctrl-C while an action is working stops it and brings the menu back; a second Ctrl-C quits dothaven at once. Outside the menu, Esc at a question cancels the command.
 
 | Group | Entries |
 | --- | --- |

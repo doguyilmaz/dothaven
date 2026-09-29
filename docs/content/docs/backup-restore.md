@@ -222,7 +222,7 @@ What should be restored?
 - **Choose files** lists every file (type `/` to filter). Picking a file that differs is your approval to replace it; a file you unpick from that list is remembered as declined.
 - **Show me the list first** prints the plan, then asks again.
 
-For each file that differs you choose: *Overwrite with backup*, *Skip (keep live file)*, *Show diff*, *Overwrite all remaining*, or *Skip all remaining*.
+For each file that differs you choose: *Overwrite with backup*, *Skip (keep live file)*, *Show diff*, *Overwrite all remaining*, or *Skip all remaining*. Esc stops the restore there: that file and the ones after it are left alone, not remembered as skipped, and offered again next time.
 
 ### It remembers
 

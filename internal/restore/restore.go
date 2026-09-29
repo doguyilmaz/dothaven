@@ -351,6 +351,7 @@ const (
 	ActionOverwrite                          // write the backup over it
 	ActionOverwriteAll                       // and every remaining conflict
 	ActionSkipAll                            // skip every remaining conflict
+	ActionStop                               // stop here: nothing more is written
 )
 
 // ExecuteOptions controls how a plan is applied.
@@ -395,6 +396,9 @@ type ExecuteResult struct {
 	SnapshotDir    string // set if a pre-restore snapshot was written
 	PerCategory    map[string]int
 	Outcomes       []Outcome
+	// Stopped is set when Resolve said stop: the entries from there on were
+	// not looked at, and nothing about them is remembered.
+	Stopped bool
 }
 
 // Execute applies the plan to the filesystem. New and updated files are
@@ -448,6 +452,9 @@ func Execute(plan Plan, opts ExecuteOptions) (ExecuteResult, error) {
 					overwrite, overwriteAll = true, true
 				case ActionSkipAll:
 					skipAll = true
+				case ActionStop:
+					res.Stopped = true
+					return res, nil
 				}
 			}
 			if !overwrite {
