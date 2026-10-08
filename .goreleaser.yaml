@@ -82,6 +82,7 @@ homebrew_casks:
       name: homebrew-tap
       # A PAT with contents:write on the tap repo (the default GITHUB_TOKEN can't push cross-repo).
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_msg_template: "{{ .ProjectName }} {{ .Tag }}"
     # The binary itself is self-contained. The chezmoi-export --apply and init
     # paths shell out to chezmoi (and age). They are not hard cask
     # dependencies, so the caveats list them as optional installs.
